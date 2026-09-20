@@ -1,4 +1,4 @@
-import { mountTransport, createTransport } from "./transport.js";
+import { createTransport } from "./transport.js";
 import { createRenderer } from "./renderer.js";
 import { createInterface } from "./ui.js";
 import { createReports } from "./reports.js";
@@ -34,9 +34,11 @@ function start(renderer) {
     frameTime = 0,
     lastSpeed = 1;
   const metric = (field) => game.read(0, 0, field);
-  mountTransport();
   let reports, transport;
-  const refresh = () => { reports.update(); transport?.update(); };
+  const refresh = () => {
+    reports.update();
+    transport?.update();
+  };
   const speed = (value) => {
     game.set_speed(value);
     if (value) lastSpeed = value;
@@ -58,8 +60,8 @@ function start(renderer) {
     },
     inspect: () => reports.inspectBuilding(metric(10)),
   });
-  reports = createReports(game, ui);
   transport = createTransport(game, ui);
+  reports = createReports(game, ui, transport);
   $("restart").onclick = () => {
     game.init();
     lastSpeed = 1;
@@ -136,7 +138,10 @@ function start(renderer) {
     drag.y = event.clientY;
   });
   canvas.addEventListener("pointerup", (event) => {
-    if (transport.pointerUp()) { drag = null; return; }
+    if (transport.pointerUp()) {
+      drag = null;
+      return;
+    }
     if (drag && drag.distance < 5) {
       const rect = canvas.getBoundingClientRect();
       game.pick(event.clientX - rect.left, event.clientY - rect.top);

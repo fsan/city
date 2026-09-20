@@ -155,7 +155,7 @@
               </div>
               <div><small>Employed</small><strong id="employed">—</strong></div>
               <div>
-                <small>Walking now</small><strong id="walking">—</strong>
+                <small>Travelling now</small><strong id="walking">—</strong>
               </div>
             </div>
             <p id="city-summary"></p>
@@ -649,11 +649,15 @@
                 <td>I / H</td>
               </tr>
               <tr>
+                <td>Transport / traffic overlay</td>
+                <td>T / G</td>
+              </tr>
+              <tr>
                 <td>Street overlay</td>
                 <td>O</td>
               </tr>
               <tr>
-                <td>Close top window / menu</td>
+                <td>Cancel route draft / close window or menu</td>
                 <td>Escape</td>
               </tr>
             </tbody>
@@ -727,11 +731,130 @@
         ><button id="reset-camera" title="Recenter camera (R)">
           Recenter <kbd>R</kbd>
         </button>
+        <button data-toggle="transport" title="Transport (T)">
+          Transport <kbd>T</kbd></button
+        ><button
+          id="traffic-overlay"
+          aria-pressed="false"
+          title="Traffic map (G)"
+        >
+          Traffic <kbd>G</kbd>
+        </button>
       </nav>
       <div class="status-line">
         <span id="simulation-status">SIMULATION RUNNING</span
         ><span id="fps"></span><span>H · CONTROLS</span>
       </div>
+
+      <svg id="route-map" aria-hidden="true"></svg>
+      <div id="route-tools" hidden>
+        <strong>BUS ROUTE DRAFT</strong
+        ><span
+          >Drag a stop or a route segment. Click a street to add a stop.</span
+        ><button id="route-save-map">Apply route</button
+        ><button id="route-cancel-map">Cancel · Esc</button>
+      </div>
+      <section
+        class="game-window wide"
+        id="transport-window"
+        role="dialog"
+        aria-labelledby="transport-title"
+        tabindex="-1"
+        hidden
+      >
+        <header class="window-title">
+          <h2 id="transport-title">Transport authority</h2>
+          <span class="window-number">06 / MOBILITY</span
+          ><button data-close="transport" aria-label="Close transport">
+            ×
+          </button>
+        </header>
+        <div class="window-body">
+          <div id="transport-summary" class="note"></div>
+          <h3>Fares & support</h3>
+          <div class="transport-controls">
+            <label
+              >Fare cap £
+              <input
+                id="fare-cap"
+                type="number"
+                min="0"
+                max="10"
+                step="0.1"
+                value="2" /></label
+            ><label
+              >Subsidy per boarding £
+              <input
+                id="bus-subsidy"
+                type="number"
+                min="0"
+                max="10"
+                step="0.1"
+                value="1" /></label
+            ><button id="transport-policy">Apply policy</button>
+          </div>
+          <p class="note">
+            Operators charge up to £3 within the cap. Subsidies come from
+            uncommitted city funds. Each line starts with £3,000 private
+            capital; buses cost £0.18 per simulation second each. Service stops
+            when cash runs out. Capacity: 24 seats; two buses per line.
+          </p>
+          <h3>Bus lines</h3>
+          <div class="transport-controls">
+            <select id="bus-line" aria-label="Bus line"></select
+            ><button id="line-new">New line</button
+            ><button id="line-remove">Remove line</button>
+          </div>
+          <div id="line-stats" class="note"></div>
+          <div id="bus-fleet" class="transport-controls"></div>
+          <div class="transport-controls">
+            <button id="line-edit">Edit route on map</button
+            ><button id="line-clear">Clear map selection</button>
+          </div>
+          <div id="route-form" hidden>
+            <h3>Ordered street stops · circular service</h3>
+            <ol id="stop-list"></ol>
+            <label
+              >Street address
+              <select id="stop-address"></select
+            ></label>
+            <div class="transport-controls">
+              <button id="stop-add">Add address</button
+              ><button id="route-save">Apply route</button
+              ><button id="route-cancel">Discard changes</button>
+            </div>
+            <p class="note">
+              Two to sixteen unique stops. Closing the window keeps map editing
+              active. Drag a gold stop to relocate it; drag a connecting route
+              segment to insert a stop. Changes unload riders at the next
+              junction before buses join the revised service.
+            </p>
+          </div>
+          <h3>Street allocation</h3>
+          <label
+            >Street segment
+            <select id="traffic-road"></select
+          ></label>
+          <div id="traffic-road-stats" class="note"></div>
+          <div class="transport-controls">
+            <select id="traffic-lane" aria-label="Street lane allocation">
+              <option value="0">Mixed traffic</option>
+              <option value="1">Dedicated bus lanes</option>
+              <option value="2">Protected cycle lanes</option></select
+            ><button id="lane-apply">Apply lanes</button
+            ><button id="road-locate">Locate street</button>
+          </div>
+          <p class="note">
+            Bus lanes bypass general traffic queues. Cycle lanes improve cycling
+            speed. Both allocations reduce car speed by 20%. Works, slopes and
+            worn surfaces also slow traffic. G toggles the traffic map; click a
+            street there to inspect it.
+          </p>
+          <h3>Current queues</h3>
+          <div id="traffic-hotspots"></div>
+          <p id="transport-message" role="status"></p>
+        </div>
+      </section>
     </main>
     <script type="module" src="main.js"></script>
   </body>

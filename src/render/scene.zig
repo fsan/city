@@ -95,7 +95,7 @@ pub fn draw(w: f32, h: f32) void {
         quad(.{ 0, -2, z }, .{ 0, -2, z + city.spacing }, .{ 0, city.elevation(0, z + city.spacing), z + city.spacing }, .{ 0, city.elevation(0, z), z }, .{ 0.28, 0.28, 0.25 });
         quad(.{ city.size_x, -2, z }, .{ city.size_x, -2, z + city.spacing }, .{ city.size_x, city.elevation(city.size_x, z + city.spacing), z + city.spacing }, .{ city.size_x, city.elevation(city.size_x, z), z }, .{ 0.28, 0.28, 0.25 });
     }
-    for (city.roads, 0..) |r, road_id| {
+    for (&city.roads, 0..) |r, road_id| {
         const a = city.nodes[r.a];
         const b = city.nodes[r.b];
         const horizontal = a.z == b.z;
@@ -108,7 +108,7 @@ pub fn draw(w: f32, h: f32) void {
             groundQuad(a.x + (if (horizontal) offset else -0.05), a.z + (if (horizontal) -0.05 else offset), if (horizontal) 1.1 else 0.1, if (horizontal) 0.1 else 1.1, 0.12, .{ 0.65, 0.63, 0.51 });
         }
     }
-    for (city.buildings, 0..) |b, i| {
+    for (&city.buildings, 0..) |b, i| {
         const materials = [_]Color{ .{ 0.57, 0.52, 0.43 }, .{ 0.62, 0.60, 0.53 }, .{ 0.47, 0.42, 0.36 }, .{ 0.66, 0.65, 0.60 }, .{ 0.48, 0.50, 0.48 } };
         const color: Color = if (b.kind == .office) .{ 0.43, 0.48, 0.48 } else if (b.kind == .park) .{ 0.33, 0.43, 0.31 } else materials[i % materials.len];
         const entry = city.nodes[b.node];
@@ -141,7 +141,7 @@ pub fn draw(w: f32, h: f32) void {
         const p = game.residents.people[@intCast(selected_person)];
         var node = p.next;
         var steps: usize = 0;
-        while (node != p.destination and steps < city.node_count) : (steps += 1) {
+        while (node != p.destination and steps < city.node_count and p.bus < 0) : (steps += 1) {
             const next = city.next_node[node][p.destination];
             const a = city.nodes[node];
             const b = city.nodes[next];
@@ -170,7 +170,7 @@ pub fn draw(w: f32, h: f32) void {
             }
         }
     }
-    for (transport.vehicles) |v| {
+    for (&transport.vehicles) |v| {
         if (!v.active) continue;
         const horizontal = city.nodes[v.node].z == city.nodes[v.next].z;
         const length: f32 = if (v.line >= 0) 2.7 else 1.5;
@@ -181,7 +181,7 @@ pub fn draw(w: f32, h: f32) void {
         box(v.x - vw / 2, v.z - vd / 2, vw, vd, if (v.line >= 0) 0.95 else 0.55, y, color);
         box(v.x - vw * 0.28, v.z - vd * 0.28, vw * 0.56, vd * 0.56, 0.16, y + (if (v.line >= 0) @as(f32, 0.95) else 0.55), .{ 0.2, 0.29, 0.32 });
     }
-    for (game.residents.people, 0..) |p, i| {
+    for (&game.residents.people, 0..) |p, i| {
         if (p.phase == 3 or (p.mode == 2 and p.phase == 1) or p.bus >= 0) continue;
         if (p.mode == 2 and (p.phase == 0 or p.phase == 2)) {
             box(p.x - 0.35, p.z - 0.7, 0.7, 1.4, 0.5, p.y, .{ 0.55, 0.61, 0.65 });
@@ -203,7 +203,7 @@ pub fn pick(sx: f32, sy: f32) void {
     const direction = Point{ @sin(angle) * 0.8164966, 0.5773503, @cos(angle) * 0.8164966 };
     var nearest: f32 = -1e9;
     selected = -1;
-    for (city.buildings, 0..) |b, i| {
+    for (&city.buildings, 0..) |b, i| {
         const low = Point{ b.x, b.ground, b.z };
         const high = Point{ b.x + b.width, b.ground + b.height + 0.6, b.z + b.depth };
         var enter: f32 = -1e9;

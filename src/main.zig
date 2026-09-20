@@ -73,13 +73,17 @@ export fn quote(company: u32, road: u32, scope: f32, price: f64, field: u32) f64
 }
 export fn focus(kind: u32, id: u32) void {
     if (kind == 1 and id < city.buildings.len) {
-        const b = city.buildings[id];
+        const b = &city.buildings[id];
         scene.focus(b.x, b.z);
         scene.selected = @intCast(id);
     }
     if (kind == 3 and id < residents.people.len) {
-        const p = residents.people[id];
+        const p = &residents.people[id];
         scene.focus(p.x, p.z);
+    }
+    if (kind == 12 and id < transport.vehicles.len) {
+        const v = &transport.vehicles[id];
+        scene.focus(v.x, v.z);
     }
     if (kind == 5 and id < city.roads.len) {
         const n = city.nodes[city.roads[id].a];
@@ -126,7 +130,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
         },
         1 => {
             if (id >= city.buildings.len) return -1;
-            const b = city.buildings[id];
+            const b = &city.buildings[id];
             return switch (field) {
                 0 => @floatFromInt(@intFromEnum(b.kind)),
                 1 => @floatFromInt(b.district),
@@ -147,7 +151,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             if (id >= city.district_count) return -1;
             var population: usize = 0;
             var employed: usize = 0;
-            for (residents.people) |p| if (city.buildings[p.home].district == id) {
+            for (&residents.people) |p| if (city.buildings[p.home].district == id) {
                 population += 1;
                 if (p.employer >= 0) employed += 1;
             };
@@ -161,7 +165,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
         },
         3 => {
             if (id >= residents.people.len) return -1;
-            const p = residents.people[id];
+            const p = &residents.people[id];
             return switch (field) {
                 0 => @floatFromInt(p.home),
                 1 => @floatFromInt(p.employer),
@@ -171,7 +175,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 5 => p.x,
                 6 => p.z,
                 7 => @floatFromInt(p.order),
-                8 => if (p.arrived and p.order >= 0) 2 else if (p.wait > 0) 0 else 1,
+                8 => if (p.arrived and p.order >= 0) 2 else if (p.wait > 0 or p.phase == 3) 0 else 1,
                 9 => @floatFromInt(p.trips),
                 10 => p.travel,
                 11 => p.last_trip,
@@ -184,12 +188,15 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 18 => p.bus_wait,
                 19 => @floatFromInt(p.bus),
                 20 => @floatFromInt(p.car_node),
+                21...24 => p.scores[field - 21],
+                25 => @floatFromInt(p.bus_line),
+                26 => @floatFromInt(p.bike_node),
                 else => -1,
             };
         },
         4 => {
             if (id >= residents.company_count) return -1;
-            const c = residents.companies[id];
+            const c = &residents.companies[id];
             return switch (field) {
                 0 => @floatFromInt(c.building),
                 1 => @floatFromInt(c.employees),
@@ -205,7 +212,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
         },
         5 => {
             if (id >= city.roads.len) return -1;
-            const r = city.roads[id];
+            const r = &city.roads[id];
             return switch (field) {
                 0 => @floatFromInt(r.a),
                 1 => @floatFromInt(r.b),
@@ -226,7 +233,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
         },
         6 => {
             if (id >= contracts.count) return -1;
-            const o = contracts.orders[id];
+            const o = &contracts.orders[id];
             return switch (field) {
                 0 => @floatFromInt(o.road),
                 1 => o.scope,
@@ -279,15 +286,15 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 4 => city.node_count,
                 5...8 => blk: {
                     var total: usize = 0;
-                    for (residents.people) |p| {
-                        if (p.phase != 3 and p.mode == field - 5) total += 1;
+                    for (&residents.people) |p| {
+                        if (p.phase != 3 and p.wait <= 0 and p.chosen and !p.arrived and p.mode == field - 5) total += 1;
                     }
                     break :blk @floatFromInt(total);
                 },
                 9 => blk: {
                     var total: usize = 0;
-                    for (residents.people) |p| {
-                        if (p.mode == 3 and p.bus < 0 and p.bus_stage == 0 and p.node == p.boarding) total += 1;
+                    for (&residents.people) |p| {
+                        if (p.mode == 3 and p.phase == 1 and p.bus < 0 and p.bus_stage == 0 and p.node == p.next and p.node == p.boarding) total += 1;
                     }
                     break :blk @floatFromInt(total);
                 },
@@ -340,6 +347,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 7 => v.progress,
                 8 => @floatFromInt(v.line),
                 9 => v.dwell,
+                10 => @floatFromInt(v.lane),
                 else => -1,
             };
         },

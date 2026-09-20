@@ -47,7 +47,7 @@ function options(select, values) {
     }),
   );
 }
-export function createReports(game, ui) {
+export function createReports(game, ui, transport) {
   const data = createData(game),
     { read: r, metric: m, buildings, districts, companyName } = data;
   const people = Array.from({ length: m(7) }, (_, id) => ({
@@ -527,10 +527,36 @@ export function createReports(game, ui) {
         ["Home", buildingName(home)],
         ["Employer", companyName(employer)],
         ["Activity", activity(id)],
-        ["Travel mode", ["Walk", "Cycle", "Car", "Bus"][r(3,id,13)]],
-        ["Travel wallet / daily income", `${money(r(3,id,14))} / ${money(r(3,id,15))}`],
-        ["Own transport", `${r(3,id,16)?"Car":"No car"} · ${r(3,id,17)?"Bicycle":"No bicycle"}`],
-        ["Bus wait / aboard", `${r(3,id,18).toFixed(0)} seconds / ${r(3,id,19)>=0?"Yes":"No"}`],
+        [
+          "Travel scores · walk / cycle / car / bus",
+          [21, 22, 23, 24]
+            .map((f) =>
+              r(3, id, f) < 0 ? "Unavailable" : r(3, id, f).toFixed(0),
+            )
+            .join(" / "),
+        ],
+        [
+          "Score meaning",
+          "Time + cost weighted by income; lowest available wins at departure",
+        ],
+        ["Travel mode", ["Walk", "Cycle", "Car", "Bus"][r(3, id, 13)]],
+        [
+          "Parked car / bicycle nodes",
+          `${r(3, id, 16) ? r(3, id, 20) + 1 : "—"} / ${r(3, id, 17) ? r(3, id, 26) + 1 : "—"}`,
+        ],
+        ["Bus line", r(3, id, 13) === 3 ? `Line ${r(3, id, 25) + 1}` : "—"],
+        [
+          "Travel wallet / daily income",
+          `${money(r(3, id, 14))} / ${money(r(3, id, 15))}`,
+        ],
+        [
+          "Own transport",
+          `${r(3, id, 16) ? "Car" : "No car"} · ${r(3, id, 17) ? "Bicycle" : "No bicycle"}`,
+        ],
+        [
+          "Bus wait / aboard",
+          `${r(3, id, 18).toFixed(0)} seconds / ${r(3, id, 19) >= 0 ? "Yes" : "No"}`,
+        ],
         ["Current node → next", `${r(3, id, 3) + 1} → ${r(3, id, 4) + 1}`],
         [
           "Destination",
@@ -542,7 +568,9 @@ export function createReports(game, ui) {
         ],
         [
           "Remaining route estimate",
-          `${r(3, id, 12).toFixed(0)} simulation seconds`,
+          r(3, id, 12) < 0
+            ? "Depends on traffic / bus arrival"
+            : `${r(3, id, 12).toFixed(0)} simulation seconds`,
         ],
         [
           "Current / last trip",
@@ -556,6 +584,12 @@ export function createReports(game, ui) {
         link("Locate & show route", () => game.focus(3, id)),
         link("Inspect home", () => inspect(1, home)),
       ];
+      if (r(3, id, 13) === 3)
+        actions.push(
+          link("Inspect bus service", () =>
+            transport.inspectLine(r(3, id, 25)),
+          ),
+        );
       if (employer >= 0)
         actions.push(link("Inspect employer", () => inspect(4, employer)));
       if (order >= 0)
@@ -605,10 +639,20 @@ export function createReports(game, ui) {
           `${r(5, id, 7).toFixed(1)} → ${r(5, id, 8).toFixed(1)} m`,
         ],
         ["Condition", `${r(5, id, 5).toFixed(1)}%`],
-        ["Works disruption", r(5, id, 6) ? "35% slower" : "None"],
+        [
+          "Works disruption",
+          r(5, id, 6) ? "Walking −35% / vehicles −55%" : "None",
+        ],
+        ["Vehicles / queued", `${r(5, id, 10)} / ${r(5, id, 11)}`],
+        ["Queue pressure", `${(r(5, id, 12) * 100).toFixed(0)}%`],
+        [
+          "Lane allocation",
+          ["Mixed", "Bus lanes", "Cycle lanes"][r(5, id, 13)],
+        ],
       ];
       actions = [
         link("Locate street", () => game.focus(5, id)),
+        link("Transport & lanes", () => transport.inspectRoad(id)),
         link("Prepare repair offer", () => offerStreet(id)),
       ];
     }

@@ -1,6 +1,6 @@
 const transport = @import("transport.zig");
 const city = @import("../scene/city.zig");
-pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0, wallet: f64 = 0, income: f64 = 0, owns_car: bool = false, owns_bike: bool = false, car_node: usize = 0, crew: bool = false, chosen: bool = false, bus_line: i32 = -1, bus: i32 = -1, boarding: usize = 0, exit_node: usize = 0, bus_version: u32 = 0, bus_wait: f32 = 0, bus_stage: u8 = 0, home: usize, employer: i32 = -1, destination: usize, node: usize, next: usize, wait: f32, trips: u32 = 0, travel: f32 = 0, last_trip: f32 = 0, order: i32 = -1, arrived: bool = false };
+pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0, wallet: f64 = 0, income: f64 = 0, owns_car: bool = false, owns_bike: bool = false, car_node: usize = 0, bike_node: usize = 0, scores: [4]f32 = @splat(-1), crew: bool = false, chosen: bool = false, bus_line: i32 = -1, bus: i32 = -1, boarding: usize = 0, exit_node: usize = 0, bus_version: u32 = 0, bus_wait: f32 = 0, bus_stage: u8 = 0, home: usize, employer: i32 = -1, destination: usize, node: usize, next: usize, wait: f32, trips: u32 = 0, travel: f32 = 0, last_trip: f32 = 0, order: i32 = -1, arrived: bool = false };
 pub const Company = struct { building: usize, employees: usize = 0, capacity: usize, cash: f64 = 45000, contractor: bool, crew: [4]usize = .{ 0, 0, 0, 0 }, crew_count: usize = 0, order: i32 = -1, margin: f64, labour: f64, costs: f64 = 0 };
 pub var people: [city.population]Person = undefined;
 pub var companies: [city.buildings.len]Company = undefined;
@@ -41,8 +41,8 @@ pub fn init() void {
         }
         const node = city.buildings[home].node;
         const b = city.buildings[home];
-        p.* = .{ .x = b.x + b.width / 2, .z = b.z - 0.4, .y = b.ground + 0.35, .wallet = @as(f64, @floatFromInt(100 + i % 9000)), .income = @as(f64, @floatFromInt(30 + i % 170)), .owns_car = i % 9000 > 1800, .owns_bike = i % 3 != 0, .car_node = node, .home = home, .employer = employer, .destination = if (employer >= 0) city.buildings[companies[@intCast(employer)].building].node else node, .node = node, .next = node, .wait = @as(f32, @floatFromInt(i % 100)) * 0.14 };
-        if (p.owns_car) p.wallet -= 1800;
+        p.* = .{ .x = b.x + b.width / 2, .z = b.z - 0.4, .y = b.ground + 0.35, .wallet = @as(f64, @floatFromInt(100 + i % 9000)), .income = @as(f64, @floatFromInt(30 + i % 170)), .owns_bike = i % 3 != 0, .car_node = node, .bike_node = node, .home = home, .employer = employer, .destination = if (employer >= 0) city.buildings[companies[@intCast(employer)].building].node else node, .node = node, .next = node, .wait = @as(f32, @floatFromInt(i % 100)) * 0.14 };
+        considerCar(p);
         city.buildings[home].occupants += 1;
     }
     for (companies[0..company_count]) |c| {
@@ -75,7 +75,7 @@ fn moveTo(p: *Person, x: f32, y: f32, z: f32, speed: f32, dt: f32) bool {
     const distance = @sqrt(dx * dx + dy * dy + dz * dz);
     const step = speed * dt;
     p.travel += dt;
-    walking += 1;
+    if (p.mode == 0 or p.mode == 3) walking += 1;
     if (distance <= step) {
         p.x = x;
         p.y = y;
@@ -112,6 +112,8 @@ pub fn update(dt: f32, elapsed: f64) void {
         if (p.phase == 1 and p.mode == 2) {
             const v = &transport.vehicles[i];
             if (!v.active) transport.startCar(i, p.node, p.destination);
+            p.node = v.node;
+            p.next = v.next;
             p.x = v.x;
             p.z = v.z;
             p.y = city.elevation(p.x, p.z) + 0.2;
@@ -129,6 +131,8 @@ pub fn update(dt: f32, elapsed: f64) void {
             const line = &transport.lines[@intCast(p.bus_line)];
             if (p.bus >= 0) {
                 const v = &transport.vehicles[@intCast(p.bus)];
+                p.node = v.node;
+                p.next = v.next;
                 p.x = v.x;
                 p.z = v.z;
                 p.y = city.elevation(p.x, p.z) + 0.2;
@@ -174,6 +178,7 @@ pub fn update(dt: f32, elapsed: f64) void {
         if (p.phase == 2) {
             const b = city.buildings[destinationBuilding(p.destination)];
             if (moveTo(p, b.x + b.width / 2, b.ground + 0.35, b.z - 0.4, 1.1, dt)) {
+                if (p.mode == 1) p.bike_node = p.node;
                 p.phase = 3;
                 p.wait = 18 + @as(f32, @floatFromInt(i % 50));
                 p.last_trip = p.travel;
@@ -209,8 +214,9 @@ pub fn update(dt: f32, elapsed: f64) void {
 
 // Travel estimate includes the unfinished segment or frontage connector.
 pub fn remaining(id: usize) f32 {
-    const p = people[id];
+    const p = &people[id];
     if (p.arrived or p.wait > 0 or p.phase == 3) return 0;
+    if (p.mode == 2 or p.mode == 3) return -1; // Traffic and headways make a walking ETA misleading.
     var target = city.nodes[p.next];
     var speed: f32 = 1.1;
     var rest = city.distance[p.next][p.destination];
@@ -231,7 +237,8 @@ pub fn remaining(id: usize) f32 {
     const dx = target.x - p.x;
     const dy = target.y - p.y;
     const dz = target.z - p.z;
-    return rest + @sqrt(dx * dx + dy * dy + dz * dz) / speed;
+    const estimate = rest + @sqrt(dx * dx + dy * dy + dz * dz) / speed;
+    return if (p.mode == 1) estimate / 3 else estimate;
 }
 
 // Generalised travel cost combines time with out-of-pocket cost and income.
@@ -241,13 +248,29 @@ fn choose(p: *Person) void {
     p.bus = -1;
     p.bus_wait = 0;
     p.bus_stage = 0;
+    p.scores = @splat(-1);
     if (p.crew or p.order >= 0) return;
     const distance = city.distance[p.node][p.destination];
     const value: f32 = @floatCast(600 / p.income);
     var best = distance;
-    if (p.owns_bike) {
-        best = distance / 2.7 + 7;
-        if (best < distance) p.mode = 1;
+    p.scores[0] = distance;
+    if (p.owns_bike and p.bike_node == p.node) {
+        var cycle: f32 = 7;
+        var node = p.node;
+        var steps: usize = 0;
+        while (node != p.destination and steps < city.node_count) : (steps += 1) {
+            const next = city.next_node[node][p.destination];
+            const road_id = city.road_between[node][next];
+            if (road_id < 0) break;
+            const road = city.roads[@intCast(road_id)];
+            cycle += road.length * (1 + road.slope * 3) / ((0.7 + road.condition / 100) * (if (transport.lanes[@intCast(road_id)] == 2) @as(f32, 4.5) else 3.0));
+            node = next;
+        }
+        p.scores[1] = cycle;
+        if (cycle < best) {
+            best = cycle;
+            p.mode = 1;
+        }
     }
     if (p.owns_car and p.car_node == p.node) {
         const cost: f64 = @as(f64, distance) * 0.014 + 0.3;
@@ -262,12 +285,14 @@ fn choose(p: *Person) void {
             node = next;
         }
         const score = distance / 5 + delay + 8 + @as(f32, @floatCast(cost)) * value;
+        if (p.wallet >= cost) p.scores[2] = score;
         if (p.wallet >= cost and score < best) {
             best = score;
             p.mode = 2;
         }
     }
     const trip = transport.journey(p.node, p.destination);
+    if (trip.line >= 0 and p.wallet >= transport.fare()) p.scores[3] = trip.time + @as(f32, @floatCast(transport.fare())) * value;
     if (trip.line >= 0 and p.wallet >= transport.fare() and trip.time + @as(f32, @floatCast(transport.fare())) * value < best) {
         p.mode = 3;
         p.bus_line = trip.line;
@@ -281,5 +306,20 @@ pub fn daily() void {
     for (&people) |*p| {
         p.wallet += p.income * 0.25; // Income remaining after simplified living expenses.
         if (p.owns_car) p.wallet = @max(0, p.wallet - 8);
+        if (p.phase == 3 and p.node == city.buildings[p.home].node) considerCar(p);
     }
+}
+
+fn considerCar(p: *Person) void {
+    if (p.owns_car or p.wallet < 2400 or p.employer < 0 or p.crew) return;
+    const home = city.buildings[p.home].node;
+    const work = city.buildings[companies[@intCast(p.employer)].building].node;
+    const distance = city.distance[home][work];
+    // Buy only when estimated daily time savings justify running cost; retain a cash buffer.
+    const saved = distance * (if (p.owns_bike) @as(f32, 0.15) else 0.55);
+    const benefit = @as(f64, saved) * p.income / 600;
+    if (benefit <= 8 + @as(f64, distance) * 0.028) return;
+    p.wallet -= 1800;
+    p.owns_car = true;
+    p.car_node = home;
 }
