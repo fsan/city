@@ -144,7 +144,7 @@ pub fn update(dt: f32, elapsed: f64) void {
                 p.z = v.z;
                 p.y = city.elevation(p.x, p.z) + 0.2;
                 p.travel += dt;
-                if (v.node == v.next and ((v.node == p.exit_node and v.dwell > 0) or v.retiring or !line.active or line.version != p.bus_version or line.cash <= 0)) {
+                if (v.node == v.next and ((v.node == p.exit_node and v.dwell > 0) or v.retiring or !line.active or line.version != p.bus_version)) {
                     v.passengers -= 1;
                     p.node = v.node;
                     p.next = v.node;

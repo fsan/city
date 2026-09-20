@@ -322,7 +322,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 2 => @floatFromInt(l.boardings),
                 3 => l.revenue,
                 4 => l.costs,
-                5 => l.cash,
+                5 => transport.operators.accounts[l.company].cash,
                 6 => @floatFromInt(l.fleet),
                 7 => blk: {
                     var total: usize = 0;
@@ -330,6 +330,18 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                     break :blk @floatFromInt(total);
                 },
                 8 => @floatFromInt(l.version),
+                9 => blk: {
+                    var total: usize = 0;
+                    for (&residents.people) |p| {
+                        if (p.bus_line == @as(i32, @intCast(id)) and p.mode == 3 and p.phase == 1 and p.bus < 0 and p.bus_stage == 0 and p.node == p.next and p.node == p.boarding) total += 1;
+                    }
+                    break :blk @floatFromInt(total);
+                },
+                10...14 => @floatFromInt(transport.serviceCount(id, field - 10)),
+
+                32 => @floatFromInt(l.company),
+                33 => @floatFromInt(l.window),
+                34 => @floatFromInt(transport.blocker(id)),
                 16...31 => if (field - 16 < l.count) @floatFromInt(l.stops[field - 16]) else -1,
                 else => -1,
             };
@@ -362,35 +374,42 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 8 => @floatFromInt(v.line),
                 9 => v.dwell,
                 10 => @floatFromInt(v.lane),
+                11 => @floatFromInt(v.company),
+                12 => if (v.retiring) 1 else 0,
+                13 => if (v.shift_day) 1 else 0,
                 else => -1,
             };
         },
         13 => {
             if (id >= transport.max_lines) return -1;
-            const a = game.agreements.agreements[id];
-            return switch (field) {
-                0 => @floatFromInt(a.status),
-                1 => @floatFromInt(a.company),
-                2 => @floatFromInt(a.fleet),
-                3 => a.duration,
-                4 => a.price,
-                5 => a.paid,
-                6 => a.reserved,
-                7 => a.delivered,
-                8 => @floatFromInt(a.reason),
-                9 => a.start,
-                else => -1,
-            };
+            return game.agreements.read(&game.agreements.agreements[id], field);
         },
         14 => {
             if (id >= 3) return -1;
-            const c = game.agreements.operators[id];
+            const c = transport.operators.accounts[id];
             return switch (field) {
                 0 => @floatFromInt(c.capacity),
-                1 => @floatFromInt(c.assigned),
-                2 => c.cash,
+                1 => @floatFromInt(transport.committed(id, false, transport.max_lines)),
+                2 => c.receipts,
+                3 => c.opening,
+                4 => c.cash,
+                5 => c.fares,
+                6 => c.subsidies,
+                7 => c.vehicle,
+                8 => c.labour,
+                9 => @floatFromInt(transport.operators.drivers(id, game.elapsed)),
+                10 => @floatFromInt(c.day),
+                11 => @floatFromInt(c.night),
+                12 => @floatFromInt(transport.committed(id, true, transport.max_lines)),
+                13 => @floatFromInt(transport.occupied(id)),
+                14 => @floatFromInt(transport.operators.drivers(id, game.elapsed) -| transport.occupied(id)),
                 else => -1,
             };
+        },
+        17 => {
+            const count = game.agreements.history_count;
+            if (id >= @min(count, game.agreements.history.len)) return -1;
+            return game.agreements.read(&game.agreements.history[(count - 1 - id) % game.agreements.history.len], field);
         },
         15 => return switch (field) {
             0 => @floatFromInt(game.roadworks.error_code),
@@ -425,8 +444,8 @@ export fn select_resident(id: u32) void {
 
 export fn transport_policy(cap: f64, subsidy: f64) bool {
     if (!std.math.isFinite(cap) or !std.math.isFinite(subsidy) or cap < 0 or cap > 10 or subsidy < 0 or subsidy > 10) return false;
-    transport.fare_cap = cap;
-    transport.subsidy = subsidy;
+    transport.fare_cap = finance.cents(cap);
+    transport.subsidy = finance.cents(subsidy);
     return true;
 }
 export fn transport_select(id: i32) void {
@@ -446,6 +465,7 @@ export fn transport_apply(id: u32) bool {
     return transport.apply(id);
 }
 export fn transport_remove(id: u32) void {
+    game.agreements.cancel(id, game.elapsed, true);
     transport.remove(id);
 }
 export fn transport_lane(road: u32, lane: u32) void {
@@ -462,11 +482,20 @@ export fn set_crosswalk(road: u32, enabled: u32) bool {
     return true;
 }
 
+export fn service_quote(company: u32, fleet: u32, days: f64, price: f64, field: u32) f64 {
+    return game.agreements.quote(transport.max_lines, company, fleet, days, price, 0, field);
+}
 export fn service_offer(line: u32, company: u32, fleet: u32, days: f64, price: f64) bool {
-    return game.agreements.offer(line, company, fleet, days, price);
+    return game.agreements.offer(line, company, fleet, days, price, 0, game.elapsed);
+}
+export fn service_window_quote(line: u32, company: u32, fleet: u32, days: f64, price: f64, window: u32, field: u32) f64 {
+    return game.agreements.quote(line, company, fleet, days, price, window, field);
+}
+export fn service_window_offer(line: u32, company: u32, fleet: u32, days: f64, price: f64, window: u32) bool {
+    return game.agreements.offer(line, company, fleet, days, price, window, game.elapsed);
 }
 export fn service_cancel(line: u32) void {
-    game.agreements.cancel(line);
+    game.agreements.cancel(line, game.elapsed, false);
 }
 
 export fn road_begin(curved: u32) void {

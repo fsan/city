@@ -55,7 +55,7 @@ The management slice is complete when the player can diagnose an underserved are
 
 ## Follow-on phases after September visual / mobility repairs
 
-The first bus-operator agreement increment is now playable; see `service-agreements.md`. Next extend this with persistent agreement history, explicit working capital and driver shifts, headway/stop-completion targets, procurement comparison and service failure remedies. Keep route demand and rider continuity visible.
+The first bus-operator agreement increment is now playable; see `service-agreements.md`. Agreement review now adds session history, procurement comparison, delivery/shortfall inspection and cancellation/re-offer remedies; see `agreement-review-slice.md`. Working capital and driver shifts are now implemented; see `operator-capital-slice.md`. Next add measured headway/stop-completion reporting before contractual regularity targets. Cross-session history depends on save/load. Keep route demand and rider continuity visible.
 
 Preserve the new 360×320 land area, vacant parcels and low-rise suburbs when introducing player-built streets and parks. Add construction access, terrain grading and foundation costs for buildings while allowing slope parks. Then introduce schools, hospitals and other civic services with physical staff and catchments. Keep population near 3,840 until these systems justify growth.
 

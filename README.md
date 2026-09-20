@@ -35,7 +35,7 @@ Zig edits rebuild automatically; refresh the page after a successful build. HTML
 - Open Reports → Streets, inspect a worn segment and prepare a repair offer. Review contractor prices, publish an offer, and follow assigned workers through mobilisation and delivery.
 - Treasury separates residential/commercial tax policy, actual cash, committed funds, projected receipts and the transaction ledger. Apply tax drafts explicitly; collections occur at midnight.
 - Reports include all 12 districts, paged resident/street registers, companies and recorded history. Click entries to inspect and locate them.
-- Transport supports address-based bus stops, route dragging, line creation/withdrawal, fare caps, boarding subsidies, street bus/cycle allocations, crosswalk controls and a first bus service-agreement increment. Read `docs/transport.md` for controls and assumptions.
+- Transport supports address-based bus stops, route dragging, line creation/withdrawal, fare caps, boarding subsidies, street bus/cycle allocations, crosswalk controls and bus service agreements with operator comparisons, delivery review and a session history. Read `docs/transport.md` for controls and assumptions.
 - One day is eight real minutes at 1×. Hidden tabs do not catch up. Refresh / Restart town starts a new session; there is no persistence yet.
 
 ## Structure
@@ -65,3 +65,5 @@ The map now spans 520 × 440 metres with low-rise suburbs and room within blocks
 No complete household finances, intersection collision physics, elections, full service simulation, procedural generation, save/load or backend authority yet. Routines are shortened and all residents are adult placeholders. Refreshed tabs restart the town. Contracts retain 64 orders per session; the ledger retains 1,024 entries and history retains 96 samples.
 
 The HTTP container is a static server. Zig compilation stays inside Docker; no additional host toolchains are required. No test suite is included, as requested. The accepted design is in `docs/next-slice.md`; current implementation details are in `docs/scene.md`, `docs/economy.md`, `docs/transport.md` and `docs/abi.md`.
+
+Operator working capital and driver coverage are implemented; see [mechanics](docs/service-agreements.md) and `docs/operator-capital-slice.md` at the repository root. Accounts reconcile opening capital, fares, subsidies, agreement receipts, vehicle costs and labour. Offers choose daytime or all-day coverage.

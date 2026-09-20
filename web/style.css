@@ -969,3 +969,13 @@ td {
 #planning-panel label {display:block;margin:10px 0}
 #planning-panel select {background:#303938;max-width:100%;padding:6px}
 #planning-panel p {font-size:12px;line-height:1.5;color:#bbc5bd}
+
+.service-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+.service-form input, .service-form select, #service-history { width: 100%; }
+#operator-receipts, #service-status, #service-history-detail { white-space: pre-line; }
+#service-agreements td:last-child { text-align: left; }

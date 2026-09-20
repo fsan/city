@@ -1,3 +1,4 @@
+import {createAgreements} from "./agreements.js";
 import {streetName} from "./data.js";
 // Game windows and map gestures; all traffic, fares and passengers live in Zig.
 export function createTransport(game, ui) {
@@ -368,12 +369,7 @@ export function createTransport(game, ui) {
         )
         .join("");
   }
-  $("service-offer").onclick = () => {
-    const ok = game.service_offer(selected,Number($("service-operator").value),Number($("service-fleet").value),Number($("service-days").value),Number($("service-price").value));
-    message(ok ? "Offer reserved for operator review." : "Offer rejected: check active line, available treasury, fleet 1–3, days 1–7, or an existing active agreement.");
-    update();
-  };
-  $("service-cancel").onclick = () => { game.service_cancel(selected); update(); };
+  const agreements = createAgreements(game, () => selected, message);
   const fleetButtons = Array.from({ length: 3 }, (_, slot) => {
     const button = document.createElement("button");
     button.onclick = () => game.focus(12, r(0, 0, 7) + selected * 3 + slot);
@@ -383,9 +379,7 @@ export function createTransport(game, ui) {
   let hotspotIds = "";
   function update() {
     syncNetwork();
-    $("operator-stats").textContent = ["Bellwether Transit","Ridgeway Passenger","Community Bus"].map((name,id) => `${name}: ${r(14,id,0)-r(14,id,1)} of ${r(14,id,0)} buses/drivers available · receipts ${money(r(14,id,2))}`).join(" | ");
-    const agreementStatus = ["No agreement","Offered","Active","Expired","Cancelled"];
-    $("service-status").textContent = selected < 0 ? "Select a line." : `${agreementStatus[r(13,selected,0)]} · ${["Bellwether Transit","Ridgeway Passenger","Community Bus"][r(13,selected,1)]} · ${r(13,selected,2)} buses · ${(r(13,selected,3)/480).toFixed(1)} days · maximum ${money(r(13,selected,4))} · paid ${money(r(13,selected,5))} · reserved ${money(r(13,selected,6))} · ${r(13,selected,7).toFixed(0)} delivered bus-seconds. ${["","Declined: insufficient buses/drivers.","Declined: price below cost and margin."][r(13,selected,8)]}`;
+    agreements.update();
     $("transport-summary").textContent =
       `Trips in progress: ${r(9, 0, 5)} walk · ${r(9, 0, 6)} cycle · ${r(9, 0, 7)} car · ${r(9, 0, 8)} bus. Waiting at stops: ${r(9, 0, 9)}. City subsidies paid: ${money(r(9, 0, 2))}.`;
     $("line-stats").textContent =
@@ -457,6 +451,7 @@ export function createTransport(game, ui) {
       syncDraft();
       syncLines();
       game.transport_select(-1);
+      agreements.reset();
       setOverlay(0);
       $("fare-cap").value = r(9, 0, 0);
       $("bus-subsidy").value = r(9, 0, 1);

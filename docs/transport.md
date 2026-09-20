@@ -10,7 +10,7 @@ Fare caps and subsidies apply only when submitted. Inspect bus occupancy, speed,
 
 ## Module boundaries
 
-`src/simulation/transport.zig` owns vehicles, directional lane lists, junction admission, queues, bus services, fares and the temporary route draft. It imports only the scene. `residents.zig` owns trip decisions, vehicle ownership and boarding/alighting. `game.zig` orders updates and settles subsidies through `finance.zig`. Rendering never advances traffic. `web/transport.js` owns window state, address labels and map editing gestures; simulation commands validate changes in Zig. HTML remains in `web/index.html`.
+`src/simulation/transport.zig` owns vehicles, directional lane lists, junction admission, queues, bus services, fares and the temporary route draft. It imports the scene and independent operator accounts. `residents.zig` owns trip decisions, vehicle ownership and boarding/alighting. `game.zig` orders updates and settles subsidies through `finance.zig`. Rendering never advances traffic. `web/transport.js` owns window state, address labels and map editing gestures; simulation commands validate changes in Zig. HTML remains in `web/index.html`.
 
 IDs are stable array slots: car slot equals resident ID; bus slots start at population + line ID × 3. Two of each line's three reserved slots are used. Road allocation belongs to the road ID. Bus routes are ordered stops; dragging a segment adds a stop, not a separate non-stopping waypoint.
 
@@ -34,7 +34,7 @@ Initial transport cash and income are deterministic placeholders. A car costs £
 
 Each line has two 24-seat buses and a five-second stop dwell. Riders physically walk to a stop, wait, board an available seat, ride with its vehicle and walk from their exit stop. Full buses leave riders waiting. Boarding order is resident iteration order within a simulation step, not a persistent FIFO queue.
 
-Operators charge min(fare cap, £3). Cap and per-boarding subsidy are independently editable from £0–£10. A subsidy supports the operator; it is not an additional deduction from the passenger fare. Each line starts with £3,000 private capital. Each active bus costs £0.18/s, including while stopped. Fares and funded subsidies credit line cash; costs debit it. Unfunded subsidies are not paid and do not create municipal debt. Subsidies use uncommitted municipal money and ledger category 7, preserving work-order reserves.
+Operators charge min(fare cap, £3). Cap and per-boarding subsidy are independently editable from £0–£10. A subsidy supports the operator; it is not an additional deduction from the passenger fare. One working-capital account per company funds all its lines; line totals only attribute income/costs. Costs are £0.06 vehicle + £0.12 labour per active bus-second, including held traffic, plus £2 prepaid clearance at dispatch. See `service-agreements.md` for capital, shifts and safe retirement accounting. Unfunded subsidies are not paid and do not create municipal debt. Subsidies use uncommitted municipal money and ledger category 7, preserving work-order reserves.
 
 When a line changes or closes, its buses finish their current segment; riders alight at the next junction and continue on foot. Empty old buses retire and revised services dispatch at their new stops. Thus passengers are never teleported, but empty fleet deployment is abstracted. Buses also unload and suspend service when operator cash runs out. The first service-agreement increment is in `service-agreements.md`; fleet purchase and full company payroll remain future work.
 

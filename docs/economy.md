@@ -19,3 +19,5 @@ Acceptance binds the crew and price and pays setup from company cash. Crew membe
 Completion applies delivered condition points, pays the agreed amount, releases reserves and returns the crew to normal routines. Accepted cancellation pays `price × (0.05 + 0.95 × delivered fraction)`, capped at the offer, and retains the partial street improvement. The UI shows this compensation before confirmation. Orders expose status, assigned company, progress, incurred contractor costs, city payment and crew links.
 
 All simulation state is local to the current tab. Save/load, regional markets, materials and multistage tenders remain future work.
+
+Bus operators have independent authored accounts, separate from ordinary employers. Their opening capital, receipts, vehicle/clearance costs and driver labour reconcile in Transport Authority; see `service-agreements.md`. Driver cohorts do not alter resident employment. Municipal subsidies still spend only uncommitted cash.

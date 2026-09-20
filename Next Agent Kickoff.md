@@ -1,65 +1,101 @@
-# Latest continuation: roads and zoning
+# Next agent kickoff — operator finances and driver coverage
 
-Read `docs/city-planning.md` first. The street graph now grows through player construction; the seed has 34 irregular blocks with 8–16 parcels each on a 520×440 map. `src/simulation/roads.zig`, `src/scene/parcels.zig` and `web/planning.js` own this increment. F shows pedestrian density, N road building, Z zoning. Older grid dimensions and one-building-per-node assumptions below no longer apply.
+Continue Common Ground in `/Users/fox/Documents/ChatGPT/city`. Implement the next bounded playable slice: **bus operator working capital and driver shifts**. Work through implementation, focused verification and documentation until this slice is complete. The earlier first-agreement and agreement-review recommendations are already implemented; do not repeat them.
 
-# Current continuation note — 20 September 2026
+This handoff was updated on 20 September 2026 after the agreement-review slice. Other work may follow it. Inspect the actual code, `git status --short` and recent commits first; reconcile this note against newer changes. At handoff, the completed agreement-review work is still uncommitted, including new `web/agreements.js` and `docs/agreement-review-slice.md`. Preserve it and any later user changes. Do not reset, rewrite history or push without a request.
 
-The geometry/mobility fixes and first bus service-agreement increment have been implemented. Read `docs/scene.md`, `docs/transport.md`, `docs/service-agreements.md` and the follow-on phases at the end of `docs/next-slice.md` before using the older handoff below. The world is now 360×320 with 46 vacant parcels, low-rise suburbs, selective editable crossings, daylight shading, trip endpoint selection and traffic influence clouds. `src/simulation/agreements.zig` now handles protected offers and earned service payments. The older counts/limitations below describe the previous baseline where they differ.
+## Read first
 
-# Next agent kickoff — Common Ground
+1. `README.md`, `docs/service-agreements.md`, `docs/agreement-review-slice.md` and `docs/abi.md` for the implemented baseline.
+2. `docs/city-planning.md` for current roads, parcels and dynamic graph assumptions.
+3. `docs/transport.md`, `docs/economy.md` and the relevant simulation/browser modules.
+4. `Development Agent Kickoff.md` and `Modern City Management Game Scope Specification.md` for product direction. Their initial planning-only instructions describe an earlier stage; the current request authorizes implementing this next slice.
 
-Continue the project in `/Users/fox/Documents/ChatGPT/city`. Read `Development Agent Kickoff.md`, `Modern City Management Game Scope Specification.md`, `README.md`, and `docs/transport.md` first. Treat the long-term scope as design context, not a request to implement every domain at once. Follow the user's latest instruction if it changes this handoff.
+Before coding, write a short slice note with the chosen accounting, driver-coverage rules and acceptance criteria. Resolve routine choices autonomously from the current code and this scope; this is not a request to stop after producing another plan.
 
-## Product direction and constraints
+## Product and development constraints
 
-This is a modern city-management simulation inspired by Songs of Syx. The player is mayor of an existing city, with reports and policy levers, not an idle game or a sequence of guaranteed timed rewards. Residents and firms make constrained decisions. The whole viewport is the isometric city; reports are movable, closable in-game windows. Keep the current restrained municipal UI and urban colours. Placeholder cuboids and cheap resident sprites are intentional.
+The player is mayor of an existing city. Firms and residents have resources and constraints; outcomes follow actual service and spending. Keep failures inspectable and decisions consequential. Preserve the full-viewport isometric city and movable, closable municipal report windows. Placeholder geometry and resident sprites are intentional.
 
-Use Zig for simulation, rules and geometry. Browser JavaScript is the small WebGL/input/UI adapter. Build and run with Docker Compose (`make build`, `make run`) and Zig 0.14.1 inside the compiler container. Do not install host compilers, bundlers or game engines. Do not add a test suite now: the user wants development time spent on the playable slice. Compile and perform focused gameplay/smoke checks. Keep names straightforward, modules small, documentation brief and current. Do not replace the architecture with a framework.
+Use Zig for rules, simulation and geometry; JavaScript remains the WebGL/input/report adapter. Use Docker Compose and Zig 0.14.1 in the compiler container (`make build`, `make run`). Do not install a host compiler, bundler, engine or framework. Keep modules small and names straightforward. Do not add a permanent test suite: compile and run focused temporary WASM/gameplay checks. Do not create parallel agent work unless the user explicitly requests it.
 
-## Existing game
+## Current baseline to preserve
 
-Bellwether has 288 fixed lots, 12 districts, 3,840 adult placeholder residents, 60 employers, 323 street junctions and 610 segments. Elevation ranges from 0 to 24 abstract metres. Buildings have explicit street/frontage links. A day lasts eight real minutes. There is no generated city or persistence; refreshing starts a fresh simulation.
+- 3,840 adult placeholder residents, 12 districts, 60 employers and 288 seeded parcels across 34 irregular street blocks. The map is **520 × 440**; older 360 × 320/grid descriptions are historical. Node/road counts are dynamic. Buildings and parcels have separate street/frontage links.
+- Straight/curved player-built roads, automatic junction splitting, construction debits, parcel/block zoning and pedestrian-density overlay are implemented. Do not revert these while extending transport.
+- Property taxes, a municipal cash ledger, operating expenses, protected commitments and company-delivered street repairs work. Contractors travel and perform work before settlement.
+- Walking, cycling, cars and real bus passengers; directional queues, signals, bus/cycle allocations, route editing and safe retirement of old buses work. Up to eight lines, one to three buses per agreement, 24 seats per bus and 2–16 stops.
+- Operator comparisons use Zig quotes. Offers reserve their entire maximum price; companies accept or explain capacity/price refusals. Active agreements earn payment from movement and scheduled dwell, not held traffic or unavailable service.
+- Agreements have unique numbers and immutable closed records, newest 64 per session. Revision, cancellation, expiry and withdrawal preserve original terms, offered route, delivery, paid and released amounts. Ledger category 8 identifies operator and agreement number.
+- Cancellation/withdrawal settle earned pennies and release reserves immediately, including while paused. Capacity is released once. Operator replacement preserves riders. Live service states, waiting passengers and elapsed delivery shortfall are visible.
+- A day is 480 simulation seconds. Refresh/Restart town clears the session; save/load is not implemented.
 
-The management baseline has population/company/street reports, resident and property inspection, separate property taxes, actual tax collection and arrears, an auditable municipal ledger, recurring service and road budgets, and company-delivered street repairs. Offers can be refused; actual crews must travel and perform work before payment. Reservations protect committed work-order money. Do not break this loop when extending transport.
+The limitation this slice addresses: operator `cash` currently means **cumulative agreement receipts**, while each line separately starts with £3,000 and pays £0.18 per active bus-second. Fleet and drivers are one bundled capacity number. Companies do not yet have real working-capital constraints or driver coverage that changes over the day.
 
-The completed transport slice adds:
+## Next playable slice
 
-- Walking, cycling, cars leaving/entering buildings, and buses with real riders. Residents compare estimated time and out-of-pocket cost weighted by income, and can only use their bicycle/car where it is parked.
-- Savings-based car purchase decisions, mobility wallets, income/operating costs and inspectable departure scores. These are explicitly simplified, not a complete household economy.
-- Directional vehicle queues, acceleration, body-length following gaps, staggered signals, downstream admission and queues that remain on approach links. Terrain, condition and works affect speed.
-- Traffic pressure map (G), street inspection from the map, queue hotspots, and mixed/bus/cycle street allocation. Vehicles finish their current link in their old lane when allocation changes.
-- Two initial circular bus lines. Up to eight lines, two buses per line, 24 passengers per bus, 2–16 stops. Stops have street addresses; the route editor supports moving stops and inserting stops by dragging route segments. Changes are drafted then applied. New/withdrawn lines work.
-- Fare caps and per-boarding subsidies, operator capital, fare/subsidy income and bus running costs. Subsidies debit uncommitted municipal funds through the ledger. Removing or changing a line unloads existing riders safely at a junction; service also suspends if operator cash runs out.
+The mayor should be able to diagnose whether a line lacks money, buses or on-duty drivers; inspect the responsible company's accounts and coverage; change an explicit service offer; and observe acceptance, actual dispatch and earned payments respond.
 
-T opens Transport Authority. Bus buttons locate vehicles. Resident and street inspectors link to transport controls. Escape first cancels a route draft. Read `docs/transport.md` for exact formulas and acknowledged limits rather than assuming full traffic realism.
+### Real operator finances
 
-## Code map
+Introduce one authoritative working-capital balance per authored bus operator, with documented seed balances. Keep cumulative receipts distinct from spendable cash. Attribute fares, funded boarding subsidies, earned agreement payments and operating costs exactly once to the responsible account. Retain per-line income/cost reporting as attribution rather than a second spendable balance.
 
-- `src/scene/city.zig`: authored town, heights, street graph, shared next-hop paths.
-- `src/simulation/game.zig`: fixed-step orchestration, daily/periodic updates, subsidy settlement and history.
-- `residents.zig`: people, employers, ordinary/crew travel, ownership, mode choice, bus boarding/alighting.
-- `transport.zig`: vehicles, lane queues and reservations, bus service lifecycle, policies, route draft.
-- `finance.zig`: municipal cash, tax, ledger and protected reservations.
-- `contracts.zig`: repair offers, firm acceptance, crew mobilisation, progress and settlement.
-- `src/main.zig`: validated command exports and scalar read API. `docs/abi.md` lists groups/fields.
-- `src/render/scene.zig`: CPU projection, world geometry, vehicles, route overlays, camera/picking.
-- `web/main.js`: loading, input, frame loop; `ui.js`: window stack; `reports.js`: reports/inspectors; `transport.js`: route editor/transport presentation; `index.html`: markup; `style.css`: visual style.
+Give each operating line a clear operator, including the initial/private services. Define who funds a line before, during and after an agreement, and who pays for old buses while they finish a segment or unload after a handover. Route editing, line reuse, cancellation, expiry and operator changes must not reset a company's cash, create free capital, duplicate revenue or erase losses. Do not silently transfer an outgoing company's money to its replacement.
 
-Keep transport independent of finance and residents to avoid circular imports; the game module coordinates money. IDs are fixed array slots. Avoid iterating large global arrays by value: the expanded resident record exposed WASM stack exhaustion in reporting, fixed by reference iteration. Do not work around this by simply inflating stack limits.
+Acceptance should consider available working capital as well as fleet, coverage and a legible cost/margin estimate. Show the minimum operating buffer and why an offer is declined. A larger promised future payment is not cash already in hand. Keep procurement quotes and acceptance driven by the same Zig rules.
 
-## Recommended next slice, subject to the user's direction
+Expose actual opening balance, receipts, expenses and available cash with enough detail to reconcile them. Keep the municipal ledger for municipal transactions; use a small bounded operator account record or equivalent reconciled breakdown for private fares/costs. Never pay an unfunded subsidy or spend protected municipal reserves to mask company insolvency.
 
-Develop **bus operators and service agreements** as an extension of the existing management loop. The user explicitly wants eventual control of payments to companies managing buses. Keep this separate from street-repair orders, while reusing protected municipal commitments and the ledger.
+### Driver shifts and contracted coverage
 
-A bounded playable increment should let the mayor inspect a route's demand, delivered service and finances; offer a service agreement with defined duration, required fleet and payment; let eligible companies accept or decline based on resources and profitability; and pay for service actually delivered. Expose why service fails, what a company lacks, and the consequences of an underfunded fare cap. Preserve route editing and existing riders during operator changes. Start with a few authored operators and simple labour/fleet capacity. Do not simulate full procurement law or every transport mode.
+Separate owned buses from available drivers. Start with a small authored driver roster or explicit shift cohorts per operator, tied to the 480-second day. Drivers may be abstract staff records for this slice; a new resident employment/payroll simulation is out of scope. Make that abstraction explicit.
 
-Before implementing, review the current data structures and write a short slice note with acceptance criteria. If the user's next task is different, retain this only as a recommendation. Useful later increments include proper daily schedules, transfers, observed headways, FIFO stop queues, persistence, construction costs for lane changes, and vehicle-specific routing. Avoid mixing all of these into one increment.
+Add a bounded service-window choice to the offer, such as daytime versus all-day coverage, with stated hours. Show on-duty, committed and available drivers, including coverage across midnight. Reserve capacity across all of an operator's commitments; overlapping services cannot double-book the same driver. Distinguish an off-duty driver from an unavailable vehicle and an exhausted account.
 
-## Practical start and verification
+Only funded, staffed buses dispatch. Model shift change/relief at a safe stopping point; riders must remain accounted for, with no disappearance or teleportation when coverage ends. Charge driver labour once. If splitting the old £0.18 operating rate into wages and vehicle costs, remove the old combined debit rather than charging both.
 
-1. Inspect `git status` and `git log -5`; preserve user changes and commits. The pre-transport baseline is `3242e9a`. The user also committed an intermediate transport draft as `d429242` (`update`); the completion work follows it. Do not rewrite that history or push without a request.
-2. Run `make run`, check compiler health and open `http://localhost:8080/`. Each browser tab has an independent world. A failed Zig rebuild retains the last good WASM; confirm compiler output before refreshing.
-3. Verify the scenario relevant to your change. Current transport checks cover new/removed lines, address selection, stop dragging, segment dragging, policy/lane changes and passenger lifecycle. Ephemeral WASM runs checked capacity, lane spacing, passenger conservation, trip completion and invalid input rejection without adding test files.
-4. Update the short module docs and mechanics notes. State modelling limits honestly. Leave the requested next slice playable, with a concise report of changes and verification.
+Delivery targets, quotes, expiry and payment must agree on contracted service hours. Off-hours are not missed contracted service; a missing driver during promised hours is. Route edits must not restart the agreement clock or alter archived terms. Snapshots should retain the agreed service window and relevant final delivery figures.
 
-Browser checks should use a temporary local tab so the user's running town is not reset. The previous browser sample ran near 120 FPS at 1280×720; this is an observation, not a performance guarantee. Geometry still rebuilds each frame, with a 600,000-vertex capacity. Optimise based on profiling, not speculative complexity.
+### Mayor-facing loop
+
+Extend the existing Transport Authority and agreement review, keeping the current visual style. Present company balances, cost components and shift coverage alongside draft comparisons. Clearly distinguish live status (off hours, no driver, no bus, no cash, held traffic) from measured delivery history.
+
+The mayor controls service requirements and public payment, not a company's private money or an individual's work assignment. A feasible response can be reducing fleet/hours, offering an adequate payment to a viable company, or changing operator. Retain existing cancellation/re-offer controls and explain their consequences. No unconditional bailout, free balance reset or guaranteed rescue button.
+
+## Completion criteria
+
+1. The initial town has operating bus services with inspectable operator cash and driver coverage, and remains playable.
+2. Fare/subsidy/agreement income and vehicle/driver costs reconcile to company balances; municipal payments reconcile to the ledger. No transaction is credited or charged twice.
+3. Draft comparison and acceptance explain distinct cash, vehicle, driver-coverage and price refusals. Concurrent commitments cannot overbook resources.
+4. At least one reproducible scenario demonstrates a resource refusal and a feasible revised offer or alternate operator that actually delivers service. Time passing alone does not guarantee recovery.
+5. Shift boundaries, overnight coverage and contract expiry produce the documented bus/driver behaviour. Off-hours do not accumulate delivery shortfall; unstaffed promised hours do not earn payment.
+6. Low funds suspend service without negative spendable cash or disappearing passengers. Any limited costs needed to clear a bus safely are explicitly funded/accounted for, not hidden debt.
+7. Route edits, fleet reductions, cancellation, paused withdrawal and operator replacement preserve riders, accounting, protected reserves and closed agreement history.
+8. Existing road construction/zoning and physical street-repair delivery still work. Builds, focused smoke checks and documentation are complete.
+
+## Keep outside this slice
+
+No save/load, fleet purchases, driver recruitment, individual driver travel, full household payroll, headway/stop-completion targets, transfers, full timetables, legal procurement, accidents, new civic-service domains or city expansion. Do not mix these into this increment. Save/load and measured service regularity remain later work.
+
+## Code map and implementation cautions
+
+- `src/simulation/agreements.zig`: quotes, operator resources, protected service commitments, earned settlement and closed history.
+- `src/simulation/transport.zig`: fleet lifecycle, service accounts/counters, vehicle movement, boarding income and running costs.
+- `src/simulation/residents.zig`: trip decisions, boarding/alighting and safe walking fallback.
+- `src/simulation/game.zig`: update ordering and coordination across transport, residents, agreements and finance.
+- `src/simulation/finance.zig`: public cash, commitments and ledger. `contracts.zig`: street orders.
+- `src/main.zig`: validated commands and scalar read ABI; retain existing field numbers when extending.
+- `web/agreements.js`: draft comparison, delivery review and closed register. `web/transport.js`: routes and transport controls. `web/reports.js`: municipal ledger/operator labels. HTML/CSS remain in `web/index.html` and `web/style.css`.
+- `src/simulation/roads.zig`, `src/scene/parcels.zig`, `web/planning.js`: current planning slice.
+
+Keep transport independent of finance/residents to avoid circular imports; use game-level coordination or a small independent operator module if needed. Do not iterate large resident arrays by value: previous WASM stack exhaustion was fixed by reference iteration, not a larger stack. Use stable IDs and scalar read access; the browser must not infer Zig struct layouts.
+
+## Verification and handoff
+
+Use a fresh temporary browser tab at `http://localhost:8080/`; do not reset the user's running town. Check compiler output before refreshing: a failed rebuild retains the last good WASM. Browser tabs have independent simulations.
+
+Temporary checks should cover multiple lines sharing an operator, midnight/shift boundaries, cash exhaustion, quotes versus acceptance, earned settlement and reserve reconciliation, cancellation/expiry/paused withdrawal, line reuse, route editing, passenger conservation and one completed street repair. Sample rendering for finite vertices and capacity rather than adding a performance project. No permanent test files are requested.
+
+Previous agreement-review checks passed: a 611-second simulation exercise closed 76 records with 64 retained; rider conservation and finite rendering held. A separate shared-budget run completed a £9,588.81 physical repair alongside a £211.50 service settlement and reconciled 212 agreement payment entries. These are baseline observations, not substitutes for checking the new model.
+
+Update the mechanics docs, ABI and this kickoff when finished. Report the playable changes, verification and remaining modelling limits concisely. Leave the next slice concrete and reviewable; do not stop at a plan or partially connected UI.

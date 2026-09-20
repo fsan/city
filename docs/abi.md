@@ -39,3 +39,25 @@ Group 0 field 28 is graph revision. Node and road counts are now live counts. Gr
 Group 15 fields 0–5: road preview error, price, length, parcel count, selected parcel, enclosed-block count. Group 16 by parcel: x, z, zone, existing building (-1 vacant), block (-1 open frontage), street ID, address number.
 
 Commands: `road_begin(curved)`, `road_point(index,x,z)`, `road_screen_point(index,x,y)`, `road_build()`, `road_cancel()`, `zoning_show(enabled)`, `zoning_pick(screenX,screenY)`, `zoning_apply(parcel,zone,wholeBlock)`. Overlay 3 is pedestrian density.
+
+## Agreement review additions
+
+`service_quote(operator,fleet,days,price,field)` is read-only: fields 0 minimum acceptable penny price, 1 reason (0 eligible, 1 capacity, 2 price, 3 invalid terms), 2 available fleet/drivers. Invalid terms return -1 for other fields. Offer and acceptance share this validation. Price must round to a positive penny and be at most £1 billion.
+
+Group 13 retains fields 0–9 and adds: 10 unique agreement number (one-based), 11 expected bus-seconds to date, 12 earned payment including unsettled pennies, 13 released reserve on closure, 14 offered time, 15 closed time, 16 line ID, 17 route version at offer, 18 offered stop count, 19 retained closed-record count, 20 total closed-record count. Fields 32–47 return original offered stop IDs. Status 5 means revised/replaced offer; 6 means line withdrawn. Fields 19/20 are global counts, available through any valid line ID.
+
+Group 17 reads closed agreements newest first using the same fields. Out-of-range records return -1; the ring retains 64. History values other than global counts remain immutable. Ledger category 8's party is operator ID and order is the one-based agreement number (not line ID or repair-order ID).
+
+Group 10 field 9 counts this line's waiting passengers; 10–14 count requested fleet slots currently unavailable, moving, dwelling, held at signals/queues, and clearing an old route. Counts partition the requested fleet, excluding surplus retiring slots. `transport_remove` now also closes an offered/active agreement immediately at current simulation time, including while paused.
+
+## Operator capital and shifts (supersedes bundled capacity above)
+
+Existing numeric fields remain in place. Group 10 field 5 now reads the responsible company's spendable cash, never a line balance. New fields 32 company, 33 window (0 all day, 1 06:00–22:00), 34 empty-slot dispatch blocker (0 ready, 1 off hours, 2 no cash, 3 no vehicle, 4 no driver). This diagnostic can say no vehicle when the entire requested fleet is already running; use fields 10–14 for actual live states.
+
+Group 12 adds 11 original bus operator, 12 retiring, 13 current driver cohort (1 day, 0 night). Cars have no operator semantics.
+
+Group 14 retains 0 owned vehicles, 1 committed daytime buses (now includes private lines), 2 cumulative agreement receipts. Adds 3 opening capital, 4 cash, 5 cumulative fares, 6 subsidies, 7 vehicle/clearance expenses, 8 labour expenses, 9 on-duty drivers, 10 day cohort size, 11 night cohort size, 12 committed night buses, 13 occupied physical buses/drivers including clearing, 14 currently available on-duty drivers. Expense accrual retains sub-penny precision.
+
+Groups 13/17 add 21 agreed window and 22 total contracted bus-second target, fixed at acceptance. Closure snapshots preserve both.
+
+`service_window_quote(line,company,fleet,days,price,window,field)` and `service_window_offer(line,company,fleet,days,price,window)` add explicit line replacement and hours. Quote fields 0 minimum price, 1 refusal, 2 available owned fleet excluding replaced line, 3 minimum company cash buffer including other commitments. Refusals: 0 eligible, 1 vehicles, 2 price, 3 invalid terms, 4 driver coverage, 5 cash. Days must be whole, 1–7. Legacy offer uses all-day; legacy quote uses all-day without excluding a line. Policy fares/subsidies now round to pennies.

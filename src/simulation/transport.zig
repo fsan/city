@@ -1,12 +1,16 @@
 const std = @import("std");
 const city = @import("../scene/city.zig");
+pub const operators = @import("operators.zig");
+pub var clock: f64 = 160;
 pub const max_lines = 8;
 pub const max_stops = 16;
 pub const buses_per_line = 3;
 pub const car_count = city.population;
 pub const Vehicle = struct {
+    company: usize = 0,
     active: bool = false,
     retiring: bool = false,
+    shift_day: bool = true,
     lane: u8 = 0,
     node: usize = 0,
     next: usize = 0,
@@ -30,7 +34,8 @@ pub const Line = struct {
     boardings: usize = 0,
     revenue: f64 = 0,
     costs: f64 = 0,
-    cash: f64 = 3000,
+    company: usize = 2,
+    window: u32 = 1,
     fleet: usize = 2,
     delivered: f64 = 0,
 };
@@ -58,6 +63,8 @@ pub fn green(node: usize, horizontal: bool, elapsed: f64) bool {
     return if (horizontal) phase < 5 else phase >= 6 and phase < 11;
 }
 pub fn init() void {
+    operators.init();
+    clock = 160;
     vehicles = @splat(.{});
     lines = @splat(.{});
     lanes = @splat(0);
@@ -79,6 +86,8 @@ pub fn init() void {
     draft_count = second.len;
     @memcpy(draft[0..second.len], &second);
     _ = apply(1);
+    lines[0].company = 0;
+    lines[1].company = 1;
     draft_count = 0;
 }
 pub fn fare() f64 {
@@ -128,19 +137,22 @@ pub fn startCar(id: usize, node: usize, target: usize) void {
 pub fn board(bus: usize) bool {
     const v = &vehicles[bus];
     const l = &lines[@intCast(v.line)];
-    if (!l.active or v.version != l.version or v.passengers >= 24 or v.dwell <= 0) return false;
+    if (v.retiring or !l.active or v.company != l.company or v.version != l.version or v.passengers >= 24 or v.dwell <= 0) return false;
     v.passengers += 1;
     l.boardings += 1;
     l.revenue += fare();
-    l.cash += fare();
+    operators.accounts[v.company].cash += fare();
+    operators.accounts[v.company].fares += fare();
     const paid = @min(subsidy, @max(0, subsidy_available - subsidy_due));
     subsidy_due += paid;
     subsidy_total += paid;
-    l.cash += paid;
+    operators.accounts[v.company].cash += paid;
+    operators.accounts[v.company].subsidies += paid;
     l.revenue += paid;
     return true;
 }
 pub fn update(dt: f32, elapsed: f64) void {
+    clock = elapsed;
     entries = @splat(false);
     heads = @splat(-1);
     occupancy = @splat(0);
@@ -158,16 +170,21 @@ pub fn update(dt: f32, elapsed: f64) void {
     for (&lines, 0..) |*l, id| {
         for (0..buses_per_line) |slot| {
             const v = &vehicles[car_count + id * buses_per_line + slot];
-            if (!v.active and l.active and slot < l.fleet and l.cash > 0) {
-                const stop = slot * l.count / l.fleet;
-                const n = l.stops[stop];
-                v.* = .{ .active = true, .line = @intCast(id), .node = n, .next = n, .target = n, .stop = stop, .dwell = 5, .version = l.version, .x = city.nodes[n].x, .z = city.nodes[n].z };
+            if (!v.active and l.active and slot < l.fleet and blocker(id) == 0) {
+                if (operators.expense(l.company, 2, 0)) {
+                    l.costs += 2;
+                    const stop = slot * l.count / l.fleet;
+                    const n = l.stops[stop];
+                    v.* = .{ .active = true, .shift_day = operators.daytime(elapsed), .company = l.company, .line = @intCast(id), .node = n, .next = n, .target = n, .stop = stop, .dwell = 5, .version = l.version, .x = city.nodes[n].x, .z = city.nodes[n].z };
+                }
             }
-            if (v.active) {
-                v.retiring = slot >= l.fleet;
-                const cost = @as(f64, dt) * 0.18;
-                l.cash -= cost;
-                l.costs += cost;
+            if (v.active and !v.retiring) {
+                v.retiring = slot >= l.fleet or !l.active or v.version != l.version or v.company != l.company or !operators.scheduled(l.window, elapsed);
+                if (!v.retiring) {
+                    if (operators.expense(v.company, @as(f64, dt) * 0.06, @as(f64, dt) * 0.12)) {
+                        l.costs += @as(f64, dt) * 0.18;
+                    } else v.retiring = true;
+                }
             }
         }
     }
@@ -176,12 +193,15 @@ pub fn update(dt: f32, elapsed: f64) void {
         if (v.node == v.next) {
             if (v.line >= 0) {
                 const l = &lines[@intCast(v.line)];
-                if (v.retiring or !l.active or v.version != l.version or l.cash <= 0) {
+                if (v.retiring or !l.active or v.version != l.version) {
                     // Residents leave a withdrawn/changed bus at this junction, never teleport.
                     v.dwell = 5;
                     if (v.passengers == 0) v.active = false;
                     continue;
                 }
+                // Relief happens at a junction. Aggregate labour is charged once;
+                // the dispatch clearance fee covers outgoing cohort overtime.
+                v.shift_day = operators.daytime(elapsed);
                 if (v.dwell > 0) {
                     l.delivered += @min(v.dwell, dt);
                     v.dwell = @max(0, v.dwell - dt);
@@ -217,7 +237,7 @@ pub fn update(dt: f32, elapsed: f64) void {
         v.speed = @min(limit, @min(v.speed + dt * 2, @sqrt(6 * free)));
         const step = @min(free, v.speed * dt);
         v.progress += step;
-        if (v.line >= 0 and !v.retiring and step > 0 and v.version == lines[@intCast(v.line)].version and lines[@intCast(v.line)].cash > 0) lines[@intCast(v.line)].delivered += dt;
+        if (v.line >= 0 and !v.retiring and step > 0 and v.version == lines[@intCast(v.line)].version) lines[@intCast(v.line)].delivered += dt;
         const a = city.nodes[v.node];
         const b = city.nodes[v.next];
         const fraction = @min(1, v.progress / road.length);
@@ -226,9 +246,9 @@ pub fn update(dt: f32, elapsed: f64) void {
         v.z = a.z + (b.z - a.z) * fraction + (b.x - a.x) / road.length * lane;
         if (v.progress >= stop - 0.01) {
             v.speed = 0;
-            if (v.next == v.target or (v.line >= 0 and (!lines[@intCast(v.line)].active or v.version != lines[@intCast(v.line)].version or lines[@intCast(v.line)].cash <= 0))) {
+            if (v.next == v.target or (v.line >= 0 and (!lines[@intCast(v.line)].active or v.version != lines[@intCast(v.line)].version or v.retiring or v.shift_day != operators.daytime(elapsed)))) {
                 v.node = v.next;
-                if (v.line >= 0) v.dwell = 5;
+                if (v.line >= 0) v.dwell = if (v.node == v.target or v.retiring) 5 else 0;
             } else {
                 // Keep the vehicle's footprint on the approach until its exit has room.
                 var candidate = v.*;
@@ -244,11 +264,47 @@ pub fn update(dt: f32, elapsed: f64) void {
         }
     }
 }
+// Private services also reserve their nominal requirements; selected line is replaced by a quote.
+pub fn committed(company: usize, night: bool, exclude: usize) usize {
+    var n: usize = 0;
+    for (&lines, 0..) |l, id| {
+        if (id != exclude and l.active and l.company == company and (!night or l.window == 0)) n += l.fleet;
+    }
+    return n;
+}
+pub fn occupied(company: usize) usize {
+    var n: usize = 0;
+    for (vehicles[car_count..]) |v| {
+        if (v.active and v.company == company) n += 1;
+    }
+    return n;
+}
+// 0 ready, 1 off hours, 2 no cash, 3 no vehicle, 4 no on-duty driver.
+pub fn blocker(line: usize) u32 {
+    const l = &lines[line];
+    if (!operators.scheduled(l.window, clock)) return 1;
+    if (operators.accounts[l.company].cash < 2.18) return 2;
+    const used = occupied(l.company);
+    if (used >= operators.accounts[l.company].capacity) return 3;
+    if (used >= operators.drivers(l.company, clock)) return 4;
+    return 0;
+}
+// Mutually exclusive live states for each requested fleet slot. Signals and
+// downstream queues both count as held; this is not timetable compliance.
+pub fn serviceCount(line: usize, state: u32) usize {
+    const l = &lines[line];
+    var count: usize = 0;
+    for (vehicles[car_count + line * buses_per_line ..][0..l.fleet]) |v| {
+        const current: u32 = if (!v.active or !l.active) 0 else if (v.retiring or v.version != l.version) 4 else if (v.node == v.next and v.dwell > 0) 2 else if (v.speed > 0 and v.node != v.next) 1 else 3;
+        if (current == state) count += 1;
+    }
+    return count;
+}
 pub const Journey = struct { line: i32 = -1, board_node: usize = 0, exit_node: usize = 0, time: f32 = 1e9 };
 pub fn journey(from: usize, to: usize) Journey {
     var best: Journey = .{};
     for (&lines, 0..) |l, id| {
-        if (!l.active or l.cash <= 0) continue;
+        if (!l.active) continue;
         var loop: f32 = 0;
         for (l.stops[0..l.count], 0..) |n, s| loop += city.distance[n][l.stops[(s + 1) % l.count]] / 3 + 5;
         for (l.stops[0..l.count], 0..) |board_node, s| {

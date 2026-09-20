@@ -1,3 +1,4 @@
+import {operatorNames} from "./agreements.js";
 import {
   createData,
   streetName,
@@ -391,8 +392,8 @@ export function createReports(game, ui, transport) {
           ? "City"
           : kind === 1 || kind === 2
             ? `Property ${party + 1}`
-            : companyName(party),
-        order < 0 ? "—" : String(order + 1),
+            : kind === 8 ? operatorNames[party] : companyName(party),
+        order < 0 ? "—" : kind === 8 ? `Agreement #${order}` : String(order + 1),
         r(7, id, 1).toFixed(2),
         r(7, id, 2).toFixed(2),
       ];

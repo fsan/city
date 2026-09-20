@@ -1,0 +1,9 @@
+# Operator capital and driver coverage
+
+Implementation rules and acceptance: one account per operator; opening capital £600, £300, £5. Fare, funded subsidy and agreement receipts remain separate lifetime totals. Vehicle operation costs £0.06 and driver labour £0.12 per bus-second. Line totals are attribution only. Each dispatch prepays a £2 vehicle clearance fee, covering eventual safe segment completion/unloading (including relief overtime); clearing buses incur no further time charges and earn nothing. This deliberately bounded fee avoids unbounded debt in queues.
+
+Daytime means 06:00–22:00 (seconds 120–440); all-day includes midnight. Abstract independent day/night driver cohorts have sizes 4/2, 3/1, 2/0; owned vehicles 4, 3, 2. Commitments reserve vehicles and coverage, including private lines; quotes exclude the selected line being replaced. Cash buffer is £12.80 per requested bus (£2 clearance plus 60 seconds operation), in addition to other line buffers. Future payments never count as current cash. Price covers scheduled operating time plus one clearance fee per bus per day, with 15% margin. Contracts measure only scheduled hours and preserve the window in history.
+
+Private lines retain their operator/window after closure. Initial lines belong to operators 0 and 1; new lines default to operator 2 and daytime. Physical clearing vehicles still occupy fleet/driver slots and can delay replacement dispatch. Coverage ends at the next safe junction; overtime clearance is abstracted by the prepaid fee. No recruitment, payroll integration, timetables, save/load or permanent test suite.
+
+Verify account identities, municipal reserves, quote/acceptance consistency, distinct refusals, shared capacity, shift/midnight/expiry, rider conservation through changes and exhaustion, rendering and a completed street repair. Build through Docker and inspect a fresh browser town.
