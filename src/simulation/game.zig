@@ -1,5 +1,6 @@
 const std = @import("std");
 pub const city = @import("../scene/city.zig");
+pub const transport = @import("transport.zig");
 pub const residents = @import("residents.zig");
 pub const finance = @import("finance.zig");
 pub const contracts = @import("contracts.zig");
@@ -17,6 +18,7 @@ pub fn init() void {
     next_routes = 220;
     next_operating = 190;
     history_count = 0;
+    transport.init();
     residents.init();
     finance.init(elapsed);
     finance.operating(elapsed);
@@ -33,6 +35,7 @@ pub fn update(dt: f32) void {
             if (!c.contractor) c.cash += @as(f64, @floatFromInt(c.employees)) * 12;
         }
         finance.daily(elapsed);
+        residents.daily();
     }
     if (elapsed >= next_operating) {
         finance.operating(elapsed);
@@ -43,7 +46,11 @@ pub fn update(dt: f32) void {
         r.condition = std.math.clamp(r.condition + gain * dt, 5, 100);
     }
     for (&trust, 0..) |*value, i| value.* += (20 + city.condition(i) * 0.65 - value.*) * dt / 120;
+    transport.subsidy_available = finance.available();
+    transport.subsidy_due = 0;
+    transport.update(dt, elapsed);
     residents.update(dt, elapsed);
+    if (transport.subsidy_due > 0) finance.record(elapsed, -transport.subsidy_due, 7, -1, -1);
     contracts.update(dt, elapsed);
     if (elapsed >= next_routes) {
         city.rebuildRoutes();

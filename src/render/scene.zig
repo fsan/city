@@ -1,7 +1,7 @@
 const std = @import("std");
 const city = @import("../scene/city.zig");
 const game = @import("../simulation/game.zig");
-pub var vertices: [300000 * 6]f32 = undefined;
+pub var vertices: [600000 * 6]f32 = undefined;
 pub var count: usize = 0;
 pub var camera_x: f32 = 24;
 pub var camera_z: f32 = 24;
@@ -11,7 +11,8 @@ pub var width: f32 = 1200;
 pub var height: f32 = 800;
 pub var selected: i32 = -1;
 pub var selected_person: i32 = -1;
-pub var overlay = false;
+pub var overlay: u32 = 0;
+const transport = game.transport;
 const Color = [3]f32;
 const Point = [3]f32;
 pub fn reset() void {
@@ -94,13 +95,14 @@ pub fn draw(w: f32, h: f32) void {
         quad(.{ 0, -2, z }, .{ 0, -2, z + city.spacing }, .{ 0, city.elevation(0, z + city.spacing), z + city.spacing }, .{ 0, city.elevation(0, z), z }, .{ 0.28, 0.28, 0.25 });
         quad(.{ city.size_x, -2, z }, .{ city.size_x, -2, z + city.spacing }, .{ city.size_x, city.elevation(city.size_x, z + city.spacing), z + city.spacing }, .{ city.size_x, city.elevation(city.size_x, z), z }, .{ 0.28, 0.28, 0.25 });
     }
-    for (city.roads) |r| {
+    for (city.roads, 0..) |r, road_id| {
         const a = city.nodes[r.a];
         const b = city.nodes[r.b];
         const horizontal = a.z == b.z;
         groundQuad(a.x - 2, a.z - 2, if (horizontal) city.spacing + 4 else 4, if (horizontal) 4 else city.spacing + 4, 0.04, .{ 0.49, 0.49, 0.45 });
-        const color: Color = if (r.works) .{ 0.66, 0.46, 0.18 } else if (overlay) streetColor(r.condition) else .{ 0.23, 0.25, 0.25 };
+        const color: Color = if (r.works) .{ 0.66, 0.46, 0.18 } else if (overlay == 2) streetColor(100 * (1 - transport.congestion[road_id])) else if (overlay == 1) streetColor(r.condition) else .{ 0.23, 0.25, 0.25 };
         groundQuad(a.x - 1.05, a.z - 1.05, if (horizontal) city.spacing + 2.1 else 2.1, if (horizontal) 2.1 else city.spacing + 2.1, 0.09, color);
+        if (transport.lanes[road_id] != 0) groundQuad(a.x + (if (horizontal) @as(f32, 0) else -1.5), a.z + (if (horizontal) @as(f32, -1.5) else 0), if (horizontal) city.spacing else 0.3, if (horizontal) 0.3 else city.spacing, 0.14, if (transport.lanes[road_id] == 1) .{ 0.3, 0.55, 0.8 } else .{ 0.35, 0.65, 0.35 });
         for (0..4) |j| {
             const offset = @as(f32, @floatFromInt(j)) * 3.2 + 1;
             groundQuad(a.x + (if (horizontal) offset else -0.05), a.z + (if (horizontal) -0.05 else offset), if (horizontal) 1.1 else 0.1, if (horizontal) 0.1 else 1.1, 0.12, .{ 0.65, 0.63, 0.51 });
@@ -151,7 +153,41 @@ pub fn draw(w: f32, h: f32) void {
         const y = p.y;
         box(p.x - 0.3, p.z - 0.3, 0.6, 0.6, 0.12, y + 0.2, .{ 1, 0.82, 0.25 });
     }
+    if (transport.selected >= 0 or transport.editing) {
+        const stops = if (transport.editing) transport.draft[0..transport.draft_count] else transport.lines[@intCast(transport.selected)].stops[0..transport.lines[@intCast(transport.selected)].count];
+        for (stops, 0..) |stop, index| {
+            const n = city.nodes[stop];
+            box(n.x - 0.6, n.z - 0.6, 1.2, 1.2, 1, n.y + 0.2, .{ 0.95, 0.72, 0.23 });
+            var node = stop;
+            var steps: usize = 0;
+            const destination = stops[(index + 1) % stops.len];
+            while (node != destination and steps < city.node_count) : (steps += 1) {
+                const next = city.next_node[node][destination];
+                const a = city.nodes[node];
+                const b = city.nodes[next];
+                groundQuad(@min(a.x, b.x) - 0.17, @min(a.z, b.z) - 0.17, if (a.x == b.x) 0.34 else city.spacing, if (a.z == b.z) 0.34 else city.spacing, 0.22, .{ 0.98, 0.72, 0.22 });
+                node = next;
+            }
+        }
+    }
+    for (transport.vehicles) |v| {
+        if (!v.active) continue;
+        const horizontal = city.nodes[v.node].z == city.nodes[v.next].z;
+        const length: f32 = if (v.line >= 0) 2.7 else 1.5;
+        const color: Color = if (v.line >= 0) .{ 0.78, 0.48, 0.17 } else .{ 0.55, 0.61, 0.65 };
+        const vw: f32 = if (horizontal) length else 0.65;
+        const vd: f32 = if (horizontal) 0.65 else length;
+        const y = city.elevation(v.x, v.z) + 0.2;
+        box(v.x - vw / 2, v.z - vd / 2, vw, vd, if (v.line >= 0) 0.95 else 0.55, y, color);
+        box(v.x - vw * 0.28, v.z - vd * 0.28, vw * 0.56, vd * 0.56, 0.16, y + (if (v.line >= 0) @as(f32, 0.95) else 0.55), .{ 0.2, 0.29, 0.32 });
+    }
     for (game.residents.people, 0..) |p, i| {
+        if (p.phase == 3 or (p.mode == 2 and p.phase == 1) or p.bus >= 0) continue;
+        if (p.mode == 2 and (p.phase == 0 or p.phase == 2)) {
+            box(p.x - 0.35, p.z - 0.7, 0.7, 1.4, 0.5, p.y, .{ 0.55, 0.61, 0.65 });
+            continue;
+        }
+        if (p.mode == 1) box(p.x - 0.35, p.z - 0.15, 0.7, 0.3, 0.25, p.y, .{ 0.16, 0.20, 0.18 });
         const dx = @cos(angle) * 0.16;
         const dz = -@sin(angle) * 0.16;
         const y = p.y;
@@ -200,4 +236,11 @@ pub fn zoomAt(amount: f32, x: f32, y: f32) void {
     const back = (y - height / 2) * change / 0.5773503;
     camera_x = std.math.clamp(camera_x + across * @cos(angle) + back * @sin(angle), -20, city.size_x + 20);
     camera_z = std.math.clamp(camera_z - across * @sin(angle) + back * @cos(angle), -20, city.size_z + 20);
+}
+
+pub fn project(node: usize, axis: u32) f32 {
+    const n = city.nodes[node];
+    const x = n.x - camera_x;
+    const z = n.z - camera_z;
+    return if (axis == 0) width / 2 + (x * @cos(angle) - z * @sin(angle)) * scale() else height / 2 - ((n.y + 0.3) * 0.8164966 - (x * @sin(angle) + z * @cos(angle)) * 0.5773503) * scale();
 }

@@ -866,3 +866,23 @@ td {
     font-size: 15px;
   }
 }
+/* Transport is another movable game window, with a temporary map editing strip. */
+#transport-window { left: 28px; top: 90px; width: 610px; }
+.transport-controls { display:flex; gap:8px; flex-wrap:wrap; align-items:end; margin:12px 0; }
+.transport-controls label { flex:1; min-width:130px; }
+.transport-controls input { width:100%; }
+#stop-list { padding-left:24px; }
+#stop-list li { margin:6px 0; font-size:11px; }
+#stop-list li span { display:inline-block; width:75%; }
+#stop-list button { padding:3px 8px; margin-left:4px; }
+#transport-message { color:#e5c67d; }
+#route-map { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:3; }
+#route-map line { stroke:#efb956; stroke-width:3; opacity:.85; }
+#route-map circle { fill:#262d2a; stroke:#efb956; stroke-width:2; }
+#route-map text { fill:#fff0c8; font-size:11px; text-anchor:middle; }
+#route-tools { position:absolute; top:75px; right:15px; z-index:8; max-width:330px; padding:12px; background:#202725ee; border:1px solid #c6ac70; font-size:11px; }
+#route-tools span { display:block; margin:8px 0; }
+#traffic-hotspots { display:flex; flex-wrap:wrap; gap:6px; }
+.toolbar { max-width:calc(100vw - 24px); }
+.toolbar button { padding-left:10px; padding-right:10px; }
+@media(max-width:650px) { #transport-window { width:calc(100vw - 24px); } .toolbar { overflow-x:auto; } }

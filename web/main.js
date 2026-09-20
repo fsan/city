@@ -1,3 +1,4 @@
+import { mountTransport, createTransport } from "./transport.js";
 import { createRenderer } from "./renderer.js";
 import { createInterface } from "./ui.js";
 import { createReports } from "./reports.js";
@@ -33,8 +34,9 @@ function start(renderer) {
     frameTime = 0,
     lastSpeed = 1;
   const metric = (field) => game.read(0, 0, field);
-  let reports;
-  const refresh = () => reports.update();
+  mountTransport();
+  let reports, transport;
+  const refresh = () => { reports.update(); transport?.update(); };
   const speed = (value) => {
     game.set_speed(value);
     if (value) lastSpeed = value;
@@ -46,12 +48,7 @@ function start(renderer) {
       (button) => (button.onclick = () => speed(Number(button.dataset.speed))),
     );
   $("reset-camera").onclick = () => game.reset_camera();
-  const toggleOverlay = () => {
-    const active = $("overlay").getAttribute("aria-pressed") !== "true";
-    $("overlay").setAttribute("aria-pressed", active);
-    game.set_overlay(Number(active));
-    $("overlay-key").hidden = !active;
-  };
+  const toggleOverlay = () => transport.toggleCondition();
   $("overlay").onclick = toggleOverlay;
   const ui = createInterface({
     overlay: toggleOverlay,
@@ -62,10 +59,12 @@ function start(renderer) {
     inspect: () => reports.inspectBuilding(metric(10)),
   });
   reports = createReports(game, ui);
+  transport = createTransport(game, ui);
   $("restart").onclick = () => {
     game.init();
     lastSpeed = 1;
     reports.reset();
+    transport.reset();
     refresh();
   };
   window.addEventListener("keydown", (event) => {
@@ -73,7 +72,7 @@ function start(renderer) {
     const key = event.key.toLowerCase();
     if (key === "escape") {
       event.preventDefault();
-      ui.escape();
+      if (!transport.cancel()) ui.escape();
       return;
     }
     if (
@@ -86,6 +85,7 @@ function start(renderer) {
       j: "works",
       i: "inspector",
       h: "help",
+      t: "transport",
     };
     if (shortcuts[key]) {
       if (!event.repeat) ui.toggle(shortcuts[key]);
@@ -104,6 +104,7 @@ function start(renderer) {
     if (key === " ") speed(metric(13) ? 0 : lastSpeed);
     if (key === "r") game.reset_camera();
     if (key === "o") toggleOverlay();
+    if (key === "g") transport.toggleTraffic();
     if (["1", "2", "3"].includes(key)) speed([1, 4, 16][Number(key) - 1]);
   });
   window.addEventListener("keyup", (event) =>
@@ -121,9 +122,11 @@ function start(renderer) {
     if (event.button !== 0) return;
     canvas.focus();
     canvas.setPointerCapture(event.pointerId);
+    if (transport.pointerDown(event)) return;
     drag = { x: event.clientX, y: event.clientY, distance: 0 };
   });
   canvas.addEventListener("pointermove", (event) => {
+    if (transport.pointerMove(event)) return;
     if (!drag) return;
     const dx = event.clientX - drag.x,
       dy = event.clientY - drag.y;
@@ -133,6 +136,7 @@ function start(renderer) {
     drag.y = event.clientY;
   });
   canvas.addEventListener("pointerup", (event) => {
+    if (transport.pointerUp()) { drag = null; return; }
     if (drag && drag.distance < 5) {
       const rect = canvas.getBoundingClientRect();
       game.pick(event.clientX - rect.left, event.clientY - rect.top);
@@ -142,6 +146,7 @@ function start(renderer) {
     drag = null;
   });
   canvas.addEventListener("pointercancel", () => {
+    transport.pointerUp();
     drag = null;
   });
   canvas.addEventListener("contextmenu", (event) => {
@@ -183,6 +188,7 @@ function start(renderer) {
       new Float32Array(game.memory.buffer, game.vertex_pointer(), count * 6),
       count,
     );
+    transport.paint();
     uiElapsed += dt;
     frameTime += dt;
     frames++;

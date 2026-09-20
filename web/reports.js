@@ -374,6 +374,7 @@ export function createReports(game, ui) {
     "Street maintenance",
     "Contract settlement",
     "Cancellation settlement",
+    "Bus boarding subsidy",
   ];
   function ledgerValues(limit) {
     return Array.from({ length: limit }, (_, id) => {
@@ -526,6 +527,10 @@ export function createReports(game, ui) {
         ["Home", buildingName(home)],
         ["Employer", companyName(employer)],
         ["Activity", activity(id)],
+        ["Travel mode", ["Walk", "Cycle", "Car", "Bus"][r(3,id,13)]],
+        ["Travel wallet / daily income", `${money(r(3,id,14))} / ${money(r(3,id,15))}`],
+        ["Own transport", `${r(3,id,16)?"Car":"No car"} · ${r(3,id,17)?"Bicycle":"No bicycle"}`],
+        ["Bus wait / aboard", `${r(3,id,18).toFixed(0)} seconds / ${r(3,id,19)>=0?"Yes":"No"}`],
         ["Current node → next", `${r(3, id, 3) + 1} → ${r(3, id, 4) + 1}`],
         [
           "Destination",

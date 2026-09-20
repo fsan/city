@@ -5,6 +5,7 @@ const scene = @import("render/scene.zig");
 const residents = game.residents;
 const finance = game.finance;
 const contracts = game.contracts;
+const transport = game.transport;
 var speed: f32 = 1;
 var accumulator: f32 = 0;
 export fn init() void {
@@ -52,7 +53,7 @@ export fn set_funding(value: u32) void {
     finance.funding = @min(value, 2);
 }
 export fn set_overlay(value: u32) void {
-    scene.overlay = value != 0;
+    scene.overlay = @min(value, 2);
 }
 export fn apply_taxes(home: f64, commercial: f64) bool {
     return finance.applyTaxes(home, commercial);
@@ -175,6 +176,14 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 10 => p.travel,
                 11 => p.last_trip,
                 12 => residents.remaining(id),
+                13 => @floatFromInt(p.mode),
+                14 => p.wallet,
+                15 => p.income,
+                16 => if (p.owns_car) 1 else 0,
+                17 => if (p.owns_bike) 1 else 0,
+                18 => p.bus_wait,
+                19 => @floatFromInt(p.bus),
+                20 => @floatFromInt(p.car_node),
                 else => -1,
             };
         },
@@ -208,6 +217,10 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 7 => city.nodes[r.a].y,
                 8 => city.nodes[r.b].y,
                 9 => if (contracts.siteBusy(id)) 1 else 0,
+                10 => @floatFromInt(transport.occupancy[id]),
+                11 => @floatFromInt(transport.queues[id]),
+                12 => transport.congestion[id],
+                13 => @floatFromInt(transport.lanes[id]),
                 else => -1,
             };
         },
@@ -257,10 +270,115 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 else => -1,
             };
         },
+        9 => {
+            return switch (field) {
+                0 => transport.fare_cap,
+                1 => transport.subsidy,
+                2 => transport.subsidy_total,
+                3 => transport.fare(),
+                4 => city.node_count,
+                5...8 => blk: {
+                    var total: usize = 0;
+                    for (residents.people) |p| {
+                        if (p.phase != 3 and p.mode == field - 5) total += 1;
+                    }
+                    break :blk @floatFromInt(total);
+                },
+                9 => blk: {
+                    var total: usize = 0;
+                    for (residents.people) |p| {
+                        if (p.mode == 3 and p.bus < 0 and p.bus_stage == 0 and p.node == p.boarding) total += 1;
+                    }
+                    break :blk @floatFromInt(total);
+                },
+                else => -1,
+            };
+        },
+        10 => {
+            if (id >= transport.max_lines) return -1;
+            const l = &transport.lines[id];
+            return switch (field) {
+                0 => if (l.active) 1 else 0,
+                1 => @floatFromInt(l.count),
+                2 => @floatFromInt(l.boardings),
+                3 => l.revenue,
+                4 => l.costs,
+                5 => l.cash,
+                6 => @floatFromInt(l.fleet),
+                7 => blk: {
+                    var total: usize = 0;
+                    for (transport.vehicles[transport.car_count + id * transport.buses_per_line ..][0..transport.buses_per_line]) |v| total += v.passengers;
+                    break :blk @floatFromInt(total);
+                },
+                8 => @floatFromInt(l.version),
+                16...31 => if (field - 16 < l.count) @floatFromInt(l.stops[field - 16]) else -1,
+                else => -1,
+            };
+        },
+        11 => {
+            if (id >= city.node_count) return -1;
+            return switch (field) {
+                0 => city.nodes[id].x,
+                1 => city.nodes[id].z,
+                2 => city.nodes[id].y,
+                3 => scene.project(id, 0),
+                4 => scene.project(id, 1),
+                else => -1,
+            };
+        },
+        12 => {
+            if (id >= transport.vehicles.len) return -1;
+            const v = &transport.vehicles[id];
+            return switch (field) {
+                0 => if (v.active) 1 else 0,
+                1 => v.x,
+                2 => v.z,
+                3 => v.speed,
+                4 => @floatFromInt(v.passengers),
+                5 => @floatFromInt(v.node),
+                6 => @floatFromInt(v.next),
+                7 => v.progress,
+                8 => @floatFromInt(v.line),
+                9 => v.dwell,
+                else => -1,
+            };
+        },
         else => return -1,
     }
 }
 
 export fn select_resident(id: u32) void {
     scene.selected_person = if (id < city.population) @intCast(id) else -1;
+}
+
+export fn transport_policy(cap: f64, subsidy: f64) bool {
+    if (!std.math.isFinite(cap) or !std.math.isFinite(subsidy) or cap < 0 or cap > 10 or subsidy < 0 or subsidy > 10) return false;
+    transport.fare_cap = cap;
+    transport.subsidy = subsidy;
+    return true;
+}
+export fn transport_select(id: i32) void {
+    transport.selected = if (id >= 0 and id < transport.max_lines) id else -1;
+}
+export fn transport_draft(count: u32) void {
+    transport.draft_count = @min(count, transport.max_stops);
+    transport.editing = true;
+}
+export fn transport_stop(index: u32, node: u32) void {
+    if (index < transport.max_stops and node < city.node_count) transport.draft[index] = node;
+}
+export fn transport_edit_end() void {
+    transport.editing = false;
+}
+export fn transport_apply(id: u32) bool {
+    return transport.apply(id);
+}
+export fn transport_remove(id: u32) void {
+    transport.remove(id);
+}
+export fn transport_lane(road: u32, lane: u32) void {
+    if (road < city.road_count and lane <= 2) transport.lanes[road] = @intCast(lane);
+}
+export fn route_next(from: u32, to: u32) u32 {
+    return if (from < city.node_count and to < city.node_count) city.next_node[from][to] else 0;
 }
