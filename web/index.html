@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Common Ground · Bellwether</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main id="game">
+      <canvas
+        id="city"
+        tabindex="0"
+        aria-label="City map. Drag or WASD to pan; wheel to zoom; Q and E to rotate; click to inspect; right-click for city tools."
+      ></canvas>
+      <header class="hud">
+        <div class="brand">
+          <span class="seal">▥</span>
+          <div>
+            <strong>COMMON GROUND</strong
+            ><small>BELLWETHER / MAYOR'S OFFICE</small>
+          </div>
+        </div>
+        <button
+          class="hud-metric"
+          data-open="reports"
+          title="Population report (P)"
+        >
+          <small>POPULATION</small
+          ><strong id="population">3,840 residents</strong>
+        </button>
+        <button class="hud-metric" data-open="budget" title="Treasury (B)">
+          <small>RESERVES</small><strong id="treasury">£180,000</strong>
+        </button>
+        <div class="time">
+          <strong id="clock">Day 1 · 08:00</strong>
+          <div class="time-buttons" aria-label="Simulation speed">
+            <button data-speed="0" title="Pause (Space)" aria-label="Pause">
+              Ⅱ</button
+            ><button data-speed="1" class="active">1×</button
+            ><button data-speed="4">4×</button
+            ><button data-speed="16">16×</button>
+          </div>
+        </div>
+        <button class="help-button" data-open="help" title="Controls (H)">
+          ? <kbd>H</kbd>
+        </button>
+      </header>
+      <div class="map-label">BELLWETHER <span>/</span> CITY VIEW</div>
+      <div id="loading" role="status">Preparing your city…</div>
+      <div id="overlay-key" hidden>
+        <strong>STREET CONDITION</strong><span class="gradient"></span
+        ><small>Worn <span>Maintained</span></small>
+      </div>
+
+      <section
+        class="game-window wide"
+        id="reports-window"
+        role="dialog"
+        aria-labelledby="reports-title"
+        tabindex="-1"
+        hidden
+      >
+        <header class="window-title">
+          <h2 id="reports-title">City reports</h2>
+          <span class="window-number">01 / INFORMATION</span
+          ><button data-close="reports" aria-label="Close city reports">
+            ×
+          </button>
+        </header>
+        <div class="tabs" role="tablist" aria-label="City reports">
+          <button
+            id="overview-tab"
+            role="tab"
+            aria-selected="true"
+            aria-controls="overview-report"
+            data-report="overview"
+          >
+            Overview
+          </button>
+          <button
+            id="districts-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="districts-report"
+            data-report="districts"
+            tabindex="-1"
+          >
+            Districts
+          </button>
+          <button
+            id="mobility-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="mobility-report"
+            data-report="mobility"
+            tabindex="-1"
+          >
+            Streets
+          </button>
+          <button
+            id="people-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="people-report"
+            data-report="people"
+            tabindex="-1"
+          >
+            Residents
+          </button>
+          <button
+            id="companies-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="companies-report"
+            data-report="companies"
+            tabindex="-1"
+          >
+            Companies
+          </button>
+          <button
+            id="history-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="history-report"
+            data-report="history"
+            tabindex="-1"
+          >
+            History
+          </button>
+        </div>
+        <div class="window-body">
+          <label class="filter-label" for="district-filter"
+            >Neighbourhood
+            <select id="district-filter">
+              <option value="-1">Whole city</option>
+            </select></label
+          >
+          <div
+            id="overview-report"
+            role="tabpanel"
+            aria-labelledby="overview-tab"
+          >
+            <div class="report-heading">
+              <div>
+                <small>MUNICIPAL REGISTER</small>
+                <h3>Bellwether at a glance</h3>
+              </div>
+              <span class="live-label">LIVE</span>
+            </div>
+            <div class="stat-grid">
+              <div>
+                <small>Residents</small
+                ><strong id="report-population">—</strong>
+              </div>
+              <div><small>Employed</small><strong id="employed">—</strong></div>
+              <div>
+                <small>Walking now</small><strong id="walking">—</strong>
+              </div>
+            </div>
+            <p id="city-summary"></p>
+            <div class="section-title">LAND USE</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Use</th>
+                  <th>Sites</th>
+                  <th>Role</th>
+                </tr>
+              </thead>
+              <tbody id="land-use"></tbody>
+            </table>
+            <p class="note">
+              Employment comes from actual assignments and employer capacity.
+              All residents are adults in this slice; households, children,
+              healthcare outcomes and elections are not modelled yet.
+            </p>
+          </div>
+          <div
+            id="districts-report"
+            role="tabpanel"
+            aria-labelledby="districts-tab"
+            hidden
+          >
+            <h3>Local conditions</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Neighbourhood</th>
+                  <th>People</th>
+                  <th>Employed</th>
+                  <th>Streets</th>
+                  <th>Trust</th>
+                </tr>
+              </thead>
+              <tbody id="district-rows"></tbody>
+            </table>
+            <p class="note">
+              Street condition is the mean of local segments. Trust currently
+              responds to street condition only. Click a neighbourhood to filter
+              its residents, employers and streets.
+            </p>
+          </div>
+          <div
+            id="mobility-report"
+            role="tabpanel"
+            aria-labelledby="mobility-tab"
+            hidden
+          >
+            <h3>Streets & access</h3>
+            <p>
+              Routes favour shorter, better-maintained streets and gentler
+              slopes. Click a segment to inspect it or offer repairs.
+            </p>
+            <div class="pager">
+              <button id="street-prev">← Previous</button
+              ><span id="street-page"></span
+              ><button id="street-next">Next →</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Street</th>
+                  <th>District</th>
+                  <th>Length</th>
+                  <th>Grade</th>
+                  <th>Condition</th>
+                  <th>Works</th>
+                </tr>
+              </thead>
+              <tbody id="street-rows"></tbody>
+            </table>
+          </div>
+          <div
+            id="people-report"
+            role="tabpanel"
+            aria-labelledby="people-tab"
+            hidden
+          >
+            <h3>Resident register</h3>
+            <div class="filter-label">
+              <label for="resident-search">Resident number</label
+              ><input
+                id="resident-search"
+                type="number"
+                min="1"
+                max="3840"
+                placeholder="Search by ID"
+              />
+            </div>
+            <div class="pager">
+              <button id="people-prev">← Previous</button
+              ><span id="people-page"></span
+              ><button id="people-next">Next →</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Resident</th>
+                  <th>Home</th>
+                  <th>Employer</th>
+                  <th>Activity</th>
+                  <th>Assignment</th>
+                </tr>
+              </thead>
+              <tbody id="people-rows"></tbody>
+            </table>
+          </div>
+          <div
+            id="companies-report"
+            role="tabpanel"
+            aria-labelledby="companies-tab"
+            hidden
+          >
+            <h3>Local employers</h3>
+            <label class="filter-label"
+              ><input id="contractors-only" type="checkbox" /> Street
+              contractors only</label
+            >
+            <table>
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Staff / jobs</th>
+                  <th>Cash</th>
+                  <th>Capability</th>
+                  <th>Order</th>
+                </tr>
+              </thead>
+              <tbody id="company-rows"></tbody>
+            </table>
+          </div>
+          <div
+            id="history-report"
+            role="tabpanel"
+            aria-labelledby="history-tab"
+            hidden
+          >
+            <h3>Recorded city history</h3>
+            <p>
+              Actual snapshots every 30 simulation seconds; most recent 96
+              retained. Citywide values, independent of neighbourhood filter.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Cash</th>
+                  <th>Committed</th>
+                  <th>Walking</th>
+                  <th>Streets</th>
+                </tr>
+              </thead>
+              <tbody id="history-rows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="window-footer">
+          CITY RECORDS <span>Live state · click entries to investigate</span>
+        </div>
+      </section>
+      <section
+        class="game-window wide"
+        id="budget-window"
+        role="dialog"
+        aria-labelledby="budget-title"
+        tabindex="-1"
+        hidden
+      >
+        <header class="window-title">
+          <h2 id="budget-title">Treasury</h2>
+          <span class="window-number">02 / FINANCE</span
+          ><button data-close="budget" aria-label="Close treasury">×</button>
+        </header>
+        <div class="window-body">
+          <div class="stat-grid">
+            <div>
+              <small>Cash</small><strong id="budget-reserves">—</strong>
+            </div>
+            <div>
+              <small>Reserved for offers & orders</small
+              ><strong id="reserved">—</strong>
+            </div>
+            <div>
+              <small>Uncommitted funds</small><strong id="available">—</strong>
+            </div>
+          </div>
+          <h3>Property tax policy</h3>
+          <p>
+            Annual rates on assessed property values. Taxes are billed and
+            collected at midnight each day on a 360-day fiscal year. Changing a
+            draft does not change policy until applied.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Assessed base</th>
+                <th>Active rate</th>
+                <th>Draft annual %</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Residential property</td>
+                <td id="home-base"></td>
+                <td id="home-rate"></td>
+                <td>
+                  <input
+                    id="home-tax"
+                    aria-label="Draft residential tax percent"
+                    type="number"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    value="1.2"
+                  />
+                </td>
+              </tr>
+              <tr>
+                <td>Commercial property</td>
+                <td id="business-base"></td>
+                <td id="business-rate"></td>
+                <td>
+                  <input
+                    id="business-tax"
+                    aria-label="Draft commercial tax percent"
+                    type="number"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    value="1.8"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p id="tax-preview"></p>
+          <button id="apply-taxes">Apply tax policy</button
+          ><span id="tax-status" role="status"></span>
+          <label class="section-title" for="funding"
+            >ONGOING STREET MAINTENANCE / DAY</label
+          ><select id="funding">
+            <option value="0">Reduced · £2,000</option>
+            <option value="1" selected>Standard · £6,000</option>
+            <option value="2">Expanded · £11,000</option>
+          </select>
+          <p id="funding-note" class="fine"></p>
+          <table>
+            <tbody>
+              <tr>
+                <td>Projected daily tax receipts</td>
+                <td id="projected-revenue"></td>
+              </tr>
+              <tr>
+                <td>Planned daily operating expenses</td>
+                <td id="projected-expense"></td>
+              </tr>
+              <tr>
+                <td>Projected daily balance</td>
+                <td id="budget-balance"></td>
+              </tr>
+              <tr>
+                <td>Actual taxes collected since start</td>
+                <td id="actual-revenue"></td>
+              </tr>
+              <tr>
+                <td>Actual spending since start</td>
+                <td id="actual-expense"></td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="note">
+            Residential owners are assumed able to pay. Businesses pay from
+            cash; unpaid bills remain as arrears. Non-contractors earn a
+            simplified £12 operating surplus per employee per day. Other
+            services cost £4,000/day. These are explicit starting economic
+            assumptions.
+          </p>
+          <div class="section-title">
+            TRANSACTION LEDGER
+            <button id="export-ledger">Export retained ledger</button>
+          </div>
+          <p class="fine">
+            Latest 80 shown; up to 1,024 retained for export. Each row shows
+            cash after that transaction.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Category / party</th>
+                <th>Order</th>
+                <th>Amount</th>
+                <th>Cash</th>
+              </tr>
+            </thead>
+            <tbody id="ledger-rows"></tbody>
+          </table>
+        </div>
+        <div class="window-footer">
+          TREASURY
+          <span
+            >Projections are not receipts · commitments are not spending</span
+          >
+        </div>
+      </section>
+      <section
+        class="game-window wide"
+        id="works-window"
+        role="dialog"
+        aria-labelledby="works-title"
+        tabindex="-1"
+        hidden
+      >
+        <header class="window-title">
+          <h2 id="works-title">Public works</h2>
+          <span class="window-number">03 / PROCUREMENT</span
+          ><button data-close="works" aria-label="Close public works">×</button>
+        </header>
+        <div class="window-body">
+          <h3>Offer street repairs</h3>
+          <p>
+            Choose a street, improvement scope and offered payment. Firms need a
+            four-person crew, operating cash and a worthwhile margin. An offer
+            may remain unaccepted.
+          </p>
+          <label class="section-title" for="work-district">NEIGHBOURHOOD</label
+          ><select id="work-district"></select>
+          <label class="section-title" for="work-street">STREET SEGMENT</label
+          ><select id="work-street"></select>
+          <p id="work-location"></p>
+          <div class="form-grid">
+            <label
+              >Condition points to restore<input
+                id="work-scope"
+                type="number"
+                min="5"
+                max="60"
+                step="5"
+                value="30" /></label
+            ><label
+              >Offered payment (£)<input
+                id="work-price"
+                type="number"
+                min="100"
+                max="1000000"
+                step="500"
+                value="12000"
+            /></label>
+          </div>
+          <p id="offer-summary" class="fine"></p>
+          <div class="report-links">
+            <button id="locate-street">Locate street</button
+            ><button id="submit-order" class="primary">
+              Publish funded offer
+            </button>
+          </div>
+          <p id="order-message" role="status"></p>
+          <div class="section-title">CONTRACTOR RESPONSES TO THIS DRAFT</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Estimated minimum</th>
+                <th>Response</th>
+              </tr>
+            </thead>
+            <tbody id="quote-rows"></tbody>
+          </table>
+          <p class="note">
+            The full offer is reserved immediately; no payment is made until
+            settlement. Crews travel from their actual location. Work advances
+            only with all four workers present. Completion pays the agreed
+            price. Cancel accepted work: 5% fee plus 95% × delivered fraction;
+            partial improvements remain.
+          </p>
+          <div class="section-title">WORK REGISTER</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Order / street</th>
+                <th>Status</th>
+                <th>Firm</th>
+                <th>Work</th>
+                <th>Offer</th>
+              </tr>
+            </thead>
+            <tbody id="order-rows"></tbody>
+          </table>
+          <div id="order-detail" hidden>
+            <h3 id="order-title"></h3>
+            <p id="order-description"></p>
+            <div class="form-grid">
+              <label
+                >Revised offer (£)<input
+                  id="revised-price"
+                  type="number"
+                  min="100"
+                  max="1000000"
+                  step="500" /></label
+              ><button id="revise-order">Revise unaccepted offer</button>
+            </div>
+            <div class="report-links">
+              <button id="cancel-order">Cancel order</button
+              ><button id="confirm-cancel" hidden>Confirm cancellation</button
+              ><button id="locate-order">Locate site</button>
+            </div>
+            <div id="crew-list"></div>
+          </div>
+        </div>
+        <div class="window-footer">
+          PUBLIC WORKS
+          <span>Firms review offers every 5 simulation seconds</span>
+        </div>
+      </section>
+      <section
+        class="game-window compact"
+        id="inspector-window"
+        role="dialog"
+        aria-labelledby="inspector-title"
+        tabindex="-1"
+        hidden
+      >
+        <header class="window-title">
+          <h2 id="inspector-title">Inspector</h2>
+          <button data-close="inspector" aria-label="Close inspector">×</button>
+        </header>
+        <div class="window-body">
+          <small id="inspect-type" class="eyebrow">SELECTED LOCATION</small>
+          <h3 id="place-title">Look a little closer.</h3>
+          <div id="place-detail">Select a building or a report entry.</div>
+          <div id="inspect-actions" class="report-links"></div>
+        </div>
+      </section>
+      <section
+        class="game-window compact"
+        id="help-window"
+        role="dialog"
+        aria-labelledby="help-title"
+        tabindex="-1"
+        hidden
+      >
+        <header class="window-title">
+          <h2 id="help-title">Controls</h2>
+          <button data-close="help" aria-label="Close controls">×</button>
+        </header>
+        <div class="window-body">
+          <table class="shortcuts">
+            <tbody>
+              <tr>
+                <td>Move camera</td>
+                <td>WASD / arrows / drag</td>
+              </tr>
+              <tr>
+                <td>Zoom toward cursor</td>
+                <td>Wheel</td>
+              </tr>
+              <tr>
+                <td>Rotate camera</td>
+                <td>Q / E</td>
+              </tr>
+              <tr>
+                <td>Recenter camera</td>
+                <td>R</td>
+              </tr>
+              <tr>
+                <td>Inspect building</td>
+                <td>Left-click</td>
+              </tr>
+              <tr>
+                <td>Context tools</td>
+                <td>Right-click</td>
+              </tr>
+              <tr>
+                <td>Pause / resume</td>
+                <td>Space</td>
+              </tr>
+              <tr>
+                <td>Speed 1× / 4× / 16×</td>
+                <td>1 / 2 / 3</td>
+              </tr>
+              <tr>
+                <td>Reports / treasury / works</td>
+                <td>P / B / J</td>
+              </tr>
+              <tr>
+                <td>Inspector / controls</td>
+                <td>I / H</td>
+              </tr>
+              <tr>
+                <td>Street overlay</td>
+                <td>O</td>
+              </tr>
+              <tr>
+                <td>Close top window / menu</td>
+                <td>Escape</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="note">
+            Drag window title bars to arrange reports. Multiple windows can stay
+            open. Opening a report does not pause the city.
+          </p>
+          <button id="restart">Restart town</button
+          ><small class="fine"> Restarts this session immediately.</small>
+        </div>
+      </section>
+
+      <div id="management-menu" class="popup" hidden>
+        <div class="popup-title">MUNICIPAL MANAGEMENT</div>
+        <button
+          data-submenu="reports-menu"
+          aria-expanded="false"
+          aria-controls="reports-menu"
+        >
+          City reports <kbd>P</kbd><span>›</span>
+        </button>
+        <button data-open="budget">Treasury <kbd>B</kbd><span>↗</span></button>
+        <button data-open="works">
+          Public works <kbd>J</kbd><span>↗</span>
+        </button>
+        <div id="reports-menu" class="submenu" hidden>
+          <div class="popup-title">REPORTS</div>
+          <button data-report-link="overview">City overview</button
+          ><button data-report-link="districts">Neighbourhoods</button
+          ><button data-report-link="mobility">Mobility</button>
+        </div>
+      </div>
+      <div id="context-menu" class="popup" hidden>
+        <div class="popup-title">CITY TOOLS</div>
+        <button id="context-inspect">Inspect location <kbd>I</kbd></button
+        ><button data-open="works">Public works <kbd>J</kbd></button
+        ><button data-action="overlay">Street condition <kbd>O</kbd></button
+        ><button data-open="reports">City reports <kbd>P</kbd></button>
+      </div>
+      <nav class="toolbar" aria-label="City tools">
+        <button
+          id="management-toggle"
+          aria-expanded="false"
+          aria-controls="management-menu"
+        >
+          <span class="tool-icon">▥</span> Management <span>▴</span>
+        </button>
+        <span class="divider"></span
+        ><button
+          data-toggle="reports"
+          aria-controls="reports-window"
+          aria-expanded="false"
+        >
+          Reports <kbd>P</kbd></button
+        ><button
+          data-toggle="budget"
+          aria-controls="budget-window"
+          aria-expanded="false"
+        >
+          Treasury <kbd>B</kbd></button
+        ><button
+          data-toggle="works"
+          aria-controls="works-window"
+          aria-expanded="false"
+        >
+          Works <kbd>J</kbd>
+        </button>
+        <span class="divider"></span
+        ><button id="overlay" aria-pressed="false">Streets <kbd>O</kbd></button
+        ><button id="reset-camera" title="Recenter camera (R)">
+          Recenter <kbd>R</kbd>
+        </button>
+      </nav>
+      <div class="status-line">
+        <span id="simulation-status">SIMULATION RUNNING</span
+        ><span id="fps"></span><span>H · CONTROLS</span>
+      </div>
+    </main>
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
