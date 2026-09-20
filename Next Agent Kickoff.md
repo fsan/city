@@ -1,3 +1,7 @@
+# Latest continuation: roads and zoning
+
+Read `docs/city-planning.md` first. The street graph now grows through player construction; the seed has 34 irregular blocks with 8–16 parcels each on a 520×440 map. `src/simulation/roads.zig`, `src/scene/parcels.zig` and `web/planning.js` own this increment. F shows pedestrian density, N road building, Z zoning. Older grid dimensions and one-building-per-node assumptions below no longer apply.
+
 # Current continuation note — 20 September 2026
 
 The geometry/mobility fixes and first bus service-agreement increment have been implemented. Read `docs/scene.md`, `docs/transport.md`, `docs/service-agreements.md` and the follow-on phases at the end of `docs/next-slice.md` before using the older handoff below. The world is now 360×320 with 46 vacant parcels, low-rise suburbs, selective editable crossings, daylight shading, trip endpoint selection and traffic influence clouds. `src/simulation/agreements.zig` now handles protected offers and earned service payments. The older counts/limitations below describe the previous baseline where they differ.

@@ -1,3 +1,7 @@
+# Current scene
+
+`city-planning.md` supersedes the grid layout and frontage assumptions below: 34 irregular blocks, multiple parcels per block, dynamic road/node counts and separate resident destination-building IDs. The old notes are retained as historical context.
+
 # Scene scheme
 
 X/Z are the ground plane; Y is elevation, in abstract metres. Bellwether has 18 × 16 authored lots (288), 12 neighbourhoods, 323 street nodes and 610 bidirectional segments over 360 × 320 metres. The fixed ASCII plan in `src/scene/city.zig` is the source of building uses. No random generator is involved.

@@ -30,3 +30,12 @@ Avoid copying large global arrays into read paths: iterate by reference. This sl
 - Group 14 (operator ID 0–2): 0 capacity, 1 assigned fleet/drivers, 2 cumulative agreement receipts.
 - `service_offer(line, operator, fleet, days, price)` reserves a valid offer; `service_cancel(line)` settles earned pennies and releases the balance.
 - Building kind 7 is vacant land. Existing IDs and enum values are retained.
+
+
+## Planning additions
+
+Group 0 field 28 is graph revision. Node and road counts are now live counts. Group 1 fields 13/14 are street ID and property number. Group 3 fields 28/29 are destination/origin building IDs (multiple buildings may share a node). Group 5 fields 15/16 are street ID and pedestrian count. Group 11 fields 5/6 are the stop's street ID and number.
+
+Group 15 fields 0–5: road preview error, price, length, parcel count, selected parcel, enclosed-block count. Group 16 by parcel: x, z, zone, existing building (-1 vacant), block (-1 open frontage), street ID, address number.
+
+Commands: `road_begin(curved)`, `road_point(index,x,z)`, `road_screen_point(index,x,y)`, `road_build()`, `road_cancel()`, `zoning_show(enabled)`, `zoning_pick(screenX,screenY)`, `zoning_apply(parcel,zone,wholeBlock)`. Overlay 3 is pedestrian density.
