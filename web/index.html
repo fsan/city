@@ -797,7 +797,7 @@
             Operators charge up to £3 within the cap. Subsidies come from
             uncommitted city funds. Each line starts with £3,000 private
             capital; buses cost £0.18 per simulation second each. Service stops
-            when cash runs out. Capacity: 24 seats; two buses per line.
+            when cash runs out. Capacity: 24 seats; two buses initially; service agreements can require one to three.
           </p>
           <h3>Bus lines</h3>
           <div class="transport-controls">
@@ -806,6 +806,16 @@
             ><button id="line-remove">Remove line</button>
           </div>
           <div id="line-stats" class="note"></div>
+          <details><summary>Bus operators &amp; service agreements</summary>
+            <p id="operator-stats" class="note"></p>
+            <label>Operator <select id="service-operator"><option value="0">Bellwether Transit</option><option value="1">Ridgeway Passenger</option><option value="2">Community Bus</option></select></label>
+            <label>Required buses <input id="service-fleet" type="number" min="1" max="3" value="2"></label>
+            <label>Duration (days) <input id="service-days" type="number" min="1" max="7" value="1"></label>
+            <label>Maximum payment (£) <input id="service-price" type="number" min="1" value="240"></label>
+            <p class="note">Funds are reserved on offer. Payment follows movement and scheduled dwell; traffic delays reduce delivery. Offers need operating cost plus 15% margin.</p>
+            <button id="service-offer">Publish / revise offer</button><button id="service-cancel">Cancel remaining service</button>
+            <p id="service-status" class="note"></p>
+          </details>
           <div id="bus-fleet" class="transport-controls"></div>
           <div class="transport-controls">
             <button id="line-edit">Edit route on map</button
@@ -854,6 +864,27 @@
           <div id="traffic-hotspots"></div>
           <p id="transport-message" role="status"></p>
         </div>
+      </section>
+
+      <div id="planning-tools" aria-label="City planning">
+        <button id="road-tool" aria-pressed="false">Build roads <kbd>N</kbd></button>
+        <button id="zone-tool" aria-pressed="false">Zoning <kbd>Z</kbd></button>
+        <button id="pedestrian-overlay" aria-pressed="false">Pedestrians <kbd>F</kbd></button>
+      </div>
+      <section id="planning-panel" hidden aria-label="Road and zoning planner">
+        <header><strong>STREETS &amp; LAND USE</strong><button id="planning-close" aria-label="Close planner">×</button></header>
+        <div id="road-options">
+          <label>Road shape <select id="road-shape"><option value="0">Straight</option><option value="1">Curved</option></select></label>
+          <p>Click start and end; curved roads add a bend control point. Junctions connect automatically. WASD pans, wheel zooms. Enter builds; Escape cancels.</p>
+          <button id="road-build" disabled>Build road</button> <button id="road-discard">Discard draft</button>
+        </div>
+        <div id="zone-options" hidden>
+          <label>Zone <select id="zone-kind"><option value="0">Unzoned</option><option value="1">Residential</option><option value="2">Commercial</option><option value="3">Industrial</option><option value="4">Mixed use</option><option value="5">Civic / park reserve</option></select></label>
+          <label>Apply to <select id="zone-scope"><option value="block">Whole enclosed block</option><option value="parcel">Selected parcel</option></select></label>
+          <button id="zone-apply" disabled>Apply zoning</button>
+          <p>Green homes · blue commerce · ochre industry · violet mixed · teal civic · grey unzoned. Zoning reserves future use; existing buildings remain. Automatic development is not yet simulated.</p>
+        </div>
+        <p id="planning-status" role="status"></p>
       </section>
     </main>
     <script type="module" src="main.js"></script>

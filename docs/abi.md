@@ -17,3 +17,16 @@ Group 9 fields 0–4: fare cap, boarding subsidy, total paid subsidy, actual far
 Commands: `transport_policy(cap, subsidy)` validates bounds; `transport_select(id)` selects an overlay; `transport_draft(count)` and `transport_stop(index,node)` populate a draft; `transport_apply(line)` validates the complete draft atomically; `transport_edit_end()` hides the draft; `transport_remove(line)` withdraws service; `transport_lane(road,allocation)` changes allocation. `route_next(from,to)` returns the street path used by the editor and buses. `focus(12,id)` locates a vehicle. Overlay modes are 0 off, 1 street condition, 2 traffic pressure.
 
 Avoid copying large global arrays into read paths: iterate by reference. This slice exposed WASM stack exhaustion when expanding the resident record while iterating array values; references fixed it without increasing memory limits. All reporters use the scalar interface, never struct offsets.
+
+
+## Geometry / crossing / agreement additions
+
+- Group 0 fields 26/27: selected resident (-1 none), camera zoom.
+- Group 1 field 12: sunlight assessment proxy (0.35–1).
+- Group 3 field 27: actual trip origin node.
+- Group 5 field 14: segment crosswalks enabled.
+- `set_crosswalk(road, enabled)` validates 0/1, changes both endpoint markings, rebuilds walking routes.
+- Group 13 (line ID): 0 status (none/offered/active/expired/cancelled), 1 operator, 2 fleet, 3 duration seconds, 4 maximum price, 5 paid, 6 remaining reserved, 7 delivered bus-seconds, 8 refusal (none/capacity/price), 9 start time.
+- Group 14 (operator ID 0–2): 0 capacity, 1 assigned fleet/drivers, 2 cumulative agreement receipts.
+- `service_offer(line, operator, fleet, days, price)` reserves a valid offer; `service_cancel(line)` settles earned pennies and releases the balance.
+- Building kind 7 is vacant land. Existing IDs and enum values are retained.

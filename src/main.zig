@@ -53,7 +53,7 @@ export fn set_funding(value: u32) void {
     finance.funding = @min(value, 2);
 }
 export fn set_overlay(value: u32) void {
-    scene.overlay = @min(value, 2);
+    scene.overlay = @min(value, 3);
 }
 export fn apply_taxes(home: f64, commercial: f64) bool {
     return finance.applyTaxes(home, commercial);
@@ -115,7 +115,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             12 => finance.maintenance_paid,
             13 => speed,
             14 => city.buildings.len,
-            15 => city.roads.len,
+            15 => @floatFromInt(city.roads.len),
             16 => city.district_count,
             17 => @floatFromInt(contracts.count),
             18 => @floatFromInt(finance.entry_count),
@@ -126,6 +126,9 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             23 => finance.base(false),
             24 => finance.collected,
             25 => finance.spent,
+            26 => @floatFromInt(scene.selected_person),
+            27 => scene.zoom,
+            28 => @floatFromInt(city.revision),
             else => -1,
         },
         1 => {
@@ -144,6 +147,9 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 9 => b.x,
                 10 => b.z,
                 11 => @floatFromInt(b.node),
+                12 => b.sun,
+                13 => @floatFromInt(b.street),
+                14 => @floatFromInt(b.number),
                 else => -1,
             };
         },
@@ -191,6 +197,9 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 21...24 => p.scores[field - 21],
                 25 => @floatFromInt(p.bus_line),
                 26 => @floatFromInt(p.bike_node),
+                27 => @floatFromInt(p.origin),
+                28 => @floatFromInt(p.destination_building),
+                29 => @floatFromInt(p.origin_building),
                 else => -1,
             };
         },
@@ -228,6 +237,9 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 11 => @floatFromInt(transport.queues[id]),
                 12 => transport.congestion[id],
                 13 => @floatFromInt(transport.lanes[id]),
+                14 => if (r.crosswalk) 1 else 0,
+                15 => @floatFromInt(r.street),
+                16 => @floatFromInt(residents.pedestrians[id]),
                 else => -1,
             };
         },
@@ -283,7 +295,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 1 => transport.subsidy,
                 2 => transport.subsidy_total,
                 3 => transport.fare(),
-                4 => city.node_count,
+                4 => @floatFromInt(city.node_count),
                 5...8 => blk: {
                     var total: usize = 0;
                     for (&residents.people) |p| {
@@ -330,6 +342,8 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 2 => city.nodes[id].y,
                 3 => scene.project(id, 0),
                 4 => scene.project(id, 1),
+                5 => @floatFromInt(city.nodes[id].street),
+                6 => @floatFromInt(city.nodes[id].number),
                 else => -1,
             };
         },
@@ -348,6 +362,56 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 8 => @floatFromInt(v.line),
                 9 => v.dwell,
                 10 => @floatFromInt(v.lane),
+                else => -1,
+            };
+        },
+        13 => {
+            if (id >= transport.max_lines) return -1;
+            const a = game.agreements.agreements[id];
+            return switch (field) {
+                0 => @floatFromInt(a.status),
+                1 => @floatFromInt(a.company),
+                2 => @floatFromInt(a.fleet),
+                3 => a.duration,
+                4 => a.price,
+                5 => a.paid,
+                6 => a.reserved,
+                7 => a.delivered,
+                8 => @floatFromInt(a.reason),
+                9 => a.start,
+                else => -1,
+            };
+        },
+        14 => {
+            if (id >= 3) return -1;
+            const c = game.agreements.operators[id];
+            return switch (field) {
+                0 => @floatFromInt(c.capacity),
+                1 => @floatFromInt(c.assigned),
+                2 => c.cash,
+                else => -1,
+            };
+        },
+        15 => return switch (field) {
+            0 => @floatFromInt(game.roadworks.error_code),
+            1 => game.roadworks.cost,
+            2 => game.roadworks.length,
+            3 => @floatFromInt(game.parcels.count),
+            4 => @floatFromInt(game.parcels.selected),
+            5 => @floatFromInt(game.parcels.block_count),
+            else => -1,
+        },
+        16 => {
+            if (id >= game.parcels.count) return -1;
+            const p = game.parcels.storage[id];
+            return switch (field) {
+                0 => p.x,
+                1 => p.z,
+                2 => @floatFromInt(p.zone),
+                3 => @floatFromInt(p.building),
+                4 => @floatFromInt(p.block),
+                5 => @floatFromInt(p.street),
+                6 => @floatFromInt(p.number),
                 else => -1,
             };
         },
@@ -389,4 +453,51 @@ export fn transport_lane(road: u32, lane: u32) void {
 }
 export fn route_next(from: u32, to: u32) u32 {
     return if (from < city.node_count and to < city.node_count) city.next_node[from][to] else 0;
+}
+
+export fn set_crosswalk(road: u32, enabled: u32) bool {
+    if (road >= city.road_count or enabled > 1) return false;
+    city.roads[road].crosswalk = enabled == 1;
+    city.rebuildRoutes();
+    return true;
+}
+
+export fn service_offer(line: u32, company: u32, fleet: u32, days: f64, price: f64) bool {
+    return game.agreements.offer(line, company, fleet, days, price);
+}
+export fn service_cancel(line: u32) void {
+    game.agreements.cancel(line);
+}
+
+export fn road_begin(curved: u32) void {
+    game.roadworks.reset();
+    game.roadworks.active = true;
+    game.roadworks.curved = curved == 1;
+}
+export fn road_point(index: u32, x: f32, z: f32) void {
+    if (index >= 3 or !std.math.isFinite(x) or !std.math.isFinite(z)) return;
+    game.roadworks.knots[index] = .{ .x = x, .z = z };
+    game.roadworks.knot_count = index + 1;
+    game.roadworks.preview();
+}
+export fn road_screen_point(index: u32, x: f32, y: f32) void {
+    const p = scene.groundPoint(x, y);
+    road_point(index, p.x, p.z);
+}
+export fn road_build() bool {
+    return game.roadworks.build(game.elapsed);
+}
+export fn road_cancel() void {
+    game.roadworks.reset();
+}
+export fn zoning_show(value: u32) void {
+    game.parcels.visible = value == 1;
+}
+export fn zoning_pick(x: f32, y: f32) i32 {
+    const p = scene.groundPoint(x, y);
+    game.parcels.selected = game.parcels.pick(p.x, p.z);
+    return game.parcels.selected;
+}
+export fn zoning_apply(id: u32, zone: u32, block: u32) bool {
+    return game.parcels.paint(id, zone, block == 1);
 }

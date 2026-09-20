@@ -1,3 +1,7 @@
+# Current continuation note — 20 September 2026
+
+The geometry/mobility fixes and first bus service-agreement increment have been implemented. Read `docs/scene.md`, `docs/transport.md`, `docs/service-agreements.md` and the follow-on phases at the end of `docs/next-slice.md` before using the older handoff below. The world is now 360×320 with 46 vacant parcels, low-rise suburbs, selective editable crossings, daylight shading, trip endpoint selection and traffic influence clouds. `src/simulation/agreements.zig` now handles protected offers and earned service payments. The older counts/limitations below describe the previous baseline where they differ.
+
 # Next agent kickoff — Common Ground
 
 Continue the project in `/Users/fox/Documents/ChatGPT/city`. Read `Development Agent Kickoff.md`, `Modern City Management Game Scope Specification.md`, `README.md`, and `docs/transport.md` first. Treat the long-term scope as design context, not a request to implement every domain at once. Follow the user's latest instruction if it changes this handoff.

@@ -7,6 +7,7 @@ export const kinds = [
   "Town Hall",
   "Park",
   "Works depot",
+  "Vacant land",
 ];
 export const statusNames = [
   "Offered",
@@ -71,3 +72,6 @@ export function createData(game) {
         : `${kinds[buildings[read(4, id, 0)].kind]} ${id + 1}`;
   return { read, metric, districts, buildings, companyName };
 }
+
+const streetNames = ["River Street","Foundry Street","Station Street","Market Street","Civic Street","Orchard Street","Mill Street","Garden Avenue","School Avenue","Exchange Avenue","Library Avenue","Church Avenue","Depot Avenue","South Avenue"];
+export const streetName = id => streetNames[id] || `New Street ${id+1}`;

@@ -6,6 +6,7 @@ pub const buses_per_line = 3;
 pub const car_count = city.population;
 pub const Vehicle = struct {
     active: bool = false,
+    retiring: bool = false,
     lane: u8 = 0,
     node: usize = 0,
     next: usize = 0,
@@ -31,16 +32,17 @@ pub const Line = struct {
     costs: f64 = 0,
     cash: f64 = 3000,
     fleet: usize = 2,
+    delivered: f64 = 0,
 };
 pub var vehicles: [car_count + max_lines * buses_per_line]Vehicle = @splat(.{});
 pub var lines: [max_lines]Line = @splat(.{});
 // 0 mixed traffic, 1 dedicated bus lane, 2 protected cycle lane (both directions).
-pub var lanes: [city.road_count]u8 = @splat(0);
-pub var occupancy: [city.road_count]usize = @splat(0);
-pub var queues: [city.road_count]usize = @splat(0);
-pub var congestion: [city.road_count]f32 = @splat(0);
-var heads: [city.road_count * 4]i32 = @splat(-1);
-var entries: [city.road_count * 4]bool = @splat(false);
+pub var lanes: [city.max_roads]u8 = @splat(0);
+pub var occupancy: [city.max_roads]usize = @splat(0);
+pub var queues: [city.max_roads]usize = @splat(0);
+pub var congestion: [city.max_roads]f32 = @splat(0);
+var heads: [city.max_roads * 4]i32 = @splat(-1);
+var entries: [city.max_roads * 4]bool = @splat(false);
 var links: [vehicles.len]i32 = @splat(-1);
 pub var fare_cap: f64 = 2;
 pub var subsidy: f64 = 1;
@@ -51,6 +53,10 @@ pub var selected: i32 = -1;
 pub var draft: [max_stops]usize = @splat(0);
 pub var draft_count: usize = 0;
 pub var editing: bool = false;
+pub fn green(node: usize, horizontal: bool, elapsed: f64) bool {
+    const phase = @mod(elapsed + @as(f64, @floatFromInt(node % 3)), 12);
+    return if (horizontal) phase < 5 else phase >= 6 and phase < 11;
+}
 pub fn init() void {
     vehicles = @splat(.{});
     lines = @splat(.{});
@@ -65,8 +71,8 @@ pub fn init() void {
     selected = -1;
     editing = false;
     draft_count = 0;
-    const first = [_]usize{ 40, 44, 48, 52, 128, 124, 120, 116 };
-    const second = [_]usize{ 80, 84, 88, 164, 240, 236, 232, 156 };
+    const first = [_]usize{ 8, 10, 12, 26, 40, 38, 36, 22 };
+    const second = [_]usize{ 0, 3, 6, 27, 48, 45, 42, 21 };
     draft_count = first.len;
     @memcpy(draft[0..first.len], &first);
     _ = apply(0);
@@ -158,6 +164,7 @@ pub fn update(dt: f32, elapsed: f64) void {
                 v.* = .{ .active = true, .line = @intCast(id), .node = n, .next = n, .target = n, .stop = stop, .dwell = 5, .version = l.version, .x = city.nodes[n].x, .z = city.nodes[n].z };
             }
             if (v.active) {
+                v.retiring = slot >= l.fleet;
                 const cost = @as(f64, dt) * 0.18;
                 l.cash -= cost;
                 l.costs += cost;
@@ -169,13 +176,14 @@ pub fn update(dt: f32, elapsed: f64) void {
         if (v.node == v.next) {
             if (v.line >= 0) {
                 const l = &lines[@intCast(v.line)];
-                if (!l.active or v.version != l.version or l.cash <= 0) {
+                if (v.retiring or !l.active or v.version != l.version or l.cash <= 0) {
                     // Residents leave a withdrawn/changed bus at this junction, never teleport.
                     v.dwell = 5;
                     if (v.passengers == 0) v.active = false;
                     continue;
                 }
                 if (v.dwell > 0) {
+                    l.delivered += @min(v.dwell, dt);
                     v.dwell = @max(0, v.dwell - dt);
                     continue;
                 }
@@ -196,7 +204,8 @@ pub fn update(dt: f32, elapsed: f64) void {
         }
         const r: usize = @intCast(city.road_between[v.node][v.next]);
         const road = city.roads[r];
-        var free = road.length - v.progress;
+        const stop = @max(road.length * 0.6, road.length - (if (v.line >= 0) @as(f32, 1.6) else 1.0));
+        var free = @max(0, stop - v.progress);
         var link = heads[laneKey(v.*, r)];
         while (link >= 0) {
             const other = vehicles[@intCast(link)];
@@ -208,13 +217,14 @@ pub fn update(dt: f32, elapsed: f64) void {
         v.speed = @min(limit, @min(v.speed + dt * 2, @sqrt(6 * free)));
         const step = @min(free, v.speed * dt);
         v.progress += step;
+        if (v.line >= 0 and !v.retiring and step > 0 and v.version == lines[@intCast(v.line)].version and lines[@intCast(v.line)].cash > 0) lines[@intCast(v.line)].delivered += dt;
         const a = city.nodes[v.node];
         const b = city.nodes[v.next];
         const fraction = @min(1, v.progress / road.length);
-        const lane: f32 = if (v.lane == 1) 1.25 else 0.48;
+        const lane: f32 = if (v.lane == 1) 1.25 else 0.55;
         v.x = a.x + (b.x - a.x) * fraction - (b.z - a.z) / road.length * lane;
         v.z = a.z + (b.z - a.z) * fraction + (b.x - a.x) / road.length * lane;
-        if (v.progress >= road.length - 0.01) {
+        if (v.progress >= stop - 0.01) {
             v.speed = 0;
             if (v.next == v.target or (v.line >= 0 and (!lines[@intCast(v.line)].active or v.version != lines[@intCast(v.line)].version or lines[@intCast(v.line)].cash <= 0))) {
                 v.node = v.next;
@@ -263,9 +273,8 @@ pub fn journey(from: usize, to: usize) Journey {
 fn enter(v: Vehicle, next: usize, elapsed: f64) bool {
     const road_id = city.road_between[v.node][next];
     if (road_id < 0 or !city.roads[@intCast(road_id)].vehicles) return false;
-    const horizontal = city.nodes[next].z == city.nodes[v.node].z;
-    const signal = @mod(elapsed + @as(f64, @floatFromInt(v.node % 3)), 12);
-    if ((horizontal and signal >= 5) or (!horizontal and (signal < 6 or signal >= 11))) return false;
+    const horizontal = city.horizontal(v.node, next);
+    if (city.degree(v.node) >= 3 and !green(v.node, horizontal, elapsed)) return false;
     if (!room(v, next)) return false;
     var candidate = v;
     candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] == 1) 1 else 0;

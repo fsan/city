@@ -1,41 +1,25 @@
+import {streetName} from "./data.js";
 // Game windows and map gestures; all traffic, fares and passengers live in Zig.
 export function createTransport(game, ui) {
   const $ = (id) => document.getElementById(id);
   const r = (group, id, field) => game.read(group, id, field);
   const money = (n) => `£${n.toFixed(2)}`;
-  const nodes = Array.from({ length: r(9, 0, 4) }, (_, id) => ({
+  let nodes = Array.from({ length: r(9, 0, 4) }, (_, id) => ({
     id,
     x: r(11, id, 0),
     z: r(11, id, 1),
   }));
-  const streets = [
-    "River",
-    "Foundry",
-    "Station",
-    "Market",
-    "Civic",
-    "Orchard",
-    "Mill",
-    "Garden",
-    "School",
-    "Exchange",
-    "Library",
-    "Church",
-    "Depot",
-    "South",
-    "Park",
-    "Ridge",
-    "Boundary",
-  ];
-  const address = (id) => {
-    const n = nodes[id];
-    return `${Math.round(n.x / 14) * 20 + 1} ${streets[Math.round(n.z / 14)]} Street · Avenue ${Math.round(n.x / 14) + 1}`;
-  };
-  const roads = Array.from({ length: r(0, 0, 15) }, (_, id) => ({
+  const address = id => `${r(11,id,6)} ${streetName(r(11,id,5))} · stop ${id+1}`;
+  let roads = Array.from({ length: r(0, 0, 15) }, (_, id) => ({
     id,
     a: r(5, id, 0),
     b: r(5, id, 1),
   }));
+  const heat = document.createElementNS("http://www.w3.org/2000/svg","svg");
+  heat.setAttribute("aria-label","Traffic intensity and zones of influence");
+  heat.style.cssText = "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:1";
+  document.body.append(heat);
+  let heatFrame = 0;
   let selected = -1,
     draft = null,
     gesture = null,
@@ -47,15 +31,19 @@ export function createTransport(game, ui) {
     o.textContent = text;
     return o;
   };
-  nodes.forEach((n) => $("stop-address").append(option(n.id, address(n.id))));
-  roads.forEach((road) =>
-    $("traffic-road").append(
-      option(
-        road.id,
-        `#${road.id + 1} · ${address(road.a)} → ${address(road.b)}`,
-      ),
-    ),
-  );
+  let networkRevision=-1;
+  function syncNetwork(){
+    if(networkRevision===r(0,0,28))return;
+    networkRevision=r(0,0,28);
+    const stop=$('stop-address').value,road=$('traffic-road').value;
+    nodes=Array.from({length:r(9,0,4)},(_,id)=>({id,x:r(11,id,0),z:r(11,id,1)}));
+    roads=Array.from({length:r(0,0,15)},(_,id)=>({id,a:r(5,id,0),b:r(5,id,1)}));
+    $('stop-address').replaceChildren(...nodes.map(n=>option(n.id,address(n.id))));
+    $('traffic-road').replaceChildren(...roads.map(n=>option(n.id,`${streetName(r(5,n.id,15))} · segment ${n.id+1} · stops ${n.a+1}–${n.b+1}`)));
+    if(stop&&Number(stop)<nodes.length)$('stop-address').value=stop;
+    if(road&&Number(road)<roads.length)$('traffic-road').value=road;
+  }
+  syncNetwork();
   function syncLines() {
     const ids = Array.from({ length: 8 }, (_, i) => i).filter(
       (i) => r(10, i, 0) || i === selected,
@@ -224,21 +212,30 @@ export function createTransport(game, ui) {
     );
     message("Street allocation applied in both directions.");
   };
+  const crossing = document.createElement("button");
+  $("lane-apply").after(crossing);
+  crossing.onclick = () => {
+    const id = Number($("traffic-road").value);
+    game.set_crosswalk(id, r(5,id,14) ? 0 : 1);
+    update();
+  };
   $("road-locate").onclick = () =>
     game.focus(5, Number($("traffic-road").value));
   function setOverlay(mode) {
     overlay = mode;
     game.set_overlay(mode);
+    $("pedestrian-overlay").setAttribute("aria-pressed", mode === 3);
     $("traffic-overlay").setAttribute("aria-pressed", mode === 2);
     $("overlay").setAttribute("aria-pressed", mode === 1);
     $("overlay-key").hidden = !mode;
     $("overlay-key").querySelector("strong").textContent =
-      mode === 2 ? "TRAFFIC · QUEUE PRESSURE" : "STREET CONDITION";
+      mode === 3 ? "PEDESTRIAN DENSITY" : mode === 2 ? "TRAFFIC · INTENSITY & QUEUES" : "STREET CONDITION";
     $("overlay-key").querySelector("small").innerHTML =
-      mode === 2
-        ? "Queued <span>Flowing</span>"
+      mode === 3 ? "Busy <span>Quiet</span><br>People walking or waiting outside; street intensity per 100 m² of sidewalk" : mode === 2
+        ? "Queued <span>Flowing</span><br>Amber clouds: vehicle density; wider areas at city scale"
         : "Worn <span>Maintained</span>";
   }
+  $("pedestrian-overlay").onclick = () => setOverlay(overlay === 3 ? 0 : 3);
   $("traffic-overlay").onclick = () => setOverlay(overlay === 2 ? 0 : 2);
   function points() {
     return nodes.map((n) => ({ x: r(11, n.id, 3), y: r(11, n.id, 4) }));
@@ -296,7 +293,7 @@ export function createTransport(game, ui) {
       gesture = { index };
       return true;
     }
-    if (overlay === 2) {
+    if (overlay === 2 || overlay === 3) {
       let best = null,
         min = 10;
       for (const road of roads) {
@@ -332,6 +329,25 @@ export function createTransport(game, ui) {
   }
   function paint() {
     const svg = $("route-map");
+    heat.hidden = overlay < 2;
+    heat.style.display = overlay >= 2 ? "block" : "none";
+    if (overlay >= 2 && ++heatFrame % 12 === 0) {
+      const pts = points();
+      const zoom = r(0,0,27);
+      const groups = new Map();
+      const cell = zoom < 2 ? 55 : 18;
+      roads.forEach(road => {
+        const weight = r(5,road.id,overlay===3?16:10);
+        if (!weight) return;
+        const key = `${Math.floor((nodes[road.a].x+nodes[road.b].x)/2/cell)},${Math.floor((nodes[road.a].z+nodes[road.b].z)/2/cell)}`;
+        const g = groups.get(key) || {x:0,y:0,w:0};
+        g.x += (pts[road.a].x+pts[road.b].x)/2*weight;
+        g.y += (pts[road.a].y+pts[road.b].y)/2*weight;
+        g.w += weight;
+        groups.set(key,g);
+      });
+      heat.innerHTML = '<defs><radialGradient id="traffic-density"><stop stop-color="#ed632f" stop-opacity=".65"/><stop offset=".4" stop-color="#eda64c" stop-opacity=".35"/><stop offset="1" stop-color="#edbd57" stop-opacity="0"/></radialGradient></defs>' + [...groups.values()].map(g => `<circle cx="${g.x/g.w}" cy="${g.y/g.w}" r="${Math.min(150,25+Math.sqrt(g.w)*9)*(zoom<2?1.3:1)}" fill="url(#traffic-density)"/>`).join('');
+    }
     if (!draft) {
       if (svg.childElementCount) svg.replaceChildren();
       return;
@@ -352,7 +368,13 @@ export function createTransport(game, ui) {
         )
         .join("");
   }
-  const fleetButtons = Array.from({ length: 2 }, (_, slot) => {
+  $("service-offer").onclick = () => {
+    const ok = game.service_offer(selected,Number($("service-operator").value),Number($("service-fleet").value),Number($("service-days").value),Number($("service-price").value));
+    message(ok ? "Offer reserved for operator review." : "Offer rejected: check active line, available treasury, fleet 1–3, days 1–7, or an existing active agreement.");
+    update();
+  };
+  $("service-cancel").onclick = () => { game.service_cancel(selected); update(); };
+  const fleetButtons = Array.from({ length: 3 }, (_, slot) => {
     const button = document.createElement("button");
     button.onclick = () => game.focus(12, r(0, 0, 7) + selected * 3 + slot);
     $("bus-fleet").append(button);
@@ -360,6 +382,10 @@ export function createTransport(game, ui) {
   });
   let hotspotIds = "";
   function update() {
+    syncNetwork();
+    $("operator-stats").textContent = ["Bellwether Transit","Ridgeway Passenger","Community Bus"].map((name,id) => `${name}: ${r(14,id,0)-r(14,id,1)} of ${r(14,id,0)} buses/drivers available · receipts ${money(r(14,id,2))}`).join(" | ");
+    const agreementStatus = ["No agreement","Offered","Active","Expired","Cancelled"];
+    $("service-status").textContent = selected < 0 ? "Select a line." : `${agreementStatus[r(13,selected,0)]} · ${["Bellwether Transit","Ridgeway Passenger","Community Bus"][r(13,selected,1)]} · ${r(13,selected,2)} buses · ${(r(13,selected,3)/480).toFixed(1)} days · maximum ${money(r(13,selected,4))} · paid ${money(r(13,selected,5))} · reserved ${money(r(13,selected,6))} · ${r(13,selected,7).toFixed(0)} delivered bus-seconds. ${["","Declined: insufficient buses/drivers.","Declined: price below cost and margin."][r(13,selected,8)]}`;
     $("transport-summary").textContent =
       `Trips in progress: ${r(9, 0, 5)} walk · ${r(9, 0, 6)} cycle · ${r(9, 0, 7)} car · ${r(9, 0, 8)} bus. Waiting at stops: ${r(9, 0, 9)}. City subsidies paid: ${money(r(9, 0, 2))}.`;
     $("line-stats").textContent =
@@ -373,8 +399,9 @@ export function createTransport(game, ui) {
       button.textContent = `Bus ${slot + 1} · ${active ? `${r(12, id, 4)}/24 aboard · ${r(12, id, 3).toFixed(1)} m/s · locate` : "Out of service"}`;
     });
     const road = Number($("traffic-road").value);
+    crossing.textContent = r(5,road,14) ? "Remove crosswalk" : "Add crosswalk";
     $("traffic-road-stats").textContent =
-      `${r(5, road, 10)} vehicles on segment · ${r(5, road, 11)} queued · ${(r(5, road, 12) * 100).toFixed(0)}% queue pressure · ${(r(5, road, 3) * 100).toFixed(0)}% grade`;
+      `${r(5, road, 10)} vehicles on segment · ${r(5,road,16)} pedestrians (${(r(5,road,16)/Math.max(1,r(5,road,2)*1.9)*100).toFixed(1)} / 100 m² sidewalk) · ${r(5, road, 11)} queued · ${(r(5, road, 12) * 100).toFixed(0)}% queue pressure · ${(r(5, road, 3) * 100).toFixed(0)}% grade`;
     const top = roads
       .filter((road) => r(5, road.id, 11) > 0)
       .sort((a, b) => r(5, b.id, 11) - r(5, a.id, 11))
@@ -403,6 +430,7 @@ export function createTransport(game, ui) {
   update();
   return {
     update,
+    syncNetwork,
     paint,
     pointerDown,
     pointerMove,
@@ -419,6 +447,7 @@ export function createTransport(game, ui) {
       chooseRoad(id);
       ui.open("transport");
     },
+    togglePedestrians: () => setOverlay(overlay === 3 ? 0 : 3),
     toggleTraffic: () => setOverlay(overlay === 2 ? 0 : 2),
     toggleCondition: () => setOverlay(overlay === 1 ? 0 : 1),
     reset() {

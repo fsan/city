@@ -1,3 +1,4 @@
+import { createPlanning } from "./planning.js";
 import { createTransport } from "./transport.js";
 import { createRenderer } from "./renderer.js";
 import { createInterface } from "./ui.js";
@@ -34,7 +35,7 @@ function start(renderer) {
     frameTime = 0,
     lastSpeed = 1;
   const metric = (field) => game.read(0, 0, field);
-  let reports, transport;
+  let reports, transport, planning;
   const refresh = () => {
     reports.update();
     transport?.update();
@@ -62,16 +63,19 @@ function start(renderer) {
   });
   transport = createTransport(game, ui);
   reports = createReports(game, ui, transport);
+  planning = createPlanning(game, transport);
   $("restart").onclick = () => {
     game.init();
     lastSpeed = 1;
     reports.reset();
+    planning.reset();
     transport.reset();
     refresh();
   };
   window.addEventListener("keydown", (event) => {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const key = event.key.toLowerCase();
+    if (!event.target.closest('select, input, textarea, [contenteditable="true"]') && planning.key(key)) {event.preventDefault();return;}
     if (key === "escape") {
       event.preventDefault();
       if (!transport.cancel()) ui.escape();
@@ -107,6 +111,7 @@ function start(renderer) {
     if (key === "r") game.reset_camera();
     if (key === "o") toggleOverlay();
     if (key === "g") transport.toggleTraffic();
+    if (key === "f") transport.togglePedestrians();
     if (["1", "2", "3"].includes(key)) speed([1, 4, 16][Number(key) - 1]);
   });
   window.addEventListener("keyup", (event) =>
@@ -124,10 +129,12 @@ function start(renderer) {
     if (event.button !== 0) return;
     canvas.focus();
     canvas.setPointerCapture(event.pointerId);
+    if (planning.pointerDown(event)) return;
     if (transport.pointerDown(event)) return;
     drag = { x: event.clientX, y: event.clientY, distance: 0 };
   });
   canvas.addEventListener("pointermove", (event) => {
+    if (planning.pointerMove(event)) return;
     if (transport.pointerMove(event)) return;
     if (!drag) return;
     const dx = event.clientX - drag.x,
@@ -146,7 +153,8 @@ function start(renderer) {
       const rect = canvas.getBoundingClientRect();
       game.pick(event.clientX - rect.left, event.clientY - rect.top);
       refresh();
-      if (metric(10) >= 0) reports.inspectBuilding(metric(10));
+      if (metric(26) >= 0) reports.inspectPerson(metric(26));
+      else if (metric(10) >= 0) reports.inspectBuilding(metric(10));
     }
     drag = null;
   });

@@ -1,22 +1,26 @@
 const transport = @import("transport.zig");
 const city = @import("../scene/city.zig");
-pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0, wallet: f64 = 0, income: f64 = 0, owns_car: bool = false, owns_bike: bool = false, car_node: usize = 0, bike_node: usize = 0, scores: [4]f32 = @splat(-1), crew: bool = false, chosen: bool = false, bus_line: i32 = -1, bus: i32 = -1, boarding: usize = 0, exit_node: usize = 0, bus_version: u32 = 0, bus_wait: f32 = 0, bus_stage: u8 = 0, home: usize, employer: i32 = -1, destination: usize, node: usize, next: usize, wait: f32, trips: u32 = 0, travel: f32 = 0, last_trip: f32 = 0, order: i32 = -1, arrived: bool = false };
+pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0, wallet: f64 = 0, income: f64 = 0, owns_car: bool = false, owns_bike: bool = false, car_node: usize = 0, bike_node: usize = 0, scores: [4]f32 = @splat(-1), crew: bool = false, chosen: bool = false, bus_line: i32 = -1, bus: i32 = -1, boarding: usize = 0, exit_node: usize = 0, bus_version: u32 = 0, bus_wait: f32 = 0, bus_stage: u8 = 0, walk_side: f32 = 1, home: usize, current_building: usize = 0, destination_building: usize = 0, origin_building: usize = 0, employer: i32 = -1, origin: usize = 0, destination: usize, node: usize, next: usize, wait: f32, trips: u32 = 0, travel: f32 = 0, last_trip: f32 = 0, order: i32 = -1, arrived: bool = false };
 pub const Company = struct { building: usize, employees: usize = 0, capacity: usize, cash: f64 = 45000, contractor: bool, crew: [4]usize = .{ 0, 0, 0, 0 }, crew_count: usize = 0, order: i32 = -1, margin: f64, labour: f64, costs: f64 = 0 };
 pub var people: [city.population]Person = undefined;
 pub var companies: [city.buildings.len]Company = undefined;
 pub var company_count: usize = 0;
+pub var pedestrians: [city.max_roads]usize = @splat(0);
 pub var walking: usize = 0;
 pub var employed: usize = 0;
 pub fn init() void {
     company_count = 0;
     employed = 0;
     walking = 0;
-    var homes: [city.buildings.len]usize = undefined;
+    var homes: [city.buildings.len * 6]usize = undefined;
     var home_count: usize = 0;
     for (&city.buildings, 0..) |*b, i| {
         if (b.kind == .home) {
-            homes[home_count] = i;
-            home_count += 1;
+            const weight: usize = @intFromFloat(@max(1, b.height - 2));
+            for (0..@min(6, weight)) |_| {
+                homes[home_count] = i;
+                home_count += 1;
+            }
         }
         if (b.capacity == 0) continue;
         b.employer = @intCast(company_count);
@@ -41,7 +45,7 @@ pub fn init() void {
         }
         const node = city.buildings[home].node;
         const b = city.buildings[home];
-        p.* = .{ .x = b.x + b.width / 2, .z = b.z - 0.4, .y = b.ground + 0.35, .wallet = @as(f64, @floatFromInt(100 + i % 9000)), .income = @as(f64, @floatFromInt(30 + i % 170)), .owns_bike = i % 3 != 0, .car_node = node, .bike_node = node, .home = home, .employer = employer, .destination = if (employer >= 0) city.buildings[companies[@intCast(employer)].building].node else node, .node = node, .next = node, .wait = @as(f32, @floatFromInt(i % 100)) * 0.14 };
+        p.* = .{ .x = b.entry_x, .z = b.entry_z, .y = b.ground + 0.35, .wallet = @as(f64, @floatFromInt(100 + i % 9000)), .income = @as(f64, @floatFromInt(30 + i % 170)), .owns_bike = i % 3 != 0, .car_node = node, .bike_node = node, .home = home, .current_building = home, .origin_building = home, .destination_building = if (employer >= 0) companies[@intCast(employer)].building else home, .origin = node, .employer = employer, .destination = if (employer >= 0) city.buildings[companies[@intCast(employer)].building].node else node, .node = node, .next = node, .wait = @as(f32, @floatFromInt(i % 100)) * 0.14 };
         considerCar(p);
         city.buildings[home].occupants += 1;
     }
@@ -51,6 +55,8 @@ pub fn init() void {
 }
 pub fn send(id: usize, target: usize, order: i32) void {
     const p = &people[id];
+    p.origin = p.node;
+    p.origin_building = p.current_building;
     p.destination = target;
     p.order = order;
     p.arrived = false;
@@ -62,11 +68,11 @@ pub fn send(id: usize, target: usize, order: i32) void {
 }
 pub fn release(company: usize) void {
     const c = &companies[company];
-    for (c.crew[0..c.crew_count]) |id| send(id, city.buildings[c.building].node, -1);
+    for (c.crew[0..c.crew_count]) |id| {
+        send(id, city.buildings[c.building].node, -1);
+        people[id].destination_building = c.building;
+    }
     c.order = -1;
-}
-fn destinationBuilding(node: usize) usize {
-    return @intCast(city.building_at_node[node]);
 }
 fn moveTo(p: *Person, x: f32, y: f32, z: f32, speed: f32, dt: f32) bool {
     const dx = x - p.x;
@@ -95,13 +101,14 @@ pub fn update(dt: f32, elapsed: f64) void {
             p.wait -= dt;
             continue;
         }
-        const lane = 1.45 + @as(f32, @floatFromInt(i % 5)) * 0.09;
+
         if (p.phase == 3) {
             const home = city.buildings[p.home].node;
             const work = if (p.employer >= 0) city.buildings[companies[@intCast(p.employer)].building].node else home;
             const hour = @mod(elapsed / 20, 24);
             p.destination = if (hour < 7 or hour > 19 or p.destination == work) home else work;
-            if (p.destination == p.node) {
+            p.destination_building = if (p.destination == home) p.home else companies[@intCast(p.employer)].building;
+            if (p.destination == p.node and p.destination_building == p.current_building) {
                 p.wait = 10;
                 continue;
             }
@@ -137,7 +144,7 @@ pub fn update(dt: f32, elapsed: f64) void {
                 p.z = v.z;
                 p.y = city.elevation(p.x, p.z) + 0.2;
                 p.travel += dt;
-                if (v.node == v.next and ((v.node == p.exit_node and v.dwell > 0) or !line.active or line.version != p.bus_version or line.cash <= 0)) {
+                if (v.node == v.next and ((v.node == p.exit_node and v.dwell > 0) or v.retiring or !line.active or line.version != p.bus_version or line.cash <= 0)) {
                     v.passengers -= 1;
                     p.node = v.node;
                     p.next = v.node;
@@ -171,20 +178,23 @@ pub fn update(dt: f32, elapsed: f64) void {
             }
         }
         if (p.phase == 0) {
-            const node = city.nodes[p.node];
-            if (moveTo(p, node.x + lane, city.elevation(node.x + lane, node.z + lane) + 0.15, node.z + lane, if (p.mode == 2) 2.2 else 1.1, dt)) p.phase = 1;
+            const node = city.frontage(city.buildings[p.current_building]);
+            if (moveTo(p, node.x, city.elevation(node.x, node.z) + 0.25, node.z, 1.1, dt)) p.phase = 1;
+            p.y = @max(city.elevation(p.x, p.z) + 0.25, p.y);
             continue;
         }
         if (p.phase == 2) {
-            const b = city.buildings[destinationBuilding(p.destination)];
-            if (moveTo(p, b.x + b.width / 2, b.ground + 0.35, b.z - 0.4, 1.1, dt)) {
+            const b = city.buildings[p.destination_building];
+            if (moveTo(p, b.entry_x, b.ground + 0.35, b.entry_z, 1.1, dt)) {
                 if (p.mode == 1) p.bike_node = p.node;
+                p.current_building = p.destination_building;
                 p.phase = 3;
                 p.wait = 18 + @as(f32, @floatFromInt(i % 50));
                 p.last_trip = p.travel;
                 p.travel = 0;
                 p.trips += 1;
             }
+            p.y = @max(city.elevation(p.x, p.z) + 0.25, p.y);
             continue;
         }
         const target_node = if (p.mode == 3 and p.bus_stage == 0) p.boarding else p.destination;
@@ -199,16 +209,40 @@ pub fn update(dt: f32, elapsed: f64) void {
                 continue;
             }
             if (city.distance[p.node][target_node] >= 1e8) continue;
-            p.next = city.next_node[p.node][target_node];
+            p.next = if ((p.mode == 0 or p.mode == 3) and i % 5 != 0) city.walk_next[p.node][target_node] else city.next_node[p.node][target_node];
+            const a = city.nodes[p.node];
+            const b = city.nodes[p.next];
+            const destination = city.buildings[p.destination_building];
+            const side = (b.x - a.x) * (destination.entry_z - a.z) - (b.z - a.z) * (destination.entry_x - a.x);
+            p.walk_side = if (i % 3 == 0) (if (i % 2 == 0) @as(f32, 1) else -1) else if (side >= 0) 1 else -1;
         }
         const road_id = city.road_between[p.node][p.next];
         if (road_id < 0) continue;
         const road = city.roads[@intCast(road_id)];
-        const target = city.nodes[p.next];
+        const a = city.nodes[p.node];
+        const b = city.nodes[p.next];
+        const span = city.hypot(b.x - a.x, b.z - a.z);
+        const target = city.Vec{ .x = b.x - (b.z - a.z) / span * 2.3 * p.walk_side, .z = b.z + (b.x - a.x) / span * 2.3 * p.walk_side };
         const speed = (if (p.mode == 1) (if (transport.lanes[@intCast(road_id)] == 2) @as(f32, 4.5) else 3.0) else @as(f32, 1)) * (0.7 + road.condition / 100) / (1 + road.slope * 3) * (if (road.works) @as(f32, 0.65) else 1);
-        if (moveTo(p, target.x + lane, city.elevation(target.x + lane, target.z + lane) + 0.15, target.z + lane, speed, dt)) p.node = p.next;
+        if (moveTo(p, target.x, city.elevation(target.x, target.z) + 0.15, target.z, speed, dt)) {
+            p.node = p.next;
+        }
         // Road surfaces follow authored terrain; do not interpolate through grade changes.
         p.y = city.elevation(p.x, p.z) + 0.15;
+    }
+    pedestrians = @splat(0);
+    for (&people) |p| {
+        if (p.phase == 3 or p.bus >= 0 or p.mode == 1 or (p.mode == 2 and p.phase == 1) or (p.wait > 0 and p.phase == 0)) continue;
+        var road: i16 = if (p.node != p.next) city.road_between[p.node][p.next] else -1;
+        if (road < 0) {
+            for (city.roads, 0..) |r, id| {
+                if (r.a == p.node or r.b == p.node) {
+                    road = @intCast(id);
+                    break;
+                }
+            }
+        }
+        if (road >= 0) pedestrians[@intCast(road)] += 1;
     }
 }
 
@@ -221,13 +255,13 @@ pub fn remaining(id: usize) f32 {
     var speed: f32 = 1.1;
     var rest = city.distance[p.next][p.destination];
     if (p.phase == 2) {
-        const b = city.buildings[destinationBuilding(p.destination)];
-        target = .{ .x = b.x + b.width / 2, .z = b.z - 0.4, .y = b.ground + 0.35 };
+        const b = city.buildings[p.destination_building];
+        target = .{ .x = b.entry_x, .z = b.entry_z, .y = b.ground + 0.35 };
         rest = 0;
     } else {
-        const lane = 1.45 + @as(f32, @floatFromInt(id % 5)) * 0.09;
-        target.x += lane;
-        target.z += lane;
+        const walk = city.sidewalk(p.next);
+        target.x = walk.x;
+        target.z = walk.z;
         target.y = city.elevation(target.x, target.z) + 0.15;
         if (p.next != p.node) {
             const road = city.roads[@intCast(city.road_between[p.node][p.next])];
@@ -243,6 +277,8 @@ pub fn remaining(id: usize) f32 {
 
 // Generalised travel cost combines time with out-of-pocket cost and income.
 fn choose(p: *Person) void {
+    p.origin = p.node;
+    p.origin_building = p.current_building;
     p.chosen = true;
     p.mode = 0;
     p.bus = -1;

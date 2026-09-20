@@ -51,3 +51,12 @@ Retain placeholder geometry for now. Future cities should use restrained urban m
 First establish the interface and interaction baseline; then expand scene / terrain / routes, expose resident and company reports, add the budget ledger and tax bases, and finally connect companies and crews to work orders. Keep each stage playable.
 
 The management slice is complete when the player can diagnose an underserved area, inspect affected residents and routes, adjust a specific financing policy, offer repair work, observe acceptance or an explained refusal, and follow workers and money through delivery. Current UI work alone does not meet this milestone. No test suite is requested yet; use builds and focused manual gameplay checks while implementing.
+
+
+## Follow-on phases after September visual / mobility repairs
+
+The first bus-operator agreement increment is now playable; see `service-agreements.md`. Next extend this with persistent agreement history, explicit working capital and driver shifts, headway/stop-completion targets, procurement comparison and service failure remedies. Keep route demand and rider continuity visible.
+
+Preserve the new 360×320 land area, vacant parcels and low-rise suburbs when introducing player-built streets and parks. Add construction access, terrain grading and foundation costs for buildings while allowing slope parks. Then introduce schools, hospitals and other civic services with physical staff and catchments. Keep population near 3,840 until these systems justify growth.
+
+Traffic safety follows explicit crossing/turn geometry: driver yielding, pedestrian signal phases, swept vehicle footprints, collisions/accidents, incident clearance and blocked-lane queues. Night safety needs streetlight coverage, visibility, pedestrian/car risk, power and maintenance budgets. These are future simulation policies, not random cosmetic events. Refine solar assessment from the current height proxy to sampled seasonal obstruction and construction-company valuation decisions. Save/load should precede longer planning sessions.

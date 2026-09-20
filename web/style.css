@@ -962,3 +962,10 @@ td {
     overflow-x: auto;
   }
 }
+
+#planning-tools {position:absolute;left:20px;top:100px;z-index:7;display:flex;gap:5px;flex-wrap:wrap;max-width:calc(100vw - 40px)}
+#planning-panel {position:absolute;left:20px;top:150px;width:350px;max-width:calc(100vw - 40px);padding:14px;background:var(--panel);border:1px solid var(--line);box-shadow:0 8px 25px #0005;z-index:12}
+#planning-panel header {display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+#planning-panel label {display:block;margin:10px 0}
+#planning-panel select {background:#303938;max-width:100%;padding:6px}
+#planning-panel p {font-size:12px;line-height:1.5;color:#bbc5bd}

@@ -1,5 +1,6 @@
 import {
   createData,
+  streetName,
   kinds,
   statusNames,
   reasons,
@@ -55,7 +56,7 @@ export function createReports(game, ui, transport) {
     home: r(3, id, 0),
     employer: r(3, id, 1),
   }));
-  const streetIds = Array.from({ length: m(15) }, (_, id) => id);
+  let streetIds = Array.from({ length: m(15) }, (_, id) => id);
   let personPage = 0,
     streetPage = 0,
     selectedOrder = -1,
@@ -375,6 +376,8 @@ export function createReports(game, ui, transport) {
     "Contract settlement",
     "Cancellation settlement",
     "Bus boarding subsidy",
+    "Bus service agreement",
+    "Road construction",
   ];
   function ledgerValues(limit) {
     return Array.from({ length: limit }, (_, id) => {
@@ -494,7 +497,9 @@ export function createReports(game, ui, transport) {
       title = buildingName(id);
       fields = [
         ["Neighbourhood", districts[b.district]],
+        ["Address", `${r(1,id,14)} ${streetName(r(1,id,13))}`],
         ["Ground elevation", `${r(1, id, 3).toFixed(1)} m`],
+        ["Sun exposure (assessment proxy)", `${(r(1,id,12)*100).toFixed(0)}%`],
         ["Building height", `${r(1, id, 2).toFixed(1)} m`],
         ["Residents", r(1, id, 5)],
         ["Assessed value", money(r(1, id, 4))],
@@ -557,13 +562,15 @@ export function createReports(game, ui, transport) {
           "Bus wait / aboard",
           `${r(3, id, 18).toFixed(0)} seconds / ${r(3, id, 19) >= 0 ? "Yes" : "No"}`,
         ],
+        ["Trip markers", "Blue roof: origin · amber roof: destination"],
+        ["Origin node", r(3,id,27)+1],
         ["Current node → next", `${r(3, id, 3) + 1} → ${r(3, id, 4) + 1}`],
         [
           "Destination",
           r(3, id, 7) >= 0
             ? `Work site · node ${r(3, id, 2) + 1}`
             : buildings.find((b) => b.node === r(3, id, 2))
-              ? buildingName(buildings.find((b) => b.node === r(3, id, 2)).id)
+              ? buildingName(r(3,id,28))
               : `Node ${r(3, id, 2) + 1}`,
         ],
         [
@@ -683,8 +690,10 @@ export function createReports(game, ui, transport) {
       container.lastElementChild.remove();
   }
   return {
+    inspectPerson: (id) => inspect(3, id),
     inspectBuilding: (id) => inspect(1, id),
     update() {
+      if(streetIds.length!==m(15)){streetIds=Array.from({length:m(15)},(_,id)=>id);streetOptions(Number($("work-street").value));}
       $("clock").textContent = timeLabel(m(0));
       $("treasury").textContent = money(m(1));
       $("population").textContent = `${m(7).toLocaleString()} residents`;
