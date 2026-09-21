@@ -67,7 +67,7 @@ export function createAgreements(game, selectedLine, message) {
     compare();
     const line = selectedLine();
     $("service-status").textContent = line < 0 ? "Select a line." : describe(13,line);
-    $("service-delivery").textContent = line < 0 ? "" : `${operatorNames[r(10,line,32)]} · ${r(10,line,33) ? "06:00–22:00" : "All day"} · ${r(10,line,9)} waiting at this line’s stops. Requested fleet now: ${r(10,line,11)} moving · ${r(10,line,12)} dwelling · ${r(10,line,13)} held at signals / in queues · ${r(10,line,14)} clearing an old route · ${r(10,line,10)} unavailable. Dispatch check for an empty slot: ${["ready", "off hours", "no cash for dispatch", "no available vehicle", "no on-duty driver"][r(10,line,34)]}. Held, clearing and unavailable buses do not earn payment. Off-hours have no delivery target.`;
+    $("service-delivery").textContent = line < 0 ? "" : `${operatorNames[r(10,line,32)]} · ${r(10,line,33) ? "06:00–22:00" : "All day"} · ${r(10,line,9)} waiting at this line’s stops. Requested fleet now: ${r(10,line,11)} moving · ${r(10,line,12)} dwelling · ${r(10,line,13)} held at signals / in queues · ${r(10,line,14)} clearing an old route · ${r(10,line,10)} unavailable. ${r(10,line,10) > 0 || r(10,line,34) === 1 ? "Dispatch: " + ["ready", "off hours", "no cash for dispatch", "no available vehicle", "no on-duty driver"][r(10,line,34)] + "." : "Requested slots are occupied; clearing buses must unload before replacement."} Held, clearing and unavailable buses do not earn payment. Off-hours have no delivery target.`;
     const revision = r(13,0,20);
     if (revision !== historyRevision) {
       historyRevision = revision;

@@ -7,3 +7,18 @@ Daytime means 06:00–22:00 (seconds 120–440); all-day includes midnight. Abst
 Private lines retain their operator/window after closure. Initial lines belong to operators 0 and 1; new lines default to operator 2 and daytime. Physical clearing vehicles still occupy fleet/driver slots and can delay replacement dispatch. Coverage ends at the next safe junction; overtime clearance is abstracted by the prepaid fee. No recruitment, payroll integration, timetables, save/load or permanent test suite.
 
 Verify account identities, municipal reserves, quote/acceptance consistency, distinct refusals, shared capacity, shift/midnight/expiry, rider conservation through changes and exhaustion, rendering and a completed street repair. Build through Docker and inspect a fresh browser town.
+
+## Completed verification — 21 September 2026
+
+Docker Compose / Zig 0.14.1 ReleaseSafe builds and JavaScript syntax checks passed. Temporary WASM scripts lived in /tmp, with no permanent tests added.
+
+- A 516.8-second exercise (town clock 160 → 676.8) checked distinct cash/vehicle/night-driver/price refusals, feasible revision and delivery, route editing without clock reset, overnight service, off-hours without target/delivery growth, expiry, paused withdrawal and line reuse. One-day targets closed at 640 daytime bus-seconds for two buses and 480 all-day bus-seconds for one. Four history records remained; 382,488 sampled render vertices were finite.
+- A zero-fare/zero-subsidy run reached town time 2676.8. Ridgeway cash stopped at £0.00598498, with no active buses and no further change during an additional 500 simulated seconds. Account identities and line attribution reconciled; no negative cash. Across exhaustion and shared-operator/handover exercises, 241 passenger samples matched resident bus IDs to every vehicle's passenger count, with up to 42 riders aboard across the fleet.
+- Two concurrent two-bus daytime commitments filled Bellwether's four vehicles; another offer was refused. A replacement operator with reduced fleet delivered after outgoing buses cleared. £16.65 funded subsidies and £695.17 agreement receipts reconciled to their municipal ledger categories.
+- A shared-budget run completed a physical £31,347 street repair while the bus agreement received £395.83. Another run protected the full £179,375 municipal balance in an insolvent operator's offered agreement; no unfunded boarding subsidies were credited.
+- Road construction from node 0 west by 20 units debited £500 and advanced graph revision; zoning succeeded and 407,166 render vertices remained finite.
+- A fresh browser town showed reconciled accounts, coverage, resource refusals, an eligible one-bus all-day revision, actual delivery (39.8 / 48.1 bus-seconds sampled), earned/paid/reserved amounts and closed-offer history, with no console errors. A final fresh-browser check on 21 September confirmed active service and cancellation at £4.58 paid / £235.42 released, with matching current and archived records; the final Docker build and restart passed.
+
+Reproduce a remedy in a fresh town: offer Ridgeway two all-day buses on Line 1 (vehicle refusal because its initial Line 2 uses two); revise to one bus (three day drivers and one night driver suffice). Community Bus's £5 opening balance cannot satisfy even the one-bus £12.80 buffer, regardless of promised price. No time-based cash grant rescues it.
+
+Limits: aggregate driver cohorts and fixed-fee clearance/relief overtime; empty deployment is abstracted; requirements continue privately after contracts; quotes reserve nominal requirements, while clearing can delay physical dispatch. Driver cohorts are relieved at safe junctions. No recruitment, resident payroll, fleet purchases, save/load or regularity targets.
