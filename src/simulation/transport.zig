@@ -51,6 +51,18 @@ pub const StopObservation = struct {
     total: f64 = 0,
     minimum: f64 = -1,
     maximum: f64 = -1,
+    // Passenger outcomes are tied to this route version and stop index.
+    wait_starts: u32 = 0,
+    completed: u32 = 0,
+    wait_total: f64 = 0,
+    wait_min: f64 = -1,
+    wait_max: f64 = -1,
+    capacity_denials: u32 = 0,
+    abandoned_timeout: u32 = 0,
+    abandoned_offhours: u32 = 0,
+    abandoned_fare: u32 = 0,
+    abandoned_service: u32 = 0,
+    abandoned_after_capacity: u32 = 0,
 };
 pub const Observation = struct {
     version: u32 = 0,
@@ -153,7 +165,7 @@ pub fn fare() f64 {
 pub fn apply(id: usize) bool {
     if (id >= max_lines or draft_count < 2 or draft_count > max_stops) return false;
     for (draft[0..draft_count], 0..) |n, i| {
-        if (n >= city.node_count) return false;
+        if (!city.validStop(n)) return false;
         for (draft[0..i]) |old| if (old == n) return false;
     }
     const line = &lines[id];
@@ -285,31 +297,54 @@ pub fn update(dt: f32, elapsed: f64) void {
         }
         const r: usize = @intCast(city.road_between[v.node][v.next]);
         const road = city.roads[r];
-        const stop = @max(road.length * 0.6, road.length - (if (v.line >= 0) @as(f32, 1.6) else 1.0));
-        var free = @max(0, stop - v.progress);
+        const bus = v.line >= 0;
+        const at_target = bus and v.next == v.target;
+        const leaving = bus and (!lines[@intCast(v.line)].active or v.version != lines[@intCast(v.line)].version or v.retiring or v.shift_day != operators.daytime(elapsed));
+        // Service and retirement stops reach the node itself so departure does
+        // not jump from a pre-stop clearance point onto the next segment.
+        const stop_point = if (at_target or leaving) road.length else @max(road.length * 0.6, road.length - (if (bus) @as(f32, 1.6) else 1.0));
+        const next_after = city.next_node[v.next][v.target];
+        var lookahead = v.*;
+        lookahead.node = v.next;
+        lookahead.next = if (next_after == v.next) v.next else next_after;
+        lookahead.lane = if (bus and next_after != v.next and lanes[@intCast(city.road_between[v.next][next_after])] == 1) 1 else 0;
+        const blocked = next_after == v.next or !entryAllowed(lookahead, next_after, elapsed);
+        // Only segment ends that actually stop the vehicle receive braking. Ordinary
+        // short street segments keep their speed and hand momentum to the next one.
+        const must_stop = v.retiring or leaving or at_target or (v.next != v.target and blocked);
+        const stop_at = if (must_stop) stop_point else road.length;
+        var free = @max(0, stop_at - v.progress);
+        var following = false;
         var link = heads[laneKey(v.*, r)];
         while (link >= 0) {
             const other = vehicles[@intCast(link)];
-            if (@as(usize, @intCast(link)) != i and other.active and other.node == v.node and other.next == v.next and other.progress >= v.progress)
-                free = @min(free, @max(0, other.progress - v.progress - spacing(v.*, other)));
+            if (@as(usize, @intCast(link)) != i and other.active and other.node == v.node and other.next == v.next and other.progress >= v.progress) {
+                const gap = @max(0, other.progress - v.progress - spacing(v.*, other));
+                if (gap < free) {
+                    free = gap;
+                    following = true;
+                }
+            }
             link = links[@intCast(link)];
         }
-        const limit: f32 = (if (v.line >= 0) @as(f32, 5.5) else 7) * (0.5 + road.condition / 200) / (1 + road.slope * 2) * (if (road.works) @as(f32, 0.45) else 1) * (if (lanes[r] != 0 and v.line < 0) @as(f32, 0.8) else 1);
-        v.speed = @min(limit, @min(v.speed + dt * 2, @sqrt(6 * free)));
+        const limit: f32 = (if (bus) @as(f32, 5.5) else 7) * (0.5 + road.condition / 200) / (1 + road.slope * 2) * (if (road.works) @as(f32, 0.45) else 1) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1);
+        var target = limit;
+        if (must_stop or following) target = @min(target, @sqrt(6 * free));
+        if (v.speed < target) v.speed = @min(target, v.speed + dt * 2) else v.speed = @max(target, v.speed - dt * 3);
         const step = @min(free, v.speed * dt);
         v.progress += step;
-        if (v.line >= 0 and !v.retiring and step > 0 and v.version == lines[@intCast(v.line)].version) lines[@intCast(v.line)].delivered += dt;
+        if (bus and !v.retiring and step > 0 and v.version == lines[@intCast(v.line)].version) lines[@intCast(v.line)].delivered += dt;
         const a = city.nodes[v.node];
         const b = city.nodes[v.next];
         const fraction = @min(1, v.progress / road.length);
         const lane: f32 = if (v.lane == 1) 1.25 else 0.55;
         v.x = a.x + (b.x - a.x) * fraction - (b.z - a.z) / road.length * lane;
         v.z = a.z + (b.z - a.z) * fraction + (b.x - a.x) / road.length * lane;
-        if (v.progress >= stop - 0.01) {
-            v.speed = 0;
-            if (v.next == v.target or (v.line >= 0 and (!lines[@intCast(v.line)].active or v.version != lines[@intCast(v.line)].version or v.retiring or v.shift_day != operators.daytime(elapsed)))) {
+        if (v.progress >= stop_at - 0.01) {
+            if (must_stop) v.speed = 0;
+            if (v.next == v.target or leaving) {
                 v.node = v.next;
-                if (v.line >= 0) {
+                if (bus) {
                     v.dwell = if (v.node == v.target or v.retiring) 5 else 0;
                     if (v.node == v.target) recordArrival(v, elapsed);
                 }
@@ -318,12 +353,14 @@ pub fn update(dt: f32, elapsed: f64) void {
                 var candidate = v.*;
                 candidate.node = v.next;
                 const next = city.next_node[candidate.node][v.target];
+                const carried = v.speed;
                 if (next != candidate.node and enter(candidate, next, elapsed)) {
                     v.node = candidate.node;
                     v.next = next;
-                    v.lane = if (v.line >= 0 and lanes[@intCast(city.road_between[v.node][next])] == 1) 1 else 0;
+                    v.lane = if (bus and lanes[@intCast(city.road_between[v.node][next])] == 1) 1 else 0;
                     v.progress = 0;
-                }
+                    v.speed = carried;
+                } else v.speed = 0;
             }
         }
     }
@@ -390,12 +427,20 @@ pub fn journey(from: usize, to: usize) Journey {
     return best;
 }
 
-fn enter(v: Vehicle, next: usize, elapsed: f64) bool {
+fn entryAllowed(v: Vehicle, next: usize, elapsed: f64) bool {
     const road_id = city.road_between[v.node][next];
     if (road_id < 0 or !city.roads[@intCast(road_id)].vehicles) return false;
     const horizontal = city.horizontal(v.node, next);
     if (city.degree(v.node) >= 3 and !green(v.node, horizontal, elapsed)) return false;
     if (!room(v, next)) return false;
+    var candidate = v;
+    candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] == 1) 1 else 0;
+    return !entries[laneKey(candidate, @intCast(road_id))];
+}
+
+fn enter(v: Vehicle, next: usize, elapsed: f64) bool {
+    if (!entryAllowed(v, next, elapsed)) return false;
+    const road_id = city.road_between[v.node][next];
     var candidate = v;
     candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] == 1) 1 else 0;
     entries[laneKey(candidate, @intCast(road_id))] = true;

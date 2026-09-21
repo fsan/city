@@ -4,15 +4,17 @@
 
 Groups: 0 city metrics; 1 properties; 2 districts; 3 residents; 4 companies; 5 streets; 6 orders; 7 ledger (newest first); 8 history (oldest retained first). The corresponding switches in `main.zig` are the field contract. Keep field numbers stable when extending it. District names use a UTF-8 pointer plus length.
 
+Passenger service outcomes are exposed by groups 18/19 (per stop), group 10 fields 35–40 (per line), and group 22 (per home district). They count real simulation transitions in `residents.zig`; report polling never increments them.
+
 Commands: init, update, set_speed, set_funding, apply_taxes, offer, revise, cancel_order; camera pan/rotate/zoom_at/reset_camera/focus/pick; select_resident and set_overlay. `quote` exposes each company's current estimated minimum and refusal reason for a draft. Money and order commands return success or an explicit validation result; errors never partly mutate a transaction.
 
 `draw` fills a reusable vertex buffer and returns vertex count. `vertex_pointer` plus memory exposes interleaved clip XYZ/RGB floats. UI refreshes twice per real-time second and only builds visible reports. Table cells are reused so refreshing a report does not steal keyboard focus. Snapshot history is recorded every 30 simulation seconds, up to 96 records; no invented pre-session history.
 
 ## Transport extension
 
-Groups 9–12 are transport policy/counters, bus lines, street nodes and vehicles. Existing group numbers remain stable. Resident fields 13–26 add mode (0 walk, 1 cycle, 2 car, 3 bus), wallet, income, car/bike ownership, bus wait, bus vehicle ID, parked car node, four departure scores (-1 unavailable), chosen bus line and parked bike node. Street fields 10–13 are vehicle count, queue count, smoothed pressure and allocation (0 mixed, 1 bus, 2 cycle).
+Groups 9–12 are transport policy/counters, bus lines, street nodes and vehicles. Existing group numbers remain stable. Resident fields 13–26 add mode (0 walk, 1 cycle, 2 car, 3 bus), wallet, income, car/bike ownership, bus wait, bus vehicle ID, parked car node, four departure scores (-1 unavailable), chosen bus line and parked bike node. Fields 30/31 expose an in-progress wait start timestamp (-1 not waiting) and full-bus mask (debug/verification). Street fields 10–13 are vehicle count, queue count, smoothed pressure and allocation (0 mixed, 1 bus, 2 cycle).
 
-Group 9 fields 0–4: fare cap, boarding subsidy, total paid subsidy, actual fare, node count; 5–8: active trips per mode; 9: people waiting at stops. Group 10 fields 0–8: active, stop count, boardings, cumulative revenue, costs, operator cash, fleet count, aboard, route version. Fields 16–31 are ordered stop node IDs. Group 11 fields 0–4: world x/z/elevation, screen x/y. Group 12 fields 0–10: active, x/z, speed, passengers, node/next, segment progress, line ID (-1 car), dwell, current lane.
+Group 9 fields 0–4: fare cap, boarding subsidy, total paid subsidy, actual fare, node count; 5–8: active trips per mode; 9: people waiting at stops. Group 10 fields 0–8: active, stop count, boardings, cumulative revenue, costs, operator cash, fleet count, aboard, route version. Fields 16–31 are ordered stop node IDs. Fields 35–40 are wait starts, completed waits, capacity denials, abandoned waits, mean completed wait (seconds), and abandoned-after-capacity for the current observation record. Group 11 fields 0–4: world x/z/elevation, screen x/y. Fields 5/6 are street ID and number; 7/8 are the kerbside stop world position, 9 is valid-stop, and 10/11 are the kerbside stop screen position. Group 12 fields 0–10: active, x/z, speed, passengers, node/next, segment progress, line ID (-1 car), dwell, current lane.
 
 Commands: `transport_policy(cap, subsidy)` validates bounds; `transport_select(id)` selects an overlay; `transport_draft(count)` and `transport_stop(index,node)` populate a draft; `transport_apply(line)` validates the complete draft atomically; `transport_edit_end()` hides the draft; `transport_remove(line)` withdraws service; `transport_lane(road,allocation)` changes allocation. `route_next(from,to)` returns the street path used by the editor and buses. `focus(12,id)` locates a vehicle. Overlay modes are 0 off, 1 street condition, 2 traffic pressure.
 
@@ -78,6 +80,30 @@ Groups 18 (current) and 19 (most recent retired route/window) use ID = line ID �
 | 7 | Mean eligible interval, -1 without samples |
 | 8 / 9 | Minimum / maximum eligible interval, -1 without samples |
 | 10 | Current physically waiting residents for this line/version/node; -1 for retired records |
+| 11 | Wait starts recorded during this route version |
+| 12 | Completed waits (actual boardings after waiting) |
+| 13 | Mean completed wait in simulation seconds, -1 without completed waits |
+| 14 / 15 | Minimum / maximum completed wait, -1 without completed waits |
+| 16 | Capacity denials: full in-service bus encounters while an eligible resident waited |
+| 17 | Abandoned waits: scheduled timeout |
+| 18 | Abandoned waits: timeout during closed hours |
+| 19 | Abandoned waits: fare no longer affordable |
+| 20 | Abandoned waits: route changed or service removed |
+| 21 | Abandoned waits that had already seen a full bus |
+| 22 | Total completed wait seconds |
+
+Group 22 uses the district ID as `id`:
+
+| Field | Value |
+| --- | --- |
+| 0 | Observed wait starts by residents whose home is in this district |
+| 1 | Completed waits |
+| 2 | Mean completed wait in simulation seconds, -1 without completed waits |
+| 3 | Capacity denials |
+| 4 | Abandoned waits |
+| 5 | Abandoned waits that had already seen a full bus |
+| 6 | Current waiting residents in this district |
+| 7 | Completed share of finished waits (completed / completed+abandoned), -1 with no finished waits |
 
 focus(11,node) locates a valid street node. Records are bounded to current plus most recent retired per line, each at most 16 stops. Route edits/withdrawal update immediately; coverage changes synchronize before arrivals on the next transport step. Daytime pairs across closed hours are omitted. Zero intervals mean genuine simultaneous visits, not missing data. Detailed event and retention semantics are in stop-regularity-slice.md.
 
@@ -118,4 +144,4 @@ Gap age uses acceptance or the current coverage-window opening until its first r
 
 To import, size-check the file, copy its bytes to that buffer, then call `save_load(length) -> u32`. Results: 0 success, 1 empty/oversized input, 2 malformed JSON/schema or parse-budget exhaustion, 3 unsupported format/version/rules, 4 inconsistent state. Parsing uses a separate bounded 64 MiB arena. All validation precedes live mutation. Unknown/duplicate fields and invalid enum tags are rejected. A failed import leaves the town unchanged.
 
-Successful load restores simulation speed and fixed-step remainder. `saved_resume_speed() -> f32` supplies the previous nonzero speed for Space after paused import. The browser clears UI drafts and refreshes report metadata only after success. `format = "Common Ground town"`, `version = 1`, `rules = "bellwether-2026-09-v1"`. Change compatibility identifiers when schema/rules change; there is no migration layer. See `save-load-slice.md` and the explicit `State` contract in `src/simulation/persistence.zig`.
+Successful load restores simulation speed and fixed-step remainder. `saved_resume_speed() -> f32` supplies the previous nonzero speed for Space after paused import. The browser clears UI drafts and refreshes report metadata only after success. `format = "Common Ground town"`, `version = 2`, `rules = "bellwether-2026-09-v2"`. Version 1 and other incompatible files are rejected with result 3; there is no migration layer. See `save-load-slice.md` and the explicit `State` contract in `src/simulation/persistence.zig`.

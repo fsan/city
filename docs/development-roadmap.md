@@ -1,10 +1,10 @@
 # Proposed development slices
 
-This is a proposed dependency order against the canonical scope, not authorization to implement all slices. Slices 1 and 2 are complete; slice 3 is the recommended next batch. Later entries need bounded specifications and may split further; reports, alerts, accessibility and balancing belong in each slice. Existing authored town size and population remain until growth is justified.
+This is a proposed dependency order against the canonical scope, not authorization to implement all slices. Slices 1–3 are complete; slice 4 is the recommended next batch. Later entries need bounded specifications and may split further; reports, alerts, accessibility and balancing belong in each slice. Existing authored town size and population remain until growth is justified.
 
 1. **Agreement regularity targets — complete:** optional targets, overdue diagnostics and retained agreement results; no financial penalties in this slice.
 2. **Save/load — complete:** versioned manual local files preserve towns, accounts, agreements, routes, observations and live journeys across sessions; no backend or autosave.
-3. **Passenger service outcomes:** actual waiting, full-bus rejections, abandoned waits and unequal access.
+3. **Passenger service outcomes — complete:** real wait starts/boardings, per-dwell capacity denials, abandonment causes and district comparison, with save/load and no payment changes.
 4. **Bus staffing and fleet investment:** recruitment, vehicle purchases and operating commitments.
 5. **Transport contract enforcement:** explicitly designed remedies and financial consequences, if authorized.
 6. **Civic calendar and realistic routines:** weekdays, shifts, weekends and longer budget periods.

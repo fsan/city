@@ -228,6 +228,8 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 27 => @floatFromInt(p.origin),
                 28 => @floatFromInt(p.destination_building),
                 29 => @floatFromInt(p.origin_building),
+                30 => p.bus_wait_start,
+                31 => @floatFromInt(p.bus_full_mask),
                 else => -1,
             };
         },
@@ -366,6 +368,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                     break :blk @floatFromInt(total);
                 },
                 10...14 => @floatFromInt(transport.serviceCount(id, field - 10)),
+                35...40 => linePassengerTotal(id, field),
 
                 32 => @floatFromInt(l.company),
                 33 => @floatFromInt(l.window),
@@ -376,6 +379,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
         },
         11 => {
             if (id >= city.node_count) return -1;
+            const stop = city.stopPoint(id);
             return switch (field) {
                 0 => city.nodes[id].x,
                 1 => city.nodes[id].z,
@@ -384,6 +388,11 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 4 => scene.project(id, 1),
                 5 => @floatFromInt(city.nodes[id].street),
                 6 => @floatFromInt(city.nodes[id].number),
+                7 => stop.x,
+                8 => stop.z,
+                9 => if (city.validStop(id)) 1 else 0,
+                10 => scene.projectWorld(stop.x, city.nodes[id].y, stop.z, 0),
+                11 => scene.projectWorld(stop.x, city.nodes[id].y, stop.z, 1),
                 else => -1,
             };
         },
@@ -471,6 +480,39 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                     }
                     break :blk @floatFromInt(total);
                 },
+                11 => @floatFromInt(s.wait_starts),
+                12 => @floatFromInt(s.completed),
+                13 => if (s.completed > 0) s.wait_total / @as(f64, @floatFromInt(s.completed)) else -1,
+                14 => s.wait_min,
+                15 => s.wait_max,
+                16 => @floatFromInt(s.capacity_denials),
+                17 => @floatFromInt(s.abandoned_timeout),
+                18 => @floatFromInt(s.abandoned_offhours),
+                19 => @floatFromInt(s.abandoned_fare),
+                20 => @floatFromInt(s.abandoned_service),
+                21 => @floatFromInt(s.abandoned_after_capacity),
+                22 => s.wait_total,
+                else => -1,
+            };
+        },
+        22 => {
+            if (id >= city.district_count) return -1;
+            const d = &residents.district_outcomes[id];
+            return switch (field) {
+                0 => @floatFromInt(d.wait_starts),
+                1 => @floatFromInt(d.completed),
+                2 => if (d.completed > 0) d.wait_total / @as(f64, @floatFromInt(d.completed)) else -1,
+                3 => @floatFromInt(d.capacity_denials),
+                4 => @floatFromInt(d.abandoned),
+                5 => @floatFromInt(d.abandoned_after_capacity),
+                6 => blk: {
+                    var total: usize = 0;
+                    for (&residents.people) |p| {
+                        if (city.buildings[p.home].district == id and p.mode == 3 and p.phase == 1 and p.bus < 0 and p.bus_stage == 0 and p.node == p.next and p.node == p.boarding) total += 1;
+                    }
+                    break :blk @floatFromInt(total);
+                },
+                7 => if (d.completed + d.abandoned > 0) @as(f64, @floatFromInt(d.completed)) / @as(f64, @floatFromInt(d.completed + d.abandoned)) else -1,
                 else => -1,
             };
         },
@@ -506,6 +548,34 @@ export fn read(group: u32, id: u32, field: u32) f64 {
     }
 }
 
+fn linePassengerTotal(line: usize, field: u32) f64 {
+    if (line >= transport.max_lines) return -1;
+    const o = &transport.observations[line];
+    var starts: u64 = 0;
+    var completed: u64 = 0;
+    var wait_total: f64 = 0;
+    var capacity: u64 = 0;
+    var abandoned: u64 = 0;
+    var after: u64 = 0;
+    for (o.stops[0..o.count]) |stop| {
+        starts += stop.wait_starts;
+        completed += stop.completed;
+        wait_total += stop.wait_total;
+        capacity += stop.capacity_denials;
+        abandoned += @as(u64, stop.abandoned_timeout) + stop.abandoned_offhours + stop.abandoned_fare + stop.abandoned_service;
+        after += stop.abandoned_after_capacity;
+    }
+    return switch (field) {
+        35 => @floatFromInt(starts),
+        36 => @floatFromInt(completed),
+        37 => @floatFromInt(capacity),
+        38 => @floatFromInt(abandoned),
+        39 => if (completed > 0) wait_total / @as(f64, @floatFromInt(completed)) else -1,
+        40 => @floatFromInt(after),
+        else => -1,
+    };
+}
+
 export fn select_resident(id: u32) void {
     scene.selected_person = if (id < city.population) @intCast(id) else -1;
 }
@@ -531,10 +601,14 @@ export fn transport_edit_end() void {
 }
 export fn transport_apply(id: u32) bool {
     const applied = transport.apply(id);
-    if (applied) game.agreements.checkRoute(id, game.elapsed);
+    if (applied) {
+        residents.closeLineWaits(id, game.elapsed);
+        game.agreements.checkRoute(id, game.elapsed);
+    }
     return applied;
 }
 export fn transport_remove(id: u32) void {
+    if (id < transport.max_lines) residents.closeLineWaits(id, game.elapsed);
     game.agreements.cancel(id, game.elapsed, true);
     transport.remove(id);
 }

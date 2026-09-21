@@ -1,8 +1,8 @@
-# Next agent kickoff — save/load complete; passenger outcomes next
+# Next agent kickoff — save/load and passenger outcomes complete; staffing next
 
-Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Measured arrivals, optional agreement regularity targets and **manual local save/load (slice 2) are complete**. Read docs/save-load-slice.md, docs/regularity-target-slice.md and docs/development-roadmap.md. The roadmap lists 39 proposed batches; slice 3 (passenger service outcomes) is next. The list is not authorization to implement all batches.
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Measured arrivals, optional agreement regularity targets, **manual local save/load (slice 2)** and **passenger service outcomes (slice 3) are complete**. Read docs/passenger-outcomes-slice.md, docs/save-load-slice.md, docs/regularity-target-slice.md and docs/development-roadmap.md. The roadmap lists 39 proposed batches; slice 4 (bus staffing and fleet investment) is next. The list is not authorization to implement all batches.
 
-Inspect current code, git status and recent commits before editing. Save/load started at e8f1a31 with uncommitted regularity-target work already present. Both slices remain uncommitted; preserve them and any subsequent work. Do not reset, rewrite history or push without a request.
+Inspect current code, git status and recent commits before editing. Save/load started at e8f1a31 with uncommitted regularity-target work already present. These slices remain uncommitted; preserve them and any subsequent work. Do not reset, rewrite history or push without a request.
 
 ## Read first
 
@@ -51,15 +51,15 @@ Management → Save / load town (also Controls) exports or imports explicit vers
 
 Snapshots preserve clock, speed/resume/remainder/deadlines, camera, graph and stable IDs/routing tables, zoning, residents/journeys/riders, operators/vehicles/shifts, taxes/ledger/reserves, orders/crews, routes/observations/agreements/targets/history/next IDs. Parsing is bounded (16 MiB file, 64 MiB arena), staged and validated before commit. Invalid imports leave the live town unchanged. UI drafts/selections are excluded and cleared on success. See docs/save-load-slice.md for verification and limits.
 
-## Next bounded slice — passenger service outcomes (slice 3)
+## Completed passenger outcomes slice
 
-When authorized to continue, implement measured passenger outcomes: actual completed waiting times, full-bus encounters and abandoned waits, with a bounded per-line/stop report and district access comparison where existing trip evidence supports it. Inspect residents.zig boarding, waiting and walking-fallback transitions before writing the short slice note. Define denominators and missing/insufficient evidence explicitly; do not infer good passenger service from vehicle arrivals alone.
+Transport Authority now reports real passenger transitions in addition to vehicle arrivals. Wait starts occur on the first fixed step at the boarding stop; completed waits are actual boardings; current waiting is separate live evidence. Per route version and stop, Zig retains wait starts, completed waits, completed wait total/mean/min/max, per-dwell capacity denials, scheduled timeout, closed-hours timeout, unaffordable fare, route/service removal, and abandoned-after-capacity. Full buses count once per waiting resident per dwell, using a persisted mask; a later boarding does not erase the denial. Records use the existing current/most-recent-retired stop observation slots, and route edits/withdrawal close in-progress waits against the old route version before archiving. District comparison groups observed waits by home district and is explicitly not population-wide access.
 
-Count from real simulation transitions, not UI polling. Specify when a wait starts/ends, distinguish still waiting from completed waits, and avoid counting the same full bus every fixed step. Distinguish capacity denial, route/service removal, off-hours and existing timeout/fallback causes where those causes are actually identifiable. Keep statistics tied to stable route versions; retired-route handling and reset semantics must be explicit. Preserve current boarding order, fares, dispatch, routing, agreement acceptance and payment rules.
+Save format is now `version: 2`, `rules: "bellwether-2026-09-v2"`. Version 1 files are rejected as incompatible. Every new counter and in-progress wait is persisted and validated. No fare, boarding order, dispatch, routing, agreement or payment rule changed. See docs/passenger-outcomes-slice.md.
 
-Completion: Zig-owned bounded measurements and scalar ABI, clear Transport Authority reports with usable labels/units/denominators, current waiting versus completed evidence, no-observation states, and save/load support for every new counter and in-progress wait. Update save version/rules if the schema changes; reject incompatible files explicitly. Verify actual boarding/alighting, full buses without repeated duplicate denials, walking fallback, route edits/withdrawal, daytime closure/reopening, restored in-progress waits and accounting/passenger conservation. Use Docker builds, temporary focused simulation checks and a fresh browser tab. Update documentation and this kickoff.
+## Proposed next slice — bus staffing and fleet investment (slice 4)
 
-No new timetable, FIFO boarding policy, transfers, fleet/staff purchases, contract penalties, demographic model, backend/cloud/autosave or permanent test suite. Do not expand into other roadmap slices without authorization.
+If the user asks to continue, inspect operators.zig, transport dispatch/clearance, agreements acceptance and persistence before writing a bounded slice note. This proposed slice would add recruitment, vehicle purchases and operating commitments with explicit cash, driver, fleet, depreciation/maintenance and save/load semantics. It must not silently import later roadmap items such as contract penalties, timetables, transfers or backend persistence. The user has not authorized this slice yet.
 
 ## Code map and cautions
 
@@ -77,7 +77,7 @@ No new timetable, FIFO boarding policy, transfers, fleet/staff purchases, contra
 - `src/simulation/operators.zig`: independent accounts, day/night cohorts, service-window integral.
 - `transport.zig`: physical fleet, original bus ownership, clearance, drivers, fares/costs, delivered seconds. Keep independent of finance/residents.
 - `agreements.zig`: quote/acceptance, settlement, window-aware targets and history.
-- `residents.zig`: actual boarding/alighting and safe walking fallback.
+- `residents.zig`: actual boarding/alighting, safe walking fallback, passenger wait transitions and district outcome counters. `closeLineWaits(line,time)` is called by route apply/remove so old-version waits are attributed before archiving.
 - `game.zig`: transport → residents → agreement settlement, then subsidy ledger coordination.
 - `main.zig`: validated exports and scalar ABI. Preserve field numbers. Group 10 fields 32–34 expose company/window/dispatch blocker; groups 13/17 fields 21–22 window/target; group 14 account/driver breakdown; group 12 fields 11–13 bus owner/retirement/cohort.
 - `web/agreements.js`: quotes, accounts, coverage, current/closed delivery. `web/transport.js`: routes/map gestures. `web/reports.js`: municipal ledger.
@@ -87,7 +87,9 @@ Never iterate the large resident array by value; it previously exhausted the WAS
 
 ## Verification and remaining limits
 
-Save/load: Docker ReleaseSafe build, initial/active/paused round trips, nine byte-identical continuation checkpoints over 720 simulated seconds, active repair completion, construction/zoning, clearing/handover, payment/reserve/rider identity checks and invalid-file atomicity passed. A 640-node fixture exports within 16 MiB. Browser import restores pause and 4× resume; malformed import preserves the live town. See docs/save-load-slice.md for full current results. Temporary scripts live outside the repo and may disappear.
+Save/load: Docker ReleaseSafe build, initial/active/paused round trips, nine byte-identical continuation checkpoints over 720 simulated seconds, active repair completion, construction/zoning, clearing/handover, payment/reserve/rider identity checks and invalid-file atomicity passed. A 640-node fixture exports within 16 MiB. Browser import restores pause and 4× resume; malformed import preserves the live town. The version-2 schema preserves in-progress waits and passenger counters. See docs/save-load-slice.md for full current results. Temporary scripts live outside the repo and may disappear.
+
+Passenger outcomes: an isolated temporary Zig test forced a full bus and repeated fixed steps, confirming one capacity denial per bus dwell plus service-removal, closed-hours, scheduled-timeout and fare-abandonment buckets and exact boarding completion. Served-WASM checks reconfirmed wait accounting (starts = completed + abandoned + waiting), line boardings equal completed waits where no route history exists, rider/passenger conservation, operator account identities, route-edit/withdrawal attribution to the retired record, daytime closure/reopening abandonment, and save/load continuation of a live wait. The Docker watch loop now builds with disposable local and global caches; an earlier stale-cache path could publish an old WASM while reporting success. No permanent test suite was added.
 
 Previous regularity-target batch: Docker ReleaseSafe build/startup, JS syntax/diff and fresh-browser checks passed. /tmp/city-regularity-target-check.mjs reconstructed 28 post-acceptance visits and 20 eligible pairs, including four daytime omissions and four all-day midnight pairs, checked atomic invalid terms, paused suspension, grace/overdue, expiry, reset and history rollover. Paired target-on/off simulations were financially and physically identical over 720 simulation seconds. Docker-compiled /tmp/city-regularity-edge/edge.zig (outside repo, copied sources) checked simultaneous events, exact thresholds, wrong operator, same-time duplicate prevention, expiry clipping and sticky suspension. Capital and original stop checks still passed, including physical repair, protected reserves and 241 passenger samples. Browser checks covered invalid input, offer, expiry, archived exceeded intervals, locate, paused route suspension and cancellation; no warnings/errors captured. Temporary fixtures may disappear.
 
@@ -103,11 +105,11 @@ Driver staff are aggregate cohorts, empty deployment is abstracted, clearance/re
 
 ## Numbered development sequence and follow-up slices
 
-The original numbering is retained so requests such as “work on slice 3” are unambiguous. Slices 1–2 are complete; **slice 3 is next**. Later slices are proposed work, not authorization to implement the whole list. Inspect the actual code and write a bounded slice note before starting each one; later entries may need subdivision. Keep `docs/development-roadmap.md` and this list consistent when priorities change.
+The original numbering is retained so requests such as “work on slice 3” are unambiguous. Slices 1–3 are complete; **slice 4 is next**. Later slices are proposed work, not authorization to implement the whole list. Inspect the actual code and write a bounded slice note before starting each one; later entries may need subdivision. Keep `docs/development-roadmap.md` and this list consistent when priorities change.
 
 1. **Agreement regularity targets — complete:** optional targets, overdue diagnostics and retained agreement results; no financial penalties in this slice.
 2. **Save/load — complete:** versioned manual local files preserve towns, accounts, agreements, routes, observations and live journeys across sessions; no backend or autosave.
-3. **Passenger service outcomes:** actual waiting, full-bus rejections, abandoned waits and unequal access.
+3. **Passenger service outcomes — complete:** real wait starts/boardings, capacity denials, abandonment causes, district comparison, save/load and reports; no payment changes.
 4. **Bus staffing and fleet investment:** recruitment, vehicle purchases and operating commitments.
 5. **Transport contract enforcement:** explicitly designed remedies and financial consequences, if authorized.
 6. **Civic calendar and realistic routines:** weekdays, shifts, weekends and longer budget periods.

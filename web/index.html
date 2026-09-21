@@ -850,6 +850,17 @@
             <p id="stop-record-status" class="note"></p>
             <div style="overflow-x:auto"><table><thead><tr><th>Stop · locate</th><th>Waiting now</th><th>Visits</th><th>Latest arrival</th><th>Intervals</th><th>Last eligible / mean</th><th>Min–max</th></tr></thead><tbody id="stop-observation-rows"></tbody></table></div>
           </details>
+          <details id="passenger-outcomes" open>
+            <summary>Passenger waiting outcomes</summary>
+            <p class="note">Completed waits are actual boardings at the selected route version. Capacity denials count a full in-service bus once per waiting resident per dwell; a later boarding does not erase the denial. Abandonments use the simulation's identified causes. Current waiting is live and excluded from completed averages.</p>
+            <p id="passenger-outcome-summary" class="note"></p>
+            <div style="overflow-x:auto"><table aria-label="Passenger waiting outcomes by stop"><thead><tr><th>Stop · locate</th><th>Waiting now</th><th>Completed waits</th><th>Mean completed</th><th>Range</th><th>Capacity denials</th><th>Abandoned</th></tr></thead><tbody id="passenger-outcome-rows"></tbody></table></div>
+          </details>
+          <details id="district-access" open>
+            <summary>District bus-wait comparison</summary>
+            <p class="note">Observed waits grouped by each rider's home district. This is not population-wide access and excludes trips that chose walking, cycling or driving. Abandoned-after-capacity is factual context, not proof that capacity alone caused the abandonment.</p>
+            <table aria-label="Observed bus waits by home district"><thead><tr><th>District</th><th>Observed waits</th><th>Completed</th><th>Mean completed</th><th>Capacity denials</th><th>Abandoned</th><th>Abandoned after capacity</th></tr></thead><tbody id="district-access-rows"></tbody></table>
+          </details>
           <div class="transport-controls">
             <button id="line-edit">Edit route on map</button
             ><button id="line-clear">Clear map selection</button>

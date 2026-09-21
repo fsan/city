@@ -117,6 +117,32 @@ pub fn sidewalk(n: usize) Vec {
     const len = hypot(dx, dz);
     return .{ .x = nodes[n].x - dz / len * 2.3, .z = nodes[n].z + dx / len * 2.3 };
 }
+fn insideBuilding(x: f32, z: f32, b: Building) bool {
+    return x >= b.x and x <= b.x + b.width and z >= b.z and z <= b.z + b.depth;
+}
+
+pub fn stopPoint(n: usize) Vec {
+    var p = sidewalk(n);
+    var flipped = false;
+    for (buildings) |b| {
+        if (insideBuilding(p.x, p.z, b)) {
+            flipped = true;
+            break;
+        }
+    }
+    if (flipped) p = .{ .x = 2 * nodes[n].x - p.x, .z = 2 * nodes[n].z - p.z };
+    return p;
+}
+
+pub fn validStop(n: usize) bool {
+    if (n >= node_count or degree(n) == 0) return false;
+    const p = stopPoint(n);
+    if (p.x < 0 or p.x > size_x or p.z < 0 or p.z > size_z) return false;
+    for (buildings) |b| if (insideBuilding(p.x, p.z, b)) return false;
+    for (roads) |r| if ((r.a == n or r.b == n) and r.pedestrians) return true;
+    return false;
+}
+
 pub fn init() void {
     node_count = 0;
     road_count = 0;

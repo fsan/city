@@ -1,9 +1,18 @@
 const transport = @import("transport.zig");
 const city = @import("../scene/city.zig");
-pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0, wallet: f64 = 0, income: f64 = 0, owns_car: bool = false, owns_bike: bool = false, car_node: usize = 0, bike_node: usize = 0, scores: [4]f32 = @splat(-1), crew: bool = false, chosen: bool = false, bus_line: i32 = -1, bus: i32 = -1, boarding: usize = 0, exit_node: usize = 0, bus_version: u32 = 0, bus_wait: f32 = 0, bus_stage: u8 = 0, walk_side: f32 = 1, home: usize, current_building: usize = 0, destination_building: usize = 0, origin_building: usize = 0, employer: i32 = -1, origin: usize = 0, destination: usize, node: usize, next: usize, wait: f32, trips: u32 = 0, travel: f32 = 0, last_trip: f32 = 0, order: i32 = -1, arrived: bool = false };
+pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0, wallet: f64 = 0, income: f64 = 0, owns_car: bool = false, owns_bike: bool = false, car_node: usize = 0, bike_node: usize = 0, scores: [4]f32 = @splat(-1), crew: bool = false, chosen: bool = false, bus_line: i32 = -1, bus: i32 = -1, boarding: usize = 0, exit_node: usize = 0, bus_version: u32 = 0, bus_wait: f32 = 0, bus_wait_start: f64 = -1, bus_full_mask: u8 = 0, bus_stage: u8 = 0, walk_side: f32 = 1, home: usize, current_building: usize = 0, destination_building: usize = 0, origin_building: usize = 0, employer: i32 = -1, origin: usize = 0, destination: usize, node: usize, next: usize, wait: f32, trips: u32 = 0, travel: f32 = 0, last_trip: f32 = 0, order: i32 = -1, arrived: bool = false };
 pub const Company = struct { building: usize, employees: usize = 0, capacity: usize, cash: f64 = 45000, contractor: bool, crew: [4]usize = .{ 0, 0, 0, 0 }, crew_count: usize = 0, order: i32 = -1, margin: f64, labour: f64, costs: f64 = 0 };
+pub const DistrictOutcome = struct {
+    wait_starts: u32 = 0,
+    completed: u32 = 0,
+    wait_total: f64 = 0,
+    capacity_denials: u32 = 0,
+    abandoned: u32 = 0,
+    abandoned_after_capacity: u32 = 0,
+};
 pub var people: [city.population]Person = undefined;
 pub var companies: [city.buildings.len]Company = undefined;
+pub var district_outcomes: [city.district_count]DistrictOutcome = @splat(.{});
 pub var company_count: usize = 0;
 pub var pedestrians: [city.max_roads]usize = @splat(0);
 pub var walking: usize = 0;
@@ -12,6 +21,7 @@ pub fn init() void {
     company_count = 0;
     employed = 0;
     walking = 0;
+    district_outcomes = @splat(.{});
     var homes: [city.buildings.len * 6]usize = undefined;
     var home_count: usize = 0;
     for (&city.buildings, 0..) |*b, i| {
@@ -73,6 +83,107 @@ pub fn release(company: usize) void {
         people[id].destination_building = c.building;
     }
     c.order = -1;
+}
+
+fn bump(counter: *u32) void {
+    if (counter.* < 1_000_000_000) counter.* += 1;
+}
+
+fn outcomeStop(line: usize, version: u32, node: usize) ?*transport.StopObservation {
+    if (line >= transport.max_lines) return null;
+    const current = &transport.observations[line];
+    if (current.version == version) {
+        for (current.nodes[0..current.count], 0..) |candidate, i| if (candidate == node) return &current.stops[i];
+    }
+    const previous = &transport.previous_observations[line];
+    if (previous.version == version) {
+        for (previous.nodes[0..previous.count], 0..) |candidate, i| if (candidate == node) return &previous.stops[i];
+    }
+    return null;
+}
+
+fn outcomeDistrict(p: *const Person) *DistrictOutcome {
+    const district = @min(city.buildings[p.home].district, city.district_count - 1);
+    return &district_outcomes[district];
+}
+
+pub const AbandonCause = enum { timeout, offhours, fare, service };
+
+pub fn beginWait(p: *Person, time: f64) void {
+    p.bus_wait_start = time;
+    p.bus_full_mask = 0;
+    if (p.bus_line >= 0 and p.bus_line < transport.max_lines) {
+        if (outcomeStop(@intCast(p.bus_line), p.bus_version, p.boarding)) |stop| bump(&stop.wait_starts);
+    }
+    bump(&outcomeDistrict(p).wait_starts);
+}
+
+pub fn completeWait(p: *Person, time: f64) void {
+    if (p.bus_wait_start < 0) return;
+    const duration = @max(0, time - p.bus_wait_start);
+    if (p.bus_line >= 0 and p.bus_line < transport.max_lines) {
+        if (outcomeStop(@intCast(p.bus_line), p.bus_version, p.boarding)) |stop| {
+            bump(&stop.completed);
+            stop.wait_total += duration;
+            if (stop.completed == 1) {
+                stop.wait_min = duration;
+                stop.wait_max = duration;
+            } else {
+                stop.wait_min = @min(stop.wait_min, duration);
+                stop.wait_max = @max(stop.wait_max, duration);
+            }
+        }
+    }
+    const district = outcomeDistrict(p);
+    bump(&district.completed);
+    district.wait_total += duration;
+    p.bus_wait_start = -1;
+    p.bus_full_mask = 0;
+}
+
+pub fn recordFullBuses(p: *Person, count: usize) void {
+    if (count == 0) return;
+    if (p.bus_line >= 0 and p.bus_line < transport.max_lines) {
+        if (outcomeStop(@intCast(p.bus_line), p.bus_version, p.boarding)) |stop| {
+            for (0..count) |_| bump(&stop.capacity_denials);
+        }
+    }
+    const district = outcomeDistrict(p);
+    for (0..count) |_| bump(&district.capacity_denials);
+}
+
+pub fn abandonWait(p: *Person, time: f64, cause: AbandonCause) void {
+    _ = time;
+    if (p.bus_wait_start < 0) return;
+    const had_capacity = p.bus_full_mask != 0;
+    if (p.bus_line >= 0 and p.bus_line < transport.max_lines) {
+        if (outcomeStop(@intCast(p.bus_line), p.bus_version, p.boarding)) |stop| {
+            switch (cause) {
+                .timeout => bump(&stop.abandoned_timeout),
+                .offhours => bump(&stop.abandoned_offhours),
+                .fare => bump(&stop.abandoned_fare),
+                .service => bump(&stop.abandoned_service),
+            }
+            if (had_capacity) bump(&stop.abandoned_after_capacity);
+        }
+    }
+    const district = outcomeDistrict(p);
+    bump(&district.abandoned);
+    if (had_capacity) bump(&district.abandoned_after_capacity);
+    p.bus_wait_start = -1;
+    p.bus_full_mask = 0;
+}
+
+// Route edits/withdrawal invalidate waiting service immediately. Attribute the
+// abandonment to the old observation record before transport archives it.
+pub fn closeLineWaits(line: usize, time: f64) void {
+    if (line >= transport.max_lines) return;
+    for (&people) |*p| {
+        if (p.bus_line != @as(i32, @intCast(line)) or p.mode != 3 or p.phase != 1 or p.bus >= 0) continue;
+        abandonWait(p, time, .service);
+        p.mode = 0;
+        p.bus_stage = 2;
+    }
 }
 fn moveTo(p: *Person, x: f32, y: f32, z: f32, speed: f32, dt: f32) bool {
     const dx = x - p.x;
@@ -154,12 +265,27 @@ pub fn update(dt: f32, elapsed: f64) void {
                 continue;
             }
             if (!line.active or line.version != p.bus_version) {
+                abandonWait(p, elapsed, .service);
                 p.mode = 0;
                 p.bus_stage = 2;
             }
             if (p.bus_stage == 0 and p.node == p.boarding and p.node == p.next) {
+                if (p.bus_wait_start < 0) beginWait(p, elapsed);
                 p.bus_wait += dt;
                 p.travel += dt;
+                if (p.wallet >= transport.fare()) {
+                    var mask: u8 = 0;
+                    for (0..transport.buses_per_line) |slot| {
+                        const bus = transport.car_count + @as(usize, @intCast(p.bus_line)) * transport.buses_per_line + slot;
+                        const v = transport.vehicles[bus];
+                        if (v.active and !v.retiring and v.line == p.bus_line and v.version == p.bus_version and v.company == line.company and v.node == p.node and v.node == v.next and v.dwell > 0 and v.passengers >= 24)
+                            mask |= @as(u8, 1) << @intCast(slot);
+                    }
+                    const fresh = mask & ~p.bus_full_mask;
+                    if (fresh != 0) recordFullBuses(p, @popCount(fresh));
+                    p.bus_full_mask = mask;
+                } else p.bus_full_mask = 0;
+                var boarded = false;
                 for (0..transport.buses_per_line) |slot| {
                     const bus = transport.car_count + @as(usize, @intCast(p.bus_line)) * transport.buses_per_line + slot;
                     const v = transport.vehicles[bus];
@@ -167,12 +293,21 @@ pub fn update(dt: f32, elapsed: f64) void {
                         p.wallet -= transport.fare();
                         p.bus = @intCast(bus);
                         p.bus_stage = 1;
+                        boarded = true;
+                        completeWait(p, elapsed);
                         break;
                     }
                 }
-                if (p.bus_wait > 180 or p.wallet < transport.fare()) {
-                    p.mode = 0;
-                    p.bus_stage = 2;
+                if (!boarded) {
+                    if (p.wallet < transport.fare()) {
+                        abandonWait(p, elapsed, .fare);
+                        p.mode = 0;
+                        p.bus_stage = 2;
+                    } else if (p.bus_wait > 180) {
+                        abandonWait(p, elapsed, if (transport.operators.scheduled(line.window, elapsed)) .timeout else .offhours);
+                        p.mode = 0;
+                        p.bus_stage = 2;
+                    }
                 }
                 continue;
             }
@@ -283,6 +418,8 @@ fn choose(p: *Person) void {
     p.mode = 0;
     p.bus = -1;
     p.bus_wait = 0;
+    p.bus_wait_start = -1;
+    p.bus_full_mask = 0;
     p.bus_stage = 0;
     p.scores = @splat(-1);
     if (p.crew or p.order >= 0) return;

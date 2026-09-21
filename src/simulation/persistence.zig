@@ -36,6 +36,7 @@ const Citizens = struct {
     walking: usize,
     employed: usize,
     pedestrians: []const usize,
+    district_outcomes: []const residents.DistrictOutcome,
 };
 const Mobility = struct {
     vehicles: []const transport.Vehicle,
@@ -101,12 +102,12 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 1,
-        .rules = "bellwether-2026-09-v1",
+        .version = 2,
+        .rules = "bellwether-2026-09-v2",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = &city.buildings, .parcels = parcels.storage[0..parcels.count], .next_node = next_rows[0..city.node_count], .walk_next = walk_rows[0..city.node_count], .distance = distance_rows[0..city.node_count] },
-        .citizens = .{ .people = &residents.people, .companies = residents.companies[0..residents.company_count], .walking = residents.walking, .employed = residents.employed, .pedestrians = residents.pedestrians[0..city.road_count] },
+        .citizens = .{ .people = &residents.people, .companies = residents.companies[0..residents.company_count], .walking = residents.walking, .employed = residents.employed, .pedestrians = residents.pedestrians[0..city.road_count], .district_outcomes = &residents.district_outcomes },
         .mobility = .{ .vehicles = &transport.vehicles, .lines = &transport.lines, .accounts = &operators.accounts, .observations = &transport.observations, .previous_observations = &transport.previous_observations, .lanes = lane_values[0..city.road_count], .occupancy = transport.occupancy[0..city.road_count], .queues = transport.queues[0..city.road_count], .congestion = transport.congestion[0..city.road_count], .fare_cap = transport.fare_cap, .subsidy = transport.subsidy, .subsidy_total = transport.subsidy_total },
         .treasury = .{ .cash = finance.cash, .reserved = finance.reserved, .residential_rate = finance.residential_rate, .commercial_rate = finance.commercial_rate, .funding = finance.funding, .active_funding = finance.active_funding, .maintenance_paid = finance.maintenance_paid, .collected = finance.collected, .spent = finance.spent, .arrears = &finance.arrears, .entry_count = finance.entry_count, .entries = finance.entries[0..@min(finance.entry_count, finance.entries.len)] },
         .services = .{ .orders = contracts.orders[0..contracts.count], .next_review = contracts.next_review, .current = &agreements.agreements, .history = agreements.history[0..@min(agreements.history_count, agreements.history.len)], .history_count = agreements.history_count, .next_number = agreements.next_number },
@@ -227,7 +228,7 @@ fn validate(s: *const State) bool {
         people.len != city.population or companies.len == 0 or companies.len > city.buildings.len or
         m.vehicles.len != transport.vehicles.len or m.lines.len != transport.max_lines or m.accounts.len != 3 or
         m.observations.len != transport.max_lines or m.previous_observations.len != transport.max_lines or
-        m.lanes.len != roads.len or m.occupancy.len != roads.len or m.queues.len != roads.len or m.congestion.len != roads.len or s.citizens.pedestrians.len != roads.len or
+        m.lanes.len != roads.len or m.occupancy.len != roads.len or m.queues.len != roads.len or m.congestion.len != roads.len or s.citizens.pedestrians.len != roads.len or s.citizens.district_outcomes.len != city.district_count or
         f.arrears.len != city.buildings.len or f.entries.len != @min(f.entry_count, 1024) or f.entry_count == 0 or
         s.trust.len != city.district_count or s.history.len != @min(s.history_count, 96) or
         services.orders.len > 64 or services.current.len != 8 or services.history.len != @min(services.history_count, 64) or services.next_number == 0) return false;
@@ -236,6 +237,9 @@ fn validate(s: *const State) bool {
         !between(f.residential_rate, 0, 5) or !between(f.commercial_rate, 0, 5) or !between(f.maintenance_paid, 0, 1) or f.collected < 0 or f.spent < 0) return false;
     for (f.arrears) |v| if (v < 0) return false;
     for (s.trust) |v| if (!between(v, 0, 100)) return false;
+    for (s.citizens.district_outcomes) |d| {
+        if (d.completed > d.wait_starts or d.abandoned > d.wait_starts - d.completed or d.abandoned_after_capacity > d.abandoned or d.wait_total < 0 or (d.completed == 0 and d.wait_total != 0)) return false;
+    }
     for (&edges) |*row| @memset(row, -1);
     for (town.nodes) |node| if (!between(node.x, 0, city.size_x) or !between(node.z, 0, city.size_z) or node.street >= town.street_count or !near(node.y, city.elevation(node.x, node.z))) return false;
     for (roads, 0..) |road, i| {
@@ -261,7 +265,12 @@ fn validate(s: *const State) bool {
     for (people) |*p| {
         if (p.phase > 3 or p.mode > 3 or p.bus_stage > 2 or p.node >= n or p.next >= n or p.destination >= n or p.origin >= n or p.car_node >= n or p.bike_node >= n or p.boarding >= n or p.exit_node >= n or
             p.home >= town.buildings.len or p.current_building >= town.buildings.len or p.origin_building >= town.buildings.len or p.destination_building >= town.buildings.len or
-            !index(p.employer, companies.len) or !index(p.order, services.orders.len) or !index(p.bus_line, 8) or !index(p.bus, m.vehicles.len) or p.wallet < 0 or p.income <= 0 or p.bus_wait < 0 or p.travel < 0 or p.last_trip < 0) return false;
+            !index(p.employer, companies.len) or !index(p.order, services.orders.len) or !index(p.bus_line, 8) or !index(p.bus, m.vehicles.len) or p.wallet < 0 or p.income <= 0 or p.bus_wait < 0 or p.travel < 0 or p.last_trip < 0 or
+            !between(p.bus_wait_start, -1, c.elapsed) or p.bus_full_mask > 7) return false;
+        const waiting = p.mode == 3 and p.phase == 1 and p.bus < 0 and p.bus_stage == 0 and p.node == p.next and p.node == p.boarding;
+        // A resident can reach the stop one fixed step before beginWait records
+        // the wait. An active timestamp must still belong to a waiting person.
+        if (p.bus_wait_start >= 0 and !waiting) return false;
         if (p.mode == 3 and p.bus_line < 0) return false;
         if (p.node != p.next and edges[p.node][p.next] < 0) return false;
         if (p.bus_stage == 1 and p.bus < 0) return false;
@@ -324,7 +333,9 @@ fn validate(s: *const State) bool {
         for (o.nodes[0..o.count], 0..) |node, i| {
             if (node >= n) return false;
             const r = &o.stops[i];
-            if (r.intervals > r.visits -| 1 or !between(r.latest, -1, c.elapsed) or r.total < 0 or (r.visits == 0) != (r.latest == -1) or (r.intervals == 0) != (r.last_interval == -1) or (r.intervals == 0) != (r.minimum == -1) or (r.intervals == 0) != (r.maximum == -1) or r.minimum > r.maximum) return false;
+            const abandoned = @as(u64, r.abandoned_timeout) + r.abandoned_offhours + r.abandoned_fare + r.abandoned_service;
+            if (r.intervals > r.visits -| 1 or !between(r.latest, -1, c.elapsed) or r.total < 0 or (r.visits == 0) != (r.latest == -1) or (r.intervals == 0) != (r.last_interval == -1) or (r.intervals == 0) != (r.minimum == -1) or (r.intervals == 0) != (r.maximum == -1) or r.minimum > r.maximum or
+                r.completed > r.wait_starts or abandoned > r.wait_starts - r.completed or r.abandoned_after_capacity > abandoned or r.wait_total < 0 or (r.completed == 0) != (r.wait_min == -1) or (r.completed == 0) != (r.wait_max == -1) or r.wait_min > r.wait_max or (r.completed == 0 and r.wait_total != 0)) return false;
         }
     };
     var reserved: f64 = 0;
@@ -400,6 +411,7 @@ fn commit(s: *const State) void {
     residents.employed = s.citizens.employed;
     @memset(&residents.pedestrians, 0);
     @memcpy(residents.pedestrians[0..city.road_count], s.citizens.pedestrians);
+    @memcpy(&residents.district_outcomes, s.citizens.district_outcomes);
     const m = &s.mobility;
     @memcpy(&transport.vehicles, m.vehicles);
     @memcpy(&transport.lines, m.lines);
@@ -471,7 +483,7 @@ pub fn load(length: usize) u32 {
     const parsed = std.json.parseFromSlice(State, fixed.allocator(), buffer[0..length], .{ .max_value_len = 1024, .allocate = .alloc_always }) catch return 2;
     defer parsed.deinit();
     const state = &parsed.value;
-    if (!std.mem.eql(u8, state.format, "Common Ground town") or state.version != 1 or !std.mem.eql(u8, state.rules, "bellwether-2026-09-v1")) return 3;
+    if (!std.mem.eql(u8, state.format, "Common Ground town") or state.version != 2 or !std.mem.eql(u8, state.rules, "bellwether-2026-09-v2")) return 3;
     if (!validate(state)) return 4;
     commit(state);
     return 0;

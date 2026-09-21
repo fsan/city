@@ -323,11 +323,23 @@ pub fn draw(w: f32, h: f32) void {
         const y = p.y;
         box(p.x - 0.3, p.z - 0.3, 0.6, 0.6, 0.12, y + 0.2, .{ 1, 0.82, 0.25 });
     }
+    // Every active line has visible kerbside stop markers, not only the selected line.
+    for (&transport.lines, 0..) |line, line_id| {
+        if (!line.active) continue;
+        for (line.stops[0..line.count]) |stop| {
+            if (!city.validStop(stop)) continue;
+            const p = city.stopPoint(stop);
+            const base = city.elevation(p.x, p.z) + 0.2;
+            const accent: Color = if (transport.selected == line_id) .{ 1, 0.78, 0.24 } else .{ 0.72, 0.5, 0.18 };
+            box(p.x - 0.08, p.z - 0.08, 0.16, 0.16, 1.35, base, .{ 0.32, 0.36, 0.38 });
+            box(p.x - 0.45, p.z - 0.12, 0.9, 0.24, 0.45, base + 1.35, accent);
+        }
+    }
     if (transport.selected >= 0 or transport.editing) {
         const stops = if (transport.editing) transport.draft[0..transport.draft_count] else transport.lines[@intCast(transport.selected)].stops[0..transport.lines[@intCast(transport.selected)].count];
         for (stops, 0..) |stop, index| {
-            const n = city.nodes[stop];
-            box(n.x - 0.6, n.z - 0.6, 1.2, 1.2, 1, n.y + 0.2, .{ 0.95, 0.72, 0.23 });
+            const p = city.stopPoint(stop);
+            box(p.x - 0.7, p.z - 0.7, 1.4, 1.4, 0.25, city.elevation(p.x, p.z) + 0.2, .{ 0.95, 0.72, 0.23 });
             var node = stop;
             var steps: usize = 0;
             const destination = stops[(index + 1) % stops.len];
@@ -432,9 +444,13 @@ pub fn zoomAt(amount: f32, x: f32, y: f32) void {
     camera_z = std.math.clamp(camera_z - across * @sin(angle) + back * @cos(angle), -20, city.size_z + 20);
 }
 
+pub fn projectWorld(x: f32, y: f32, z: f32, axis: u32) f32 {
+    const dx = x - camera_x;
+    const dz = z - camera_z;
+    return if (axis == 0) width / 2 + (dx * @cos(angle) - dz * @sin(angle)) * scale() else height / 2 - ((y + 0.3) * 0.8164966 - (dx * @sin(angle) + dz * @cos(angle)) * 0.5773503) * scale();
+}
+
 pub fn project(node: usize, axis: u32) f32 {
     const n = city.nodes[node];
-    const x = n.x - camera_x;
-    const z = n.z - camera_z;
-    return if (axis == 0) width / 2 + (x * @cos(angle) - z * @sin(angle)) * scale() else height / 2 - ((n.y + 0.3) * 0.8164966 - (x * @sin(angle) + z * @cos(angle)) * 0.5773503) * scale();
+    return projectWorld(n.x, n.y, n.z, axis);
 }

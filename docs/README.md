@@ -9,4 +9,4 @@ Keep decisions short and current. The canonical scope describes the eventual gam
 
 regularity-target-slice.md records optional agreement interval targets and diagnostic evidence. development-roadmap.md lists the proposed numbered future batches; it is not authorization to implement them all.
 
-`save-load-slice.md` documents manual local persistence, validation, browser ownership and focused verification.
+`save-load-slice.md` documents manual local persistence, validation, browser ownership and focused verification. `passenger-outcomes-slice.md` records measured wait starts/completions, capacity denials, abandonment causes and district comparison.

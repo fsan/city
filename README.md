@@ -21,7 +21,7 @@ docker compose exec compiler zig build -Doptimize=ReleaseSafe
 docker compose down                    # stop; retain compiler caches
 ```
 
-Zig edits rebuild automatically; refresh the page after a successful build. HTML/CSS/JS edits are served immediately on refresh. Failed builds keep the last working WASM. Restart the compiler if file notifications are unavailable on your Docker filesystem: `docker compose restart compiler`.
+Zig edits rebuild automatically; refresh the page after a successful build. HTML/CSS/JS edits are served immediately on refresh. Failed builds keep the last working WASM. The watch loop and `make build` use a disposable Zig cache for each build so host edits cannot be hidden by a stale Docker cache. Restart the compiler if file notifications are unavailable on your Docker filesystem: `docker compose restart compiler`.
 
 ## Play
 
@@ -35,7 +35,7 @@ Zig edits rebuild automatically; refresh the page after a successful build. HTML
 - Open Reports → Streets, inspect a worn segment and prepare a repair offer. Review contractor prices, publish an offer, and follow assigned workers through mobilisation and delivery.
 - Treasury separates residential/commercial tax policy, actual cash, committed funds, projected receipts and the transaction ledger. Apply tax drafts explicitly; collections occur at midnight.
 - Reports include all 12 districts, paged resident/street registers, companies and recorded history. Click entries to inspect and locate them.
-- Transport supports address-based bus stops, route dragging, line creation/withdrawal, fare caps, boarding subsidies, street bus/cycle allocations, crosswalk controls and bus service agreements with operator comparisons, delivery review and a session history. Read `docs/transport.md` for controls and assumptions.
+- Transport supports address-based bus stops, route dragging, line creation/withdrawal, fare caps, boarding subsidies, street bus/cycle allocations, crosswalk controls and bus service agreements with operator comparisons, delivery review and a session history. Transport Authority also reports real passenger wait starts, completed waits, full-bus capacity denials, abandonment causes and district comparison. Read `docs/transport.md` and `docs/passenger-outcomes-slice.md` for controls and assumptions.
 - One day is eight real minutes at 1×. Hidden tabs do not catch up. Refresh / Restart town starts a new session. Use Management → Save / load town to export a local file or restore one. The simulation runs in browser WebAssembly; nginx serves files and holds no town state. No autosave or cloud storage.
 
 ## Structure
@@ -62,7 +62,7 @@ The renderer batches geometry into one depth-tested draw call. NPCs use six vert
 
 The map now spans 520 × 440 metres with low-rise suburbs and room within blocks for future construction. Daylight shading and ground shadows are illustrative; property assessments use a simple neighbouring-height exposure proxy.
 
-No complete household finances, intersection collision physics, elections, full service simulation, procedural generation or backend authority yet. Manual versioned save/load is available; see `docs/save-load-slice.md`. Routines are shortened and all residents are adult placeholders. Refreshed tabs restart the town. Contracts retain 64 orders per session; the ledger retains 1,024 entries and history retains 96 samples.
+No complete household finances, intersection collision physics, elections, full service simulation, procedural generation or backend authority yet. Manual versioned save/load is available (town format version 2); see `docs/save-load-slice.md`. Routines are shortened and all residents are adult placeholders. Refreshed tabs restart the town. Contracts retain 64 orders per session; the ledger retains 1,024 entries and history retains 96 samples.
 
 The HTTP container is a static server. Zig compilation stays inside Docker; no additional host toolchains are required. No test suite is included, as requested. The accepted design is in `docs/next-slice.md`; current implementation details are in `docs/scene.md`, `docs/economy.md`, `docs/transport.md` and `docs/abi.md`.
 

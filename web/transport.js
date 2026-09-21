@@ -5,11 +5,15 @@ export function createTransport(game, ui) {
   const $ = (id) => document.getElementById(id);
   const r = (group, id, field) => game.read(group, id, field);
   const money = (n) => `£${n.toFixed(2)}`;
+  const decoder = new TextDecoder();
+  const districtName = (id) => decoder.decode(new Uint8Array(game.memory.buffer, game.name_pointer(id), game.name_length(id)));
   let nodes = Array.from({ length: r(9, 0, 4) }, (_, id) => ({
     id,
     x: r(11, id, 0),
     z: r(11, id, 1),
   }));
+  const validStop = id => r(11,id,9) === 1;
+  let stopNodes = nodes.filter((n) => validStop(n.id));
   const address = id => `${r(11,id,6)} ${streetName(r(11,id,5))} · stop ${id+1}`;
   let roads = Array.from({ length: r(0, 0, 15) }, (_, id) => ({
     id,
@@ -38,10 +42,11 @@ export function createTransport(game, ui) {
     networkRevision=r(0,0,28);
     const stop=$('stop-address').value,road=$('traffic-road').value;
     nodes=Array.from({length:r(9,0,4)},(_,id)=>({id,x:r(11,id,0),z:r(11,id,1)}));
+    stopNodes=nodes.filter(n=>validStop(n.id));
     roads=Array.from({length:r(0,0,15)},(_,id)=>({id,a:r(5,id,0),b:r(5,id,1)}));
-    $('stop-address').replaceChildren(...nodes.map(n=>option(n.id,address(n.id))));
+    $('stop-address').replaceChildren(...stopNodes.map(n=>option(n.id,address(n.id))));
     $('traffic-road').replaceChildren(...roads.map(n=>option(n.id,`${streetName(r(5,n.id,15))} · segment ${n.id+1} · stops ${n.a+1}–${n.b+1}`)));
-    if(stop&&Number(stop)<nodes.length)$('stop-address').value=stop;
+    if(stop&&stopNodes.some(n=>n.id===Number(stop)))$('stop-address').value=stop;
     if(road&&Number(road)<roads.length)$('traffic-road').value=road;
   }
   syncNetwork();
@@ -123,7 +128,7 @@ export function createTransport(game, ui) {
     if (!draft) return;
     syncDraft();
     if (!game.transport_apply(selected)) {
-      message("Choose two to sixteen unique street addresses.");
+      message("Choose two to sixteen unique valid kerbside stops.");
       ui.open("transport");
       return;
     }
@@ -182,7 +187,7 @@ export function createTransport(game, ui) {
     const n = Number($("stop-address").value);
     if (!draft) return;
     if (draft.length === 16 || draft.includes(n)) {
-      message("Stops must be unique, with a maximum of sixteen.");
+      message("Stops must be unique valid kerbside locations, with a maximum of sixteen.");
       return;
     }
     draft.push(n);
@@ -241,6 +246,16 @@ export function createTransport(game, ui) {
   function points() {
     return nodes.map((n) => ({ x: r(11, n.id, 3), y: r(11, n.id, 4) }));
   }
+  function stopPoints() {
+    return nodes.map((n) => ({ x: r(11, n.id, 10), y: r(11, n.id, 11) }));
+  }
+  function nearestStop(p) {
+    let best = stopNodes[0] ?? nodes[0];
+    for (const n of stopNodes) {
+      if (Math.hypot(r(11,n.id,10)-p.x, r(11,n.id,11)-p.y) < Math.hypot(r(11,best.id,10)-p.x, r(11,best.id,11)-p.y)) best = n;
+    }
+    return best.id;
+  }
   function path(stops) {
     const pieces = [];
     for (let i = 0; i < stops.length; i++) {
@@ -266,22 +281,13 @@ export function createTransport(game, ui) {
     );
     return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
   }
-  function nearest(p, pts) {
-    return nodes.reduce(
-      (best, n) =>
-        Math.hypot(pts[n.id].x - p.x, pts[n.id].y - p.y) <
-        Math.hypot(pts[best].x - p.x, pts[best].y - p.y)
-          ? n.id
-          : best,
-      0,
-    );
-  }
   function pointerDown(event) {
     const p = { x: event.clientX, y: event.clientY },
-      pts = points();
+      pts = points(),
+      stopPts = stopPoints();
     if (draft) {
       let index = draft.findIndex(
-        (n) => Math.hypot(pts[n].x - p.x, pts[n].y - p.y) < 15,
+        (n) => Math.hypot(stopPts[n].x - p.x, stopPts[n].y - p.y) < 15,
       );
       if (index < 0) {
         const segment = path(draft).find(
@@ -289,7 +295,7 @@ export function createTransport(game, ui) {
         );
         if (draft.length >= 16) return true;
         index = segment ? segment.index + 1 : draft.length;
-        draft.splice(index, 0, nearest(p, pts));
+        draft.splice(index, 0, nearestStop(p));
       }
       gesture = { index };
       return true;
@@ -314,10 +320,10 @@ export function createTransport(game, ui) {
   }
   function pointerMove(event) {
     if (!gesture || !draft) return false;
-    draft[gesture.index] = nearest(
-      { x: event.clientX, y: event.clientY },
-      points(),
-    );
+    draft[gesture.index] = nearestStop({
+      x: event.clientX,
+      y: event.clientY,
+    });
     game.transport_draft(draft.length);
     draft.forEach((n, i) => game.transport_stop(i, n));
     return true;
@@ -354,7 +360,7 @@ export function createTransport(game, ui) {
       return;
     }
     const stops = draft;
-    const pts = points();
+    const pts = points(), stopPts = stopPoints();
     svg.innerHTML =
       path(stops)
         .map(
@@ -365,7 +371,7 @@ export function createTransport(game, ui) {
       stops
         .map(
           (n, i) =>
-            `<circle cx="${pts[n].x}" cy="${pts[n].y}" r="10"/><text x="${pts[n].x}" y="${pts[n].y + 4}">${i + 1}</text>`,
+            `<circle cx="${stopPts[n].x}" cy="${stopPts[n].y}" r="10"/><text x="${stopPts[n].x}" y="${stopPts[n].y + 4}">${i + 1}</text>`,
         )
         .join("");
   }
@@ -389,6 +395,24 @@ export function createTransport(game, ui) {
     return {row,cells,locate};
   });
   $("stop-record").onchange = update;
+  const passengerRows = Array.from({length:16}, (_, stop) => {
+    const row = document.createElement("tr");
+    const cells = Array.from({length:7}, () => row.appendChild(document.createElement("td")));
+    const locate = document.createElement("button");
+    cells[0].append(locate);
+    locate.onclick = () => {
+      const node = r(Number($("stop-record").value), selected * 16 + stop, 2);
+      if (node >= 0) game.focus(11, node);
+    };
+    $("passenger-outcome-rows").append(row);
+    return {row,cells,locate};
+  });
+  const districtRows = Array.from({length:r(0,0,16)}, (_, id) => {
+    const row = document.createElement("tr");
+    const cells = Array.from({length:7}, () => row.appendChild(document.createElement("td")));
+    $("district-access-rows").append(row);
+    return {row,cells};
+  });
   function updateObservations() {
     const group = Number($("stop-record").value);
     const version = selected < 0 ? -1 : r(group,selected * 16,0);
@@ -414,17 +438,60 @@ export function createTransport(game, ui) {
       cells[6].textContent = samples ? `${seconds(r(group,id,8))}–${seconds(r(group,id,9))}` : "—";
     });
   }
+  function updatePassengerOutcomes() {
+    const group = Number($("stop-record").value);
+    const version = selected < 0 ? -1 : r(group,selected * 16,0);
+    const seconds = n => n < 0 ? "—" : `${n.toFixed(1)} s`;
+    let starts = 0, completed = 0, abandoned = 0, capacity = 0, after = 0, waitTotal = 0, waiting = 0;
+    passengerRows.forEach(({row,cells,locate}, stop) => {
+      const id = selected * 16 + stop;
+      const node = version < 0 ? -1 : r(group,id,2);
+      row.hidden = node < 0;
+      if (node < 0) return;
+      locate.textContent = address(node);
+      const current = group === 19 ? -1 : r(group,id,10);
+      const comp = r(group,id,12);
+      const gone = r(group,id,17) + r(group,id,18) + r(group,id,19) + r(group,id,20);
+      starts += r(group,id,11);
+      completed += comp;
+      abandoned += gone;
+      capacity += r(group,id,16);
+      after += r(group,id,21);
+      waitTotal += r(group,id,22);
+      waiting += current < 0 ? 0 : current;
+      cells[1].textContent = current < 0 ? "—" : current;
+      cells[2].textContent = comp || "No completed waits";
+      cells[3].textContent = comp ? seconds(r(group,id,22) / comp) : "—";
+      cells[4].textContent = comp ? `${seconds(r(group,id,14))}–${seconds(r(group,id,15))}` : "—";
+      cells[5].textContent = r(group,id,16) || "—";
+      cells[6].textContent = gone || "—";
+    });
+    $("passenger-outcome-summary").textContent = version < 0
+      ? "No passenger record available; create or select a service line."
+      : `${group === 19 ? "Retired" : "Current"} route v${version}: ${starts} wait starts · ${completed} completed · ${abandoned} abandoned${group === 18 ? ` · ${waiting} still waiting` : ""} · ${capacity} capacity denials · ${after} abandoned after a full bus. ${completed ? `Mean completed wait ${(waitTotal / completed).toFixed(1)} s across completed waits only.` : "No completed waits yet; wait starts are not evidence of good service."}`;
+    districtRows.forEach(({cells}, id) => {
+      const observed = r(22,id,0), done = r(22,id,1), mean = r(22,id,2), denials = r(22,id,3), gone = r(22,id,4), afterCapacity = r(22,id,5);
+      cells[0].textContent = districtName(id);
+      cells[1].textContent = observed || "No observed waits";
+      cells[2].textContent = done || "—";
+      cells[3].textContent = mean < 0 ? "—" : seconds(mean);
+      cells[4].textContent = denials || "—";
+      cells[5].textContent = gone || "—";
+      cells[6].textContent = afterCapacity || "—";
+    });
+  }
   let hotspotIds = "";
   function update() {
     syncNetwork();
     agreements.update();
     updateObservations();
+    updatePassengerOutcomes();
     $("transport-summary").textContent =
       `Trips in progress: ${r(9, 0, 5)} walk · ${r(9, 0, 6)} cycle · ${r(9, 0, 7)} car · ${r(9, 0, 8)} bus. Waiting at stops: ${r(9, 0, 9)}. City subsidies paid: ${money(r(9, 0, 2))}.`;
     $("line-stats").textContent =
       selected < 0
         ? "No bus lines. Create a line to begin service."
-        : `Line ${selected + 1}: ${r(10, selected, 1)} stops · ${r(10, selected, 7)} aboard · ${r(10, selected, 2)} boardings · income ${money(r(10, selected, 3))} · costs ${money(r(10, selected, 4))} · operator cash ${money(r(10, selected, 5))}${r(10, selected, 5) <= 0 ? " · SERVICE SUSPENDED" : ""}`;
+        : `Line ${selected + 1}: ${r(10, selected, 1)} stops · ${r(10, selected, 7)} aboard · ${r(10, selected, 2)} boardings · ${r(10,selected,36)} completed waits · ${r(10,selected,38)} abandoned · ${r(10,selected,37)} capacity denials · income ${money(r(10, selected, 3))} · costs ${money(r(10, selected, 4))} · operator cash ${money(r(10, selected, 5))}${r(10, selected, 5) <= 0 ? " · SERVICE SUSPENDED" : ""}`;
     fleetButtons.forEach((button, slot) => {
       const id = r(0, 0, 7) + selected * 3 + slot;
       const active = selected >= 0 && r(12, id, 0) === 1;
