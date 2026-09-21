@@ -27,3 +27,5 @@ The Transport Authority has a collapsible report with current/retired selection,
 ## Limits / next work
 
 This is descriptive aggregate observation, with one retired record per line and no arrival event log, rolling trend, operator attribution, waiting-duration distribution, timetable or regularity penalty. Existing payment formulas, dispatch, boarding, resident routing and driver/account rules are unchanged. Any future contractual regularity target requires its own explicit design and authorization; do not infer penalties from these measurements.
+
+The following agreement-target slice is now implemented separately in regularity-target-slice.md. It adds optional review targets and agreement-specific evidence while preserving these descriptive route observations and payment rules.

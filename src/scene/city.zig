@@ -289,3 +289,22 @@ pub fn frontage(b: Building) Vec {
     }
     return p;
 }
+
+// Called only after snapshot validation; array identities and node IDs stay stable.
+pub fn restoreGraph(saved_nodes: []const Node, saved_roads: []const Road) void {
+    node_count = saved_nodes.len;
+    road_count = saved_roads.len;
+    @memcpy(node_storage[0..node_count], saved_nodes);
+    @memcpy(road_storage[0..road_count], saved_roads);
+    nodes = node_storage[0..node_count];
+    roads = road_storage[0..road_count];
+    @memset(&building_at_node, -1);
+    for (&road_between) |*row| @memset(row, -1);
+    for (roads, 0..) |r, i| {
+        road_between[r.a][r.b] = @intCast(i);
+        road_between[r.b][r.a] = @intCast(i);
+    }
+    for (&buildings, 0..) |b, i| {
+        if (building_at_node[b.node] < 0) building_at_node[b.node] = @intCast(i);
+    }
+}

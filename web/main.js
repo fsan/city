@@ -72,6 +72,61 @@ function start(renderer) {
     transport.reset();
     refresh();
   };
+  const saveStatus = text => { $("save-status").textContent = text; };
+  $("save-town").onclick = () => {
+    try {
+      const length = game.save_write();
+      if (!length) throw new Error("The town could not fit in the save-file limit.");
+      // Copy immediately: subsequent simulation/export may reuse WASM memory.
+      const bytes = new Uint8Array(game.memory.buffer, game.save_pointer(), length).slice();
+      const url = URL.createObjectURL(new Blob([bytes], {type:"application/json"}));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `bellwether-day-${Math.floor(metric(0)/480)+1}-${Date.now()}.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      saveStatus(`Town file exported (${(length/1048576).toFixed(1)} MB). Keep the downloaded file to restore this session.`);
+    } catch (error) {
+      saveStatus(`Save failed: ${error.message}`);
+    } finally { last = performance.now(); }
+  };
+  $("load-town").onclick = () => {
+    $("town-file").value = "";
+    $("town-file").click();
+  };
+  $("town-file").onchange = async () => {
+    const file = $("town-file").files[0];
+    if (!file) return;
+    if (!file.size || file.size > game.save_capacity()) {
+      saveStatus("Load rejected: choose a non-empty town file no larger than 16 MB. Current town retained.");
+      return;
+    }
+    $("load-town").disabled = $("save-town").disabled = true;
+    let restored = false;
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      new Uint8Array(game.memory.buffer, game.save_pointer(), bytes.length).set(bytes);
+      const result = game.save_load(bytes.length);
+      const errors = ["", "File is empty or too large.", "File is malformed or exceeds parser limits.", "File uses an incompatible town format or rules version.", "File contains inconsistent town data."];
+      if (result) {
+        saveStatus(`Load rejected: ${errors[result] || "Validation failed."} Current town retained.`);
+        return;
+      }
+      restored = true;
+      keys.clear(); drag = null; uiElapsed = 0;
+      lastSpeed = game.saved_resume_speed();
+      reports.reset(); planning.reset(); transport.reset();
+      refresh();
+      saveStatus(`Loaded ${file.name}. Day ${Math.floor(metric(0)/480)+1}; ${metric(13) ? `running at ${metric(13)}×` : "paused"}. Unapplied drafts cleared.`);
+    } catch (error) {
+      saveStatus(restored ? `Town loaded, but report refresh failed: ${error.message}` : `Load failed: ${error.message}. Current town retained.`);
+    } finally {
+      last = performance.now();
+      $("load-town").disabled = $("save-town").disabled = false;
+    }
+  };
   window.addEventListener("keydown", (event) => {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const key = event.key.toLowerCase();

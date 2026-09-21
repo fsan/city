@@ -80,3 +80,42 @@ Groups 18 (current) and 19 (most recent retired route/window) use ID = line ID �
 | 10 | Current physically waiting residents for this line/version/node; -1 for retired records |
 
 focus(11,node) locates a valid street node. Records are bounded to current plus most recent retired per line, each at most 16 stops. Route edits/withdrawal update immediately; coverage changes synchronize before arrivals on the next transport step. Daytime pairs across closed hours are omitted. Zero intervals mean genuine simultaneous visits, not missing data. Detailed event and retention semantics are in stop-regularity-slice.md.
+
+## Agreement regularity targets
+
+New service_target_offer(line,company,fleet,days,price,window,max_interval) validates the whole offer before any mutation. max_interval must be finite and either 0 (disabled) or an integer 30–600 simulation seconds. service_target_valid(max_interval) exposes that Zig validation for the form. Existing offer commands remain compatible and set target 0. Quotes, refusal reasons, delivery and money fields are unchanged; financial eligibility does not certify a target is achievable.
+
+Groups 13/17 add:
+
+| Field | Value |
+| --- | --- |
+| 23 | Maximum interarrival target, 0 disabled |
+| 24 | Total eligible completed interval pairs during this agreement |
+| 25 | Pairs exceeding the agreed interval |
+| 26 | Offered stops with at least one eligible pair |
+| 27 | Regularity review permanently suspended by route/window/operator mismatch |
+| 28 | Assessment timestamp, clipped at expiry; frozen on closure |
+
+Groups 20 (current agreement by line) / 21 (closed agreement newest-first record) use ID = record × 16 + offered stop index. Missing records/stops/fields return -1. Closed results belong to the same newest-64 ring as group 17, so use the agreement number to retain UI selection across insertions.
+
+| Field | Value |
+| --- | --- |
+| 0 | Original offered stop-node ID |
+| 1 | Qualifying post-acceptance visit count |
+| 2 / 3 | Eligible interval pairs / exceeded pairs |
+| 4 | Latest qualifying arrival timestamp, -1 without visits |
+| 5 | Worst eligible interval, -1 without pairs |
+| 6 | Gap state: 0 disabled, 1 not accepted, 2 suspended, 3 off-hours, 4 first-arrival grace, 5 first arrival overdue, 6 within current gap allowance, 7 arrival gap overdue |
+| 7 | Current gap age in simulation seconds, -1 for states 0–3 |
+| 8 | Last eligible interval, -1 without pairs |
+
+Gap age uses acceptance or the current coverage-window opening until its first real arrival; then uses the latest real arrival. First-arrival grace is one target-length. An interval/age must exceed the target by more than 0.00001 seconds to ignore floating-point noise at equality. Groups 18/19 remain route/session observations independent of agreement review. Internally transport publishes at most 24 arrival events per fixed step, consumed once by agreement measurement; there is no persistent event log.
+
+
+## Manual town persistence
+
+`save_capacity() -> usize` returns 16 MiB. `save_pointer() -> usize` addresses the shared UTF-8 input/output buffer. `save_write() -> usize` writes versioned JSON and returns its byte length (0 on failure); copy those bytes before another persistence call. The buffer is scratch space, not a live-state view.
+
+To import, size-check the file, copy its bytes to that buffer, then call `save_load(length) -> u32`. Results: 0 success, 1 empty/oversized input, 2 malformed JSON/schema or parse-budget exhaustion, 3 unsupported format/version/rules, 4 inconsistent state. Parsing uses a separate bounded 64 MiB arena. All validation precedes live mutation. Unknown/duplicate fields and invalid enum tags are rejected. A failed import leaves the town unchanged.
+
+Successful load restores simulation speed and fixed-step remainder. `saved_resume_speed() -> f32` supplies the previous nonzero speed for Space after paused import. The browser clears UI drafts and refreshes report metadata only after success. `format = "Common Ground town"`, `version = 1`, `rules = "bellwether-2026-09-v1"`. Change compatibility identifiers when schema/rules change; there is no migration layer. See `save-load-slice.md` and the explicit `State` contract in `src/simulation/persistence.zig`.

@@ -484,6 +484,11 @@ export function createTransport(game, ui) {
     toggleTraffic: () => setOverlay(overlay === 2 ? 0 : 2),
     toggleCondition: () => setOverlay(overlay === 1 ? 0 : 1),
     reset() {
+      networkRevision = -1;
+      syncNetwork();
+      $("stop-record").value = "18";
+      $("traffic-road").value = "0";
+      $("traffic-lane").value = r(5,0,13);
       draft = null;
       gesture = null;
       selected = -1;

@@ -42,7 +42,7 @@ When a line changes or closes, its buses finish their current segment; riders al
 
 Docker ReleaseSafe build, JavaScript syntax checks and live in-app browser checks cover loading, new/withdrawn lines, address-based stops, stop dragging, route-segment dragging, policies and map overlays. An ephemeral WASM smoke run exercised 600 simulated seconds, live lane changes and route withdrawal; no test suite was added. It checked lane spacing, passenger conservation and capacity, and invalid command rejection. The final run completed 16,234 trips, recorded 89 boardings, kept the maximum occupancy at 24, and found no spacing violations across 61 samples; withdrawn-line riders reached zero. Render vertices were finite. Existing repair delivery was also checked after the transport integration.
 
-Sessions are in memory and reset on refresh. There is no server authority or save format. This is a bounded, inspectable transport model, not a complete traffic engineering simulator. Keep the explicit limitations above when extending it.
+The live simulation runs in browser memory and resets on refresh. Manual local save/load restores an exported town, including journeys, routes and observations; see `save-load-slice.md`. There is no server authority or automatic persistence. This is a bounded, inspectable transport model, not a complete traffic engineering simulator. Keep the explicit limitations above when extending it.
 
 
 ## September geometry and mobility update
@@ -58,3 +58,5 @@ Focused verification after this update: Docker ReleaseSafe build and browser loa
 Transport Authority → Observed stop arrivals & regularity reports actual approach-to-dwell visits, current waiting counts and completed interarrival intervals in simulation seconds. Deployment, clearance and relief-only junction stops are excluded. Stops with no visits or eligible interval pairs are explicitly unobserved/insufficient. Full buses count as arrivals; these measurements do not promise a seat or describe resident waiting duration.
 
 Current and most recent retired route/coverage records remain separate, with stable stop-node identities. Edits and withdrawal archive the prior route; coverage changes start a new record. Daytime intervals spanning closed hours are omitted; all-day intervals include midnight. Last eligible/mean/min/max remain aggregates of eligible completed pairs, so the last eligible interval may predate the latest arrival. Locate buttons focus the stop. See [precise semantics and checks](stop-regularity-slice.md). No payment or penalty rules changed.
+
+Agreement-specific interval targets are now available under Bus operators & service agreements. These start fresh at acceptance and retain results in the agreement register; they do not reuse lifetime route statistics. Live first-arrival/overdue states and route-change suspension are diagnostic only. See service-agreements.md and regularity-target-slice.md.

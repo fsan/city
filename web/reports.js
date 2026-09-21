@@ -715,6 +715,15 @@ export function createReports(game, ui, transport) {
       updateInspector();
     },
     reset() {
+      buildings.forEach((b,id) => Object.assign(b,{kind:r(1,id,0),district:r(1,id,1),employer:r(1,id,6),node:r(1,id,11)}));
+      people.forEach((p,id) => Object.assign(p,{home:r(3,id,0),employer:r(3,id,1)}));
+      personPage = streetPage = 0;
+      streetIds = Array.from({length:m(15)},(_,id)=>id);
+      $("work-district").value = "0";
+      $("work-scope").value = "30";
+      $("work-price").value = "12000";
+      $("revised-price").value = "12000";
+      streetOptions(0);
       selectedOrder = -1;
       selected = { kind: 1, id: -1 };
       $("home-tax").value = m(20);

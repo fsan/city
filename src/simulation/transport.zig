@@ -39,6 +39,10 @@ pub const Line = struct {
     fleet: usize = 2,
     delivered: f64 = 0,
 };
+// At most one approach completion per vehicle per fixed step.
+pub const Arrival = struct { line: usize, node: usize, version: u32, company: usize, time: f64 };
+pub var arrivals: [max_lines * buses_per_line]Arrival = undefined;
+pub var arrival_count: usize = 0;
 pub const StopObservation = struct {
     visits: u32 = 0,
     latest: f64 = -1,
@@ -86,6 +90,8 @@ fn recordArrival(v: *const Vehicle, elapsed: f64) void {
     }
     s.visits += 1;
     s.latest = elapsed;
+    arrivals[arrival_count] = .{ .line = id, .node = v.node, .version = v.version, .company = v.company, .time = elapsed };
+    arrival_count += 1;
 }
 pub var vehicles: [car_count + max_lines * buses_per_line]Vehicle = @splat(.{});
 pub var lines: [max_lines]Line = @splat(.{});
@@ -113,6 +119,7 @@ pub fn green(node: usize, horizontal: bool, elapsed: f64) bool {
 pub fn init() void {
     operators.init();
     clock = 160;
+    arrival_count = 0;
     vehicles = @splat(.{});
     lines = @splat(.{});
     observations = @splat(.{});
@@ -205,6 +212,7 @@ pub fn board(bus: usize) bool {
 }
 pub fn update(dt: f32, elapsed: f64) void {
     clock = elapsed;
+    arrival_count = 0;
     entries = @splat(false);
     heads = @splat(-1);
     occupancy = @splat(0);

@@ -666,6 +666,12 @@
             Drag window title bars to arrange reports. Multiple windows can stay
             open. Opening a report does not pause the city.
           </p>
+          <h3>Save / load town</h3>
+          <p class="note">Save downloads a local town file. Load replaces this town only after validation; save first if you want to keep it. Simulation time, speed, journeys, accounts, repairs and agreement history are preserved. Unapplied drafts, selections and window positions are not saved. No autosave or cloud storage.</p>
+          <button id="save-town">Save town file</button>
+          <button id="load-town">Load town file</button>
+          <input id="town-file" type="file" accept=".json,application/json" hidden>
+          <p id="save-status" class="note" role="status" aria-live="polite"></p>
           <button id="restart">Restart town</button
           ><small class="fine"> Restarts this session immediately.</small>
         </div>
@@ -684,6 +690,7 @@
         <button data-open="works">
           Public works <kbd>J</kbd><span>↗</span>
         </button>
+        <button data-open="help">Save / load town <span>↗</span></button>
         <div id="reports-menu" class="submenu" hidden>
           <div class="popup-title">REPORTS</div>
           <button data-report-link="overview">City overview</button
@@ -812,21 +819,27 @@
             <label>Required buses <input id="service-fleet" type="number" min="1" max="3" value="2"></label>
             <label>Service hours <select id="service-window"><option value="1">Daytime · 06:00–22:00</option><option value="0">All day · 00:00–24:00</option></select></label>
             <label>Duration (days) <input id="service-days" type="number" min="1" max="7" value="1"></label>
+            <label>Maximum interval (simulation seconds; 0 = off) <input id="service-interval" type="number" min="0" max="600" step="1" value="0"></label>
             <label>Maximum payment (£) <input id="service-price" type="number" min="0.01" max="1000000000" step="0.01" value="240"></label>
             </div>
             <p class="note">Abstract driver cohorts: day 06:00–22:00, night 22:00–06:00. Operation costs £0.06 vehicle + £0.12 labour per bus-second; dispatch prepays £2 for eventual safe clearance and relief overtime. No advances: future public payments are earned through service. Compare fewer buses, daytime hours or another solvent operator if refused.</p>
             <p id="operator-receipts" class="note"></p>
             <p class="note">Funds are reserved on offer. Payment follows movement and scheduled dwell; traffic delays reduce delivery. Offers need operating cost plus 15% margin.</p>
             <table aria-label="Operator comparison for draft offer"><thead><tr><th>Operator</th><th>Buses for draft / owned</th><th>Minimum offer</th><th>Draft assessment</th></tr></thead><tbody id="service-comparison"></tbody></table>
+            <p id="service-target-help" class="note"></p>
             <p id="service-funding" class="note"></p>
             <button id="service-offer">Publish / revise offer</button><button id="service-cancel">Cancel remaining service</button>
             <p id="service-status" class="note"></p>
             <p id="service-delivery" class="note"></p>
-            <p class="note">Remedies: inspect held buses and street allocation, edit the route, or cancel and re-offer. Cancellation pays earned pennies and releases the remainder; service continues privately. Route edits do not restart the agreement clock. Private services retain the last operator and hours. Headway targets are not yet modelled.</p>
+            <h3>Agreement regularity review</h3>
+            <p class="note">Optional target: whole 30–600 simulation seconds between arrivals. Review only; no penalty or price change, and financial eligibility does not guarantee this interval is achievable. Only arrivals after acceptance count. Each coverage window allows one target-length grace period for its first arrival. Closed-hour pairs are omitted. Missing samples never mean success.</p>
+            <div id="service-regularity"></div>
+            <p class="note">Remedies: inspect held buses and street allocation, edit the route, or cancel and re-offer. Cancellation pays earned pennies and releases the remainder; service continues privately. Route edits do not restart the agreement clock. Private services retain the last operator and hours. A route edit suspends regularity review against the original route; previous results remain. Cancel and re-offer to agree a target for the new route.</p>
             <h3>Closed agreement register</h3>
             <label>Record <select id="service-history"></select></label>
             <p id="service-history-detail" class="note"></p>
             <p id="service-history-route" class="note"></p>
+            <div id="service-history-regularity"></div>
             <p class="note">Last 64 closed records, newest first. Retained through later offers and line reuse in this session; restarting or refreshing clears history.</p>
           </details>
           <div id="bus-fleet" class="transport-controls"></div>

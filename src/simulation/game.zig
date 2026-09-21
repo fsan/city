@@ -12,9 +12,9 @@ pub var trust: [city.district_count]f32 = undefined;
 pub const Sample = struct { time: f64, cash: f64, reserved: f64, walking: usize, condition: f32 };
 pub var history: [96]Sample = undefined;
 pub var history_count: usize = 0;
-var next_sample: f64 = 160;
-var next_routes: f64 = 220;
-var next_operating: f64 = 190;
+pub var next_sample: f64 = 160;
+pub var next_routes: f64 = 220;
+pub var next_operating: f64 = 190;
 pub fn init() void {
     elapsed = 160;
     next_sample = 160;

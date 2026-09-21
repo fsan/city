@@ -1,0 +1,34 @@
+# Agreement regularity targets
+
+Bounded slice plan: optional maximum interarrival target (0 disabled, otherwise whole 30–600 simulation seconds) on an offer. Target is informational contract review, with no feasibility guarantee, price uplift, payment deduction, reserve change or automatic remedy. Legacy offer commands default to disabled.
+
+Evidence is agreement-specific: actual current-operator target-stop arrivals strictly after acceptance and no later than expiry. A bounded per-step transport event list carries every arrival, including simultaneous arrivals, into agreement assessment. Initial deployment, clearance and relief-only stops remain excluded. Assess the originally offered route; route/window/operator mismatch permanently suspends regularity assessment for that agreement, preserving existing results and clocks. Cancellation/re-offer is the explicit way to establish a new target/route.
+
+Each offered stop retains visits, latest actual arrival, completed eligible intervals, exceeded intervals, last and worst eligible interval. Daytime pairs crossing closed hours are omitted; all-day includes midnight. One completed pair is evidence about that pair only; display counts, never a blanket pass/fail or reliability claim. Current gap age starts at acceptance/window opening until the first arrival (one target-length grace period), then the latest arrival. First-arrival overdue and subsequent overdue are separate diagnostics; off-hours are not overdue. These live gap states are frozen at closure, not a history of every overdue episode.
+
+Completion: validated atomic offer/revision, separate agreement evidence without pre-acceptance contamination, honest insufficient/overdue/off-hours/suspended states, immutable closed results, current/history UI, scalar ABI, Docker build, temporary simulation/browser checks, preserved money/riders/repair behavior, updated mechanics and handoff. No permanent tests, timetable, optimizer or financial penalties.
+
+## Implemented behavior
+
+The target is validated in Zig before offer/revision mutates any agreement or reserve. Legacy offer exports set target 0. Operator financial/resource review remains unchanged, so no automatic claim of route feasibility accompanies acceptance.
+
+Transport publishes a bounded list of at most 24 actual service arrivals per fixed step (one per bus); agreement review consumes each event once. Events at/before acceptance, after expiry, from another operator or a different route version do not enter results. A pair exactly equal to the target is not exceeded; a 0.00001-second tolerance ignores floating-point drift. Simultaneous genuine arrivals remain separate visits and can produce a zero-second pair. There is no persistent event log.
+
+Per-stop counters are cumulative within the agreement, across eligible open windows. Daytime reopening resets the live first-arrival deadline but retains prior evidence; all-day shift relief does not reset it. The current gap state is an observation, not proof of overall compliance. It uses first arrival of the current window, so a stop can have prior visits and still report a first-arrival overdue state after reopening.
+
+Route changes suspend immediately through the validated route command, even paused; acceptance of an offer whose route was subsequently edited also suspends. Suspension is permanent for that agreement, with counts retained. It neither creates a new grace period nor resets delivery/expiry. Window/operator mismatch is defensive suspension; fleet and lane interventions remain measurable under the same target.
+
+The UI exposes a target input with Zig validation, explicit financial-quote limitations, per-stop results and locate actions in current and closed-agreement reports. Closed gap states and counters are frozen, and the selected closed agreement is tracked by its unique number as the newest-64 ring advances. No result is inferred from pre-agreement route aggregates.
+
+## Verification — 21 September 2026
+
+- Docker Compose Zig 0.14.1 ReleaseSafe build/startup, JavaScript syntax checks and whitespace checks passed. No new dependency or permanent test suite.
+- Temporary /tmp/city-regularity-target-check.mjs independently reconstructed 28 qualifying arrivals and 20 eligible pairs from actual movement observations over all-day and daytime agreements. Four daytime cross-closure pairs were omitted; four all-day pairs crossed midnight. It checked grace/overdue/off-hours states, exclusion of pre-acceptance history, expiry clipping, paused route suspension, cancellation/withdrawal, replacement evidence, invalid and non-finite terms, atomic rejected revisions, legacy defaults, reset and 64-record rollover.
+- A paired simulation with target enabled versus disabled produced identical municipal balances/reserves, operator account components, line income/costs/ridership and agreement delivery/payments throughout 720 simulated seconds. Targets have no financial or movement effect.
+- Temporary Docker-compiled WASM boundary checks against a copied source tree verified simultaneous events, exact-target equality, genuine exceedance, repeated same-time settlement without duplicate events, wrong-operator exclusion, post-expiry exclusion, immutable closure, exact daytime close/open boundaries and sticky suspension after a version mismatch. All temporary fixtures remain outside the repository.
+- Existing capital/driver and stop-observation checks passed: account and ledger reconciliation, protected reserves, cash exhaustion without rescue, passenger conservation (241 samples, up to 42 riders), finite rendering (382,488 vertices) and a physical £31,347 repair alongside £395.83 agreement receipts. Existing observation check still matched 29 visits over 24,000 steps.
+- A fresh browser town rejected target 29, accepted 30, showed pending and measured evidence, and expired with two exceeded pairs (204.1 s and 178.7 s), matching immutable closed results. Stop locate and report layout were inspected; no console warnings/errors were captured. A replacement 120-second target was suspended immediately after a paused route edit, retained its one observed visit, and archived the same results on cancellation. The user's existing town was not reset.
+
+## Remaining limits
+
+Targets are review-only. Financial/resource acceptance does not prove feasibility, there is no full-service pass percentage or minimum statistical confidence claim, and a full bus counts even if it cannot board a passenger. First-arrival grace is fixed to the target duration. Current/closed gap states do not retain every overdue episode or every missed first-arrival deadline. Route edits suspend assessment rather than renegotiating terms. The newest 64 closed agreements are included in manual town saves; older records are evicted. Timetables, transfers, optimisation, staffing purchases and financial enforcement remain deferred.

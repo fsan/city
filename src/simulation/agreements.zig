@@ -2,7 +2,20 @@ const std = @import("std");
 const transport = @import("transport.zig");
 const finance = @import("finance.zig");
 const operators = @import("operators.zig");
+pub const StopResult = struct {
+    visits: u32 = 0,
+    latest: f64 = -1,
+    intervals: u32 = 0,
+    exceeded: u32 = 0,
+    last: f64 = -1,
+    worst: f64 = -1,
+};
 pub const Agreement = struct {
+    max_interval: f64 = 0,
+    regularity_suspended: bool = false,
+    regularity_time: f64 = 0,
+    regularity_updated: f64 = 0,
+    regularity: [transport.max_stops]StopResult = @splat(.{}),
     window: u32 = 0,
     target: f64 = 0,
     status: u32 = 0, // none, offered, active, expired, cancelled, revised, line withdrawn
@@ -30,7 +43,7 @@ pub const Agreement = struct {
 pub var agreements: [transport.max_lines]Agreement = @splat(.{});
 pub var history: [64]Agreement = undefined;
 pub var history_count: usize = 0;
-var next_number: usize = 1;
+pub var next_number: usize = 1;
 pub fn init() void {
     agreements = @splat(.{});
     history_count = 0;
@@ -62,13 +75,20 @@ pub fn quote(line: usize, company: usize, fleet: usize, days: f64, price: f64, w
         else => -1,
     };
 }
+pub fn validInterval(value: f64) bool {
+    return std.math.isFinite(value) and (value == 0 or (value >= 30 and value <= 600 and @floor(value) == value));
+}
 pub fn offer(line: usize, company: usize, fleet: usize, days: f64, price: f64, window: u32, time: f64) bool {
+    return offerTarget(line, company, fleet, days, price, window, 0, time);
+}
+pub fn offerTarget(line: usize, company: usize, fleet: usize, days: f64, price: f64, window: u32, max_interval: f64, time: f64) bool {
+    if (!validInterval(max_interval)) return false;
     if (line >= transport.max_lines or !validTerms(company, fleet, days, price) or window > 1) return false;
     const a = &agreements[line];
     if (!transport.lines[line].active or a.status == 2 or finance.cents(price) > finance.available() + a.reserved) return false;
     if (a.status == 1) finish(a, time, 5);
     const l = &transport.lines[line];
-    a.* = .{ .window = window, .status = 1, .number = next_number, .line = line, .company = company, .fleet = fleet, .duration = days * 480, .price = finance.cents(price), .reserved = finance.cents(price), .offered = time, .updated = time, .reason = reason(line, company, fleet, days, price, window), .route_version = l.version, .stop_count = l.count, .stops = l.stops };
+    a.* = .{ .max_interval = max_interval, .window = window, .status = 1, .number = next_number, .line = line, .company = company, .fleet = fleet, .duration = days * 480, .price = finance.cents(price), .reserved = finance.cents(price), .offered = time, .updated = time, .reason = reason(line, company, fleet, days, price, window), .route_version = l.version, .stop_count = l.count, .stops = l.stops };
     next_number += 1;
     finance.reserved = finance.cents(finance.reserved + a.reserved);
     return true;
@@ -76,7 +96,92 @@ pub fn offer(line: usize, company: usize, fleet: usize, days: f64, price: f64, w
 pub fn earned(a: *const Agreement) f64 {
     return @min(a.price, finance.cents(a.price * a.delivered / (@max(1, a.target))));
 }
+// Regularity review never writes money, delivery or acceptance rules.
+pub fn checkRoute(line: usize, time: f64) void {
+    if (line >= agreements.len) return;
+    const a = &agreements[line];
+    if (a.status != 2 or a.max_interval == 0) return;
+    const l = &transport.lines[line];
+    if (l.version != a.route_version or l.window != a.window or l.company != a.company) {
+        a.regularity_suspended = true;
+        a.regularity_time = @min(time, a.start + a.duration);
+    }
+}
+fn measureRegularity(a: *Agreement, time: f64) void {
+    if (a.max_interval == 0) return;
+    checkRoute(a.line, time);
+    a.regularity_time = @min(time, a.start + a.duration);
+    if (time <= a.regularity_updated) return;
+    const from = a.regularity_updated;
+    a.regularity_updated = time;
+    if (a.regularity_suspended) return;
+    for (transport.arrivals[0..transport.arrival_count]) |event| {
+        if (event.line != a.line or event.company != a.company or event.version != a.route_version or
+            event.time <= from or event.time <= a.start or event.time > a.regularity_time) continue;
+        for (a.stops[0..a.stop_count], 0..) |node, index| {
+            if (node != event.node) continue;
+            const stop = &a.regularity[index];
+            if (stop.visits > 0 and (a.window == 0 or @floor((stop.latest - 120) / 480) == @floor((event.time - 120) / 480))) {
+                const interval = event.time - stop.latest;
+                stop.intervals += 1;
+                // Ignore tiny fixed-step floating-point drift at the exact target.
+                if (interval > a.max_interval + 0.00001) stop.exceeded += 1;
+                stop.last = interval;
+                stop.worst = @max(stop.worst, interval);
+            }
+            stop.visits += 1;
+            stop.latest = event.time;
+            break;
+        }
+    }
+}
+fn windowStart(a: *const Agreement) f64 {
+    return if (a.window == 0) a.start else @max(a.start, @floor(a.regularity_time / 480) * 480 + 120);
+}
+fn gapAge(a: *const Agreement, stop: *const StopResult) f64 {
+    return @max(0, a.regularity_time - @max(windowStart(a), stop.latest));
+}
+// 0 disabled, 1 not accepted, 2 suspended, 3 off hours,
+// 4 first-arrival grace, 5 first arrival overdue, 6 within gap, 7 gap overdue.
+fn gapState(a: *const Agreement, stop: *const StopResult) u32 {
+    if (a.max_interval == 0) return 0;
+    if (a.start == 0) return 1;
+    if (a.regularity_suspended) return 2;
+    if (!operators.scheduled(a.window, a.regularity_time)) return 3;
+    const overdue = gapAge(a, stop) > a.max_interval + 0.00001;
+    if (stop.latest < windowStart(a)) return if (overdue) 5 else 4;
+    return if (overdue) 7 else 6;
+}
+pub fn readStop(a: *const Agreement, index: usize, field: u32) f64 {
+    if (a.status == 0 or index >= a.stop_count) return -1;
+    const stop = &a.regularity[index];
+    const state = gapState(a, stop);
+    return switch (field) {
+        0 => @floatFromInt(a.stops[index]),
+        1 => @floatFromInt(stop.visits),
+        2 => @floatFromInt(stop.intervals),
+        3 => @floatFromInt(stop.exceeded),
+        4 => stop.latest,
+        5 => stop.worst,
+        6 => @floatFromInt(state),
+        7 => if (state >= 4) gapAge(a, stop) else -1,
+        8 => stop.last,
+        else => -1,
+    };
+}
+fn regularityTotal(a: *const Agreement, field: u32) usize {
+    var total: usize = 0;
+    for (a.regularity[0..a.stop_count]) |stop| {
+        total += switch (field) {
+            24 => stop.intervals,
+            25 => stop.exceeded,
+            else => @as(usize, if (stop.intervals > 0) 1 else 0),
+        };
+    }
+    return total;
+}
 fn measure(a: *Agreement, time: f64) void {
+    measureRegularity(a, time);
     const end = @min(time, a.start + a.duration);
     // transport advances before agreement settlement. Prorate only the last step
     // across expiry, rather than charging for service after the agreed end.
@@ -130,6 +235,8 @@ pub fn update(time: f64) void {
             if (a.reason != 0) continue;
             a.status = 2;
             a.start = time;
+            a.regularity_time = time;
+            a.regularity_updated = time;
             a.updated = time;
             a.baseline = transport.lines[line].delivered;
             a.target = operators.hours(a.window, time, time + a.duration) * @as(f64, @floatFromInt(a.fleet));
@@ -170,6 +277,10 @@ pub fn read(a: *const Agreement, field: u32) f64 {
         20 => @floatFromInt(history_count),
         21 => @floatFromInt(a.window),
         22 => a.target,
+        23 => a.max_interval,
+        24...26 => @floatFromInt(regularityTotal(a, field)),
+        27 => if (a.regularity_suspended) 1 else 0,
+        28 => a.regularity_time,
         32...47 => if (field - 32 < a.stop_count) @floatFromInt(a.stops[field - 32]) else -1,
         else => -1,
     };

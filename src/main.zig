@@ -2,11 +2,13 @@ const std = @import("std");
 const city = @import("scene/city.zig");
 const game = @import("simulation/game.zig");
 const scene = @import("render/scene.zig");
+const persistence = @import("simulation/persistence.zig");
 const residents = game.residents;
 const finance = game.finance;
 const contracts = game.contracts;
 const transport = game.transport;
 var speed: f32 = 1;
+var resume_speed: f32 = 1;
 var accumulator: f32 = 0;
 export fn init() void {
     city.init();
@@ -15,6 +17,7 @@ export fn init() void {
     scene.selected = -1;
     scene.selected_person = -1;
     speed = 1;
+    resume_speed = 1;
     accumulator = 0;
 }
 export fn update(seconds: f32) void {
@@ -23,6 +26,27 @@ export fn update(seconds: f32) void {
         game.update(1.0 / 30.0);
         accumulator -= 1.0 / 30.0;
     }
+}
+export fn save_capacity() usize {
+    return persistence.capacity;
+}
+export fn save_pointer() [*]u8 {
+    return &persistence.buffer;
+}
+export fn save_write() usize {
+    return persistence.write(speed, resume_speed, accumulator);
+}
+export fn save_load(length: u32) u32 {
+    const result = persistence.load(length);
+    if (result == 0) {
+        speed = persistence.restored_speed;
+        resume_speed = persistence.restored_resume;
+        accumulator = persistence.restored_accumulator;
+    }
+    return result;
+}
+export fn saved_resume_speed() f32 {
+    return resume_speed;
 }
 export fn draw(width: f32, height: f32) usize {
     scene.draw(width, height);
@@ -48,6 +72,7 @@ export fn zoom_at(amount: f32, x: f32, y: f32) void {
 }
 export fn set_speed(value: f32) void {
     speed = std.math.clamp(value, 0, 16);
+    if (speed > 0) resume_speed = speed;
 }
 export fn set_funding(value: u32) void {
     finance.funding = @min(value, 2);
@@ -409,6 +434,17 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 else => -1,
             };
         },
+        20, 21 => {
+            const record = id / transport.max_stops;
+            const stop = id % transport.max_stops;
+            if (group == 20) {
+                if (record >= transport.max_lines) return -1;
+                return game.agreements.readStop(&game.agreements.agreements[record], stop, field);
+            }
+            const count = game.agreements.history_count;
+            if (record >= @min(count, game.agreements.history.len)) return -1;
+            return game.agreements.readStop(&game.agreements.history[(count - 1 - record) % game.agreements.history.len], stop, field);
+        },
         18, 19 => {
             const line = id / transport.max_stops;
             const stop = id % transport.max_stops;
@@ -494,7 +530,9 @@ export fn transport_edit_end() void {
     transport.editing = false;
 }
 export fn transport_apply(id: u32) bool {
-    return transport.apply(id);
+    const applied = transport.apply(id);
+    if (applied) game.agreements.checkRoute(id, game.elapsed);
+    return applied;
 }
 export fn transport_remove(id: u32) void {
     game.agreements.cancel(id, game.elapsed, true);
@@ -525,6 +563,12 @@ export fn service_window_quote(line: u32, company: u32, fleet: u32, days: f64, p
 }
 export fn service_window_offer(line: u32, company: u32, fleet: u32, days: f64, price: f64, window: u32) bool {
     return game.agreements.offer(line, company, fleet, days, price, window, game.elapsed);
+}
+export fn service_target_offer(line: u32, company: u32, fleet: u32, days: f64, price: f64, window: u32, max_interval: f64) bool {
+    return game.agreements.offerTarget(line, company, fleet, days, price, window, max_interval, game.elapsed);
+}
+export fn service_target_valid(max_interval: f64) bool {
+    return game.agreements.validInterval(max_interval);
 }
 export fn service_cancel(line: u32) void {
     game.agreements.cancel(line, game.elapsed, false);
