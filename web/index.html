@@ -830,6 +830,13 @@
             <p class="note">Last 64 closed records, newest first. Retained through later offers and line reuse in this session; restarting or refreshing clears history.</p>
           </details>
           <div id="bus-fleet" class="transport-controls"></div>
+          <details id="stop-observations" open>
+            <summary>Observed stop arrivals &amp; regularity</summary>
+            <p class="note">Intervals are simulation seconds between actual bus arrivals, not resident waiting duration or promised coverage. Deployment is excluded. Daytime gaps crossing closed hours are omitted; the last eligible interval may be from an earlier day. No timetable or regularity penalty applies.</p>
+            <label>Observation record <select id="stop-record"><option value="18">Current route / coverage</option><option value="19">Most recent retired route / coverage</option></select></label>
+            <p id="stop-record-status" class="note"></p>
+            <div style="overflow-x:auto"><table><thead><tr><th>Stop · locate</th><th>Waiting now</th><th>Visits</th><th>Latest arrival</th><th>Intervals</th><th>Last eligible / mean</th><th>Min–max</th></tr></thead><tbody id="stop-observation-rows"></tbody></table></div>
+          </details>
           <div class="transport-controls">
             <button id="line-edit">Edit route on map</button
             ><button id="line-clear">Clear map selection</button>

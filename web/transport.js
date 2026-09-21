@@ -376,10 +376,49 @@ export function createTransport(game, ui) {
     $("bus-fleet").append(button);
     return button;
   });
+  const observationRows = Array.from({length:16}, (_, stop) => {
+    const row = document.createElement("tr");
+    const cells = Array.from({length:7}, () => row.appendChild(document.createElement("td")));
+    const locate = document.createElement("button");
+    cells[0].append(locate);
+    locate.onclick = () => {
+      const node = r(Number($("stop-record").value), selected * 16 + stop, 2);
+      if (node >= 0) game.focus(11, node);
+    };
+    $("stop-observation-rows").append(row);
+    return {row,cells,locate};
+  });
+  $("stop-record").onchange = update;
+  function updateObservations() {
+    const group = Number($("stop-record").value);
+    const version = selected < 0 ? -1 : r(group,selected * 16,0);
+    const window = selected < 0 ? -1 : r(group,selected * 16,1);
+    const clock = r(0,0,0);
+    const offHours = selected >= 0 && r(10,selected,34) === 1;
+    $("stop-record-status").textContent = version < 0
+      ? "No observation record available."
+      : `Route v${version} · ${window === 0 ? "all day" : "06:00–22:00"} · ${group === 19 ? "retired record; waiting counts unavailable" : `current record; ${offHours ? "off hours" : "within coverage hours"}; waiting counts are live`}. Only the most recent retired record is retained. Session clock: ${clock.toFixed(1)} s.`;
+    const seconds = n => n < 0 ? "—" : `${n.toFixed(1)} s`;
+    observationRows.forEach(({row,cells,locate}, stop) => {
+      const id = selected * 16 + stop;
+      const node = version < 0 ? -1 : r(group,id,2);
+      row.hidden = node < 0;
+      if (node < 0) return;
+      locate.textContent = address(node);
+      const visits = r(group,id,3), samples = r(group,id,5);
+      cells[1].textContent = group === 19 ? "—" : r(group,id,10);
+      cells[2].textContent = visits;
+      cells[3].textContent = visits ? `t=${r(group,id,4).toFixed(1)} s` : "Not yet observed";
+      cells[4].textContent = samples || "Insufficient samples";
+      cells[5].textContent = samples ? `${seconds(r(group,id,6))} / ${seconds(r(group,id,7))}` : "—";
+      cells[6].textContent = samples ? `${seconds(r(group,id,8))}–${seconds(r(group,id,9))}` : "—";
+    });
+  }
   let hotspotIds = "";
   function update() {
     syncNetwork();
     agreements.update();
+    updateObservations();
     $("transport-summary").textContent =
       `Trips in progress: ${r(9, 0, 5)} walk · ${r(9, 0, 6)} cycle · ${r(9, 0, 7)} car · ${r(9, 0, 8)} bus. Waiting at stops: ${r(9, 0, 9)}. City subsidies paid: ${money(r(9, 0, 2))}.`;
     $("line-stats").textContent =

@@ -39,6 +39,54 @@ pub const Line = struct {
     fleet: usize = 2,
     delivered: f64 = 0,
 };
+pub const StopObservation = struct {
+    visits: u32 = 0,
+    latest: f64 = -1,
+    intervals: u32 = 0,
+    last_interval: f64 = -1,
+    total: f64 = 0,
+    minimum: f64 = -1,
+    maximum: f64 = -1,
+};
+pub const Observation = struct {
+    version: u32 = 0,
+    window: u32 = 1,
+    count: usize = 0,
+    nodes: [max_stops]usize = @splat(0),
+    stops: [max_stops]StopObservation = @splat(.{}),
+};
+pub var observations: [max_lines]Observation = @splat(.{});
+pub var previous_observations: [max_lines]Observation = @splat(.{});
+pub fn syncObservation(id: usize) void {
+    const l = &lines[id];
+    const o = &observations[id];
+    if (o.version == l.version and o.window == l.window) return;
+    if (o.count > 0) previous_observations[id] = o.*;
+    o.* = .{ .version = l.version, .window = l.window };
+    if (l.active) {
+        o.count = l.count;
+        @memcpy(o.nodes[0..l.count], l.stops[0..l.count]);
+    }
+}
+fn recordArrival(v: *const Vehicle, elapsed: f64) void {
+    const id: usize = @intCast(v.line);
+    const l = &lines[id];
+    if (v.retiring or !l.active or v.version != l.version or v.company != l.company or
+        !operators.scheduled(l.window, elapsed) or v.node != l.stops[v.stop]) return;
+    const o = &observations[id];
+    const s = &o.stops[v.stop];
+    // Omit any interval crossing a daytime closure, including whole skipped days.
+    if (s.visits > 0 and (o.window == 0 or @floor((s.latest - 120) / 480) == @floor((elapsed - 120) / 480))) {
+        const interval = elapsed - s.latest;
+        s.intervals += 1;
+        s.last_interval = interval;
+        s.total += interval;
+        s.minimum = if (s.minimum < 0) interval else @min(s.minimum, interval);
+        s.maximum = @max(s.maximum, interval);
+    }
+    s.visits += 1;
+    s.latest = elapsed;
+}
 pub var vehicles: [car_count + max_lines * buses_per_line]Vehicle = @splat(.{});
 pub var lines: [max_lines]Line = @splat(.{});
 // 0 mixed traffic, 1 dedicated bus lane, 2 protected cycle lane (both directions).
@@ -67,6 +115,8 @@ pub fn init() void {
     clock = 160;
     vehicles = @splat(.{});
     lines = @splat(.{});
+    observations = @splat(.{});
+    previous_observations = @splat(.{});
     lanes = @splat(0);
     occupancy = @splat(0);
     queues = @splat(0);
@@ -104,6 +154,7 @@ pub fn apply(id: usize) bool {
     line.version += 1;
     line.count = draft_count;
     @memcpy(line.stops[0..draft_count], draft[0..draft_count]);
+    syncObservation(id);
     // Existing buses finish their segment and unload before joining the new service.
     return true;
 }
@@ -111,6 +162,7 @@ pub fn remove(id: usize) void {
     if (id >= max_lines) return;
     lines[id].active = false;
     lines[id].version += 1;
+    syncObservation(id);
 }
 fn laneKey(v: Vehicle, road: usize) usize {
     return road * 4 + (if (v.node == city.roads[road].a) @as(usize, 0) else 2) + @as(usize, v.lane);
@@ -168,6 +220,7 @@ pub fn update(dt: f32, elapsed: f64) void {
     }
     for (&congestion, 0..) |*c, i| c.* += (@min(1, @as(f32, @floatFromInt(queues[i])) / 5) - c.*) * @min(1, dt / 3);
     for (&lines, 0..) |*l, id| {
+        syncObservation(id);
         for (0..buses_per_line) |slot| {
             const v = &vehicles[car_count + id * buses_per_line + slot];
             if (!v.active and l.active and slot < l.fleet and blocker(id) == 0) {
@@ -248,7 +301,10 @@ pub fn update(dt: f32, elapsed: f64) void {
             v.speed = 0;
             if (v.next == v.target or (v.line >= 0 and (!lines[@intCast(v.line)].active or v.version != lines[@intCast(v.line)].version or v.retiring or v.shift_day != operators.daytime(elapsed)))) {
                 v.node = v.next;
-                if (v.line >= 0) v.dwell = if (v.node == v.target or v.retiring) 5 else 0;
+                if (v.line >= 0) {
+                    v.dwell = if (v.node == v.target or v.retiring) 5 else 0;
+                    if (v.node == v.target) recordArrival(v, elapsed);
+                }
             } else {
                 // Keep the vehicle's footprint on the approach until its exit has room.
                 var candidate = v.*;

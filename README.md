@@ -67,3 +67,5 @@ No complete household finances, intersection collision physics, elections, full 
 The HTTP container is a static server. Zig compilation stays inside Docker; no additional host toolchains are required. No test suite is included, as requested. The accepted design is in `docs/next-slice.md`; current implementation details are in `docs/scene.md`, `docs/economy.md`, `docs/transport.md` and `docs/abi.md`.
 
 Operator working capital and driver coverage are implemented; see [mechanics](docs/service-agreements.md) and `docs/operator-capital-slice.md` at the repository root. Accounts reconcile opening capital, fares, subsidies, agreement receipts, vehicle costs and labour. Offers choose daytime or all-day coverage.
+
+Transport Authority also reports measured stop arrivals, eligible interarrival intervals and live waiting counts, with separate current/retired route records. See [stop regularity mechanics and verification](docs/stop-regularity-slice.md). These observations introduce no timetable or payment penalties.

@@ -81,6 +81,9 @@ export fn focus(kind: u32, id: u32) void {
         const p = &residents.people[id];
         scene.focus(p.x, p.z);
     }
+    if (kind == 11 and id < city.node_count) {
+        scene.focus(city.nodes[id].x, city.nodes[id].z);
+    }
     if (kind == 12 and id < transport.vehicles.len) {
         const v = &transport.vehicles[id];
         scene.focus(v.x, v.z);
@@ -403,6 +406,35 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 12 => @floatFromInt(transport.committed(id, true, transport.max_lines)),
                 13 => @floatFromInt(transport.occupied(id)),
                 14 => @floatFromInt(transport.operators.drivers(id, game.elapsed) -| transport.occupied(id)),
+                else => -1,
+            };
+        },
+        18, 19 => {
+            const line = id / transport.max_stops;
+            const stop = id % transport.max_stops;
+            if (line >= transport.max_lines) return -1;
+            const o = if (group == 18) &transport.observations[line] else &transport.previous_observations[line];
+            if (stop >= o.count) return -1;
+            const s = &o.stops[stop];
+            return switch (field) {
+                0 => @floatFromInt(o.version),
+                1 => @floatFromInt(o.window),
+                2 => @floatFromInt(o.nodes[stop]),
+                3 => @floatFromInt(s.visits),
+                4 => s.latest,
+                5 => @floatFromInt(s.intervals),
+                6 => s.last_interval,
+                7 => if (s.intervals > 0) s.total / @as(f64, @floatFromInt(s.intervals)) else -1,
+                8 => s.minimum,
+                9 => s.maximum,
+                10 => blk: {
+                    if (group == 19) break :blk -1;
+                    var total: usize = 0;
+                    for (&residents.people) |p| {
+                        if (p.bus_line == @as(i32, @intCast(line)) and p.bus_version == o.version and p.mode == 3 and p.phase == 1 and p.bus < 0 and p.bus_stage == 0 and p.node == p.next and p.node == p.boarding and p.boarding == o.nodes[stop]) total += 1;
+                    }
+                    break :blk @floatFromInt(total);
+                },
                 else => -1,
             };
         },

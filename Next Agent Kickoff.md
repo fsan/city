@@ -1,10 +1,12 @@
-# Next agent kickoff — measured bus service regularity
+# Next agent kickoff — observed regularity complete
 
-Continue Common Ground in `/Users/fox/Documents/ChatGPT/city`. The bus operator working-capital and driver-shift slice is complete. The next bounded slice is **measured stop arrivals and service regularity reporting**, before adding contractual headway penalties.
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. The **measured stop arrivals and service regularity reporting slice is complete**, alongside the prior operator-capital and driver-shift baseline. Read docs/stop-regularity-slice.md for exact measurement semantics, verification and limits.
 
-Read current code, `git status --short` and recent commits before editing. Other work can land after this note. On 21 September 2026, commit `25e3e0b` already contained the implementation and prior agreement-review work; the final verification notes, small dispatch-report wording improvement and this handoff were added afterward. Preserve all uncommitted work. Do not reset, rewrite history or push without a request.
+Inspect current code, git status and recent commits before editing. At the start of this slice three files were staged (this kickoff, docs/operator-capital-slice.md and web/agreements.js); an external commit 64a7dbc (temp) landed during initial inspection and included that work. It was preserved. This slice's implementation and documentation were left uncommitted; do not assume that is still current. Do not reset, rewrite history or push without a request.
 
 ## Read first
+
+Read docs/stop-regularity-slice.md first.
 
 Read `README.md`, `docs/operator-capital-slice.md`, `docs/service-agreements.md`, `docs/transport.md`, `docs/abi.md`, and `docs/city-planning.md`. The operator slice note contains exact accounting rules, limitations, reproducible refusal/remedy scenarios and verification results. The Development Agent Kickoff and Modern City Management Game Scope Specification provide product direction; their old planning-only phase does not replace a new implementation request.
 
@@ -22,19 +24,25 @@ Use Zig for rules and measurements, JavaScript for WebGL/input/reports. Compile 
 - Each vehicle retains its operator while clearing. No money transfers on handover and no cash resets on reuse. Clearing is paid by the already-expensed flat fee, occupies physical resources and earns no delivery. Low cash retires safely without negative balances. All-day driver relief occurs at a junction.
 - Off-hours add no delivery target. Contracts retain window and target. Private service continues with the last operator/fleet/window after closure. Refresh/Restart clears the session.
 
-## Next bounded playable slice
+## Completed stop-regularity slice
 
-The mayor should see where buses actually arrive, whether waiting is becoming irregular, and how route/lane decisions affect observed service. Do not invent a timetable or silently change existing payment rules.
+- Zig records a visit exactly at physical approach completion into target-stop dwell, only for current, scheduled, non-retiring service. Deployment, clearance and relief-only stops are excluded; a full bus still counts.
+- Each line keeps current and most recent retired route/window records, with stable route version and stop nodes. Up to 16 stop records hold visits, latest timestamp, eligible interval count and last/mean/min/max. No observations and no intervals have explicit missing values.
+- Applying a route archives the prior record immediately (even paused / same draft). Withdrawal archives and empties current; reuse starts fresh. Window changes synchronize before the next transport step's arrivals. Company/fleet/lane changes alone retain the same route/window measurements.
+- Daytime pairs spanning closed hours are omitted. The new day's first visit updates latest time without inventing an overnight interval; older eligible statistics remain. All-day intervals cross midnight normally.
+- Transport Authority offers current/retired selection, coverage/off-hours labels, session clock, live waiting counts, stop locate, unobserved/insufficient states and completed eligible interval statistics.
+- Payments, dispatch, boarding, account rules and resident routing were not changed. No permanent tests added.
 
-1. Record actual service-stop arrivals in Zig, excluding initial empty deployment, route-clearance junctions and driver-relief-only stops. Define a stop visit precisely and count it once despite dwell/queue updates.
-2. Keep a small bounded per-line/per-stop session record: visit count, latest visit time and observed intervals where enough samples exist. Use stable route version and stop-node identity. Distinguish “not yet observed” from zero wait or perfect service.
-3. Show a compact stop-level report in the existing Transport Authority, with relevant waiting counts and a locate action. Clearly distinguish observed interarrival time from resident waiting duration and promised coverage.
-4. Define window handling: planned off-hours must not look like missed daytime service. Decide and document whether intervals crossing a closed window are omitted or measured in scheduled seconds. Preserve meaningful history across a route edit without mixing different routes.
-5. Keep diagnostics descriptive in this slice: no new penalties, payment formula changes, dispatch timetable, automatic route optimizer or guaranteed remediation. Existing route/lane/operator/coverage controls provide the interventions.
+## Following agent: scope must be explicitly chosen
 
-Completion: stop arrivals reflect vehicle movement; repeated frames/dwell do not duplicate visits; clearance/redeployment/relief cannot manufacture service; route edits and window boundaries have legible semantics; the UI shows genuine observations and insufficient-sample states; existing accounts, protected reserves, rider continuity and repair delivery remain valid. Docker builds, temporary focused WASM/browser checks and updated mechanics/ABI/handoff are required.
+The natural follow-on is to **design explicit contractual regularity targets** using these observations, but no such rules are implemented or authorized by this completed slice. Before implementing a future request, settle the metric and unit, minimum evidence, grace for deployment/route edits, closed-window handling, attribution across operator changes, and any effect on payment/reserves. Do not silently use min/max or the current lifetime mean as a compliance threshold. Keep existing earned movement/dwell payments unchanged unless the next user request explicitly authorizes a change.
+
+Other deferred features (timetable, optimizer, event log/rolling trends, transfers, save/load, purchases/recruitment, individual payroll, expansion) remain outside this slice. Do not begin them merely because they appear here. Follow the next user's bounded request and write a short slice note before implementation.
 
 ## Code map and cautions
+
+- transport.zig: Observation / StopObservation, syncObservation and recordArrival own bounded stop measurements. Current/previous records are independent of agreement history.
+- main.zig: groups 18/19 expose stop records (ID = line × 16 + stop index); focus(11,node) locates stops. web/transport.js and web/index.html own the compact stop report.
 
 - `src/simulation/operators.zig`: independent accounts, day/night cohorts, service-window integral.
 - `transport.zig`: physical fleet, original bus ownership, clearance, drivers, fares/costs, delivered seconds. Keep independent of finance/residents.
@@ -49,8 +57,10 @@ Never iterate the large resident array by value; it previously exhausted the WAS
 
 ## Verification and remaining limits
 
+See docs/stop-regularity-slice.md for this slice's checks. Docker ReleaseSafe build/startup, JS syntax/diff checks and fresh browser inspection passed. Temporary /tmp/city-stop-check.mjs matched 29 physical arrivals over 24,000 steps, omitted seven closed-window pairs and observed three all-day midnight pairs. /tmp/city-stop-stats.mjs independently recomputed last/mean/min/max and reconciled stop waiting counts over 21,000 steps (six visits per stop on a two-stop route), including live bus-lane changes. Existing /tmp/city-capital-check.mjs and /tmp/city-capital-extra.mjs passed accounts, reserve/ledger, rider, cash exhaustion, shift/expiry and physical repair checks. Temporary scripts are not repository dependencies and may disappear.
+
 See `docs/operator-capital-slice.md` for completed checks: cash exhaustion without rescue, shared company capacity, shift/midnight/expiry, quote/refusal/revision, handover, ledger/account reconciliation, passenger conservation, route editing/reuse/paused withdrawal, physical repair, road construction/zoning and finite rendering. No permanent tests were added.
 
 Use a fresh temporary tab at `http://localhost:8080/`; never reset the user's town. Confirm compiler success before refreshing: failed builds retain the last good WASM. Keep accounting/reserve checks in temporary scripts outside the repository.
 
-Driver staff are aggregate cohorts, empty deployment is abstracted, clearance/relief uses a fixed prepaid fee, and operating buffers are acceptance thresholds rather than escrow. No resident employment/payroll link, purchases/recruitment, transfers, full timetable, collisions, new service domains or city expansion. Save/load remains later work. Keep this next increment limited to honest observed regularity.
+Driver staff are aggregate cohorts, empty deployment is abstracted, clearance/relief uses a fixed prepaid fee, and operating buffers are acceptance thresholds rather than escrow. No resident employment/payroll link, purchases/recruitment, transfers, full timetable, collisions, new service domains or city expansion. Save/load remains later work. Observed regularity remains descriptive, with one retired record per line and no historical waiting-duration distribution or compliance score.

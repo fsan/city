@@ -61,3 +61,22 @@ Group 14 retains 0 owned vehicles, 1 committed daytime buses (now includes priva
 Groups 13/17 add 21 agreed window and 22 total contracted bus-second target, fixed at acceptance. Closure snapshots preserve both.
 
 `service_window_quote(line,company,fleet,days,price,window,field)` and `service_window_offer(line,company,fleet,days,price,window)` add explicit line replacement and hours. Quote fields 0 minimum price, 1 refusal, 2 available owned fleet excluding replaced line, 3 minimum company cash buffer including other commitments. Refusals: 0 eligible, 1 vehicles, 2 price, 3 invalid terms, 4 driver coverage, 5 cash. Days must be whole, 1–7. Legacy offer uses all-day; legacy quote uses all-day without excluding a line. Policy fares/subsidies now round to pennies.
+
+## Stop-arrival observations
+
+Groups 18 (current) and 19 (most recent retired route/window) use ID = line ID × 16 + ordered stop index. Missing line/stop/record/field returns -1. Existing field numbers are unchanged.
+
+| Field | Value |
+| --- | --- |
+| 0 | Route version |
+| 1 | Coverage window: 0 all day, 1 daytime |
+| 2 | Stable stop node ID |
+| 3 | Visit count, 0 before observation |
+| 4 | Latest absolute simulation time, -1 before observation |
+| 5 | Eligible interval count |
+| 6 | Last eligible interval in simulation seconds, -1 without samples |
+| 7 | Mean eligible interval, -1 without samples |
+| 8 / 9 | Minimum / maximum eligible interval, -1 without samples |
+| 10 | Current physically waiting residents for this line/version/node; -1 for retired records |
+
+focus(11,node) locates a valid street node. Records are bounded to current plus most recent retired per line, each at most 16 stops. Route edits/withdrawal update immediately; coverage changes synchronize before arrivals on the next transport step. Daytime pairs across closed hours are omitted. Zero intervals mean genuine simultaneous visits, not missing data. Detailed event and retention semantics are in stop-regularity-slice.md.
