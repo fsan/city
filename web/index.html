@@ -831,6 +831,18 @@
             <button id="service-offer">Publish / revise offer</button><button id="service-cancel">Cancel remaining service</button>
             <p id="service-status" class="note"></p>
             <p id="service-delivery" class="note"></p>
+            <h3>Fleet &amp; staff investment</h3>
+            <label>Operator <select id="fleet-operator"><option value="0">Bellwether Transit</option><option value="1">Ridgeway Passenger</option><option value="2">Community Bus</option></select></label>
+            <label>Owned bus <select id="fleet-unit"></select></label>
+            <div class="transport-controls"><button id="fleet-buy">Buy bus</button><button id="fleet-sell">Sell selected</button><button id="fleet-maintain">Maintain selected</button></div>
+            <p id="fleet-buy-help" class="note"></p>
+            <p id="fleet-sell-help" class="note"></p>
+            <p id="fleet-maintain-help" class="note"></p>
+            <div class="transport-controls"><button id="staff-recruit-day">Recruit day driver</button><button id="staff-recruit-night">Train night driver</button><button id="staff-dismiss-day">Dismiss day driver</button><button id="staff-dismiss-night">Withdraw night driver</button></div>
+            <p id="fleet-recruit" class="note"></p>
+            <p id="fleet-roster" class="note"></p>
+            <p id="fleet-summary" class="note"></p>
+            <p class="note">Buses wear only while a service bus is moving, dwelling or held in traffic; clearing earns nothing and causes no wear. An exhausted bus stops at the next stop, unloads and enters paid maintenance. A repair that cannot be funded leaves the unit unavailable instead of creating debt. Purchases, sales, recruitment, severance and maintenance are explicit cash movements inside the operator's own account. <span id="operator-message"></span></p>
             <h3>Agreement regularity review</h3>
             <p class="note">Optional target: whole 30–600 simulation seconds between arrivals. Review only; no penalty or price change, and financial eligibility does not guarantee this interval is achievable. Only arrivals after acceptance count. Each coverage window allows one target-length grace period for its first arrival. Closed-hour pairs are omitted. Missing samples never mean success.</p>
             <div id="service-regularity"></div>

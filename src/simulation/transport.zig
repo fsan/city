@@ -25,6 +25,8 @@ pub const Vehicle = struct {
     dwell: f32 = 0,
     passengers: usize = 0,
     version: u32 = 0,
+    // Owned fleet unit currently occupied by this bus; -1 for cars and idle slots.
+    unit: i32 = -1,
 };
 pub const Line = struct {
     active: bool = false,
@@ -242,20 +244,28 @@ pub fn update(dt: f32, elapsed: f64) void {
     for (&lines, 0..) |*l, id| {
         syncObservation(id);
         for (0..buses_per_line) |slot| {
-            const v = &vehicles[car_count + id * buses_per_line + slot];
+            const index = car_count + id * buses_per_line + slot;
+            const v = &vehicles[index];
             if (!v.active and l.active and slot < l.fleet and blocker(id) == 0) {
-                if (operators.expense(l.company, 2, 0)) {
-                    l.costs += 2;
-                    const stop = slot * l.count / l.fleet;
-                    const n = l.stops[stop];
-                    v.* = .{ .active = true, .shift_day = operators.daytime(elapsed), .company = l.company, .line = @intCast(id), .node = n, .next = n, .target = n, .stop = stop, .dwell = 5, .version = l.version, .x = city.nodes[n].x, .z = city.nodes[n].z };
+                // A live commitment occupies a specific owned unit. Clearing
+                // buses keep theirs until their passengers have left.
+                const unit = operators.takeUnit(l.company, index);
+                if (unit >= 0) {
+                    if (operators.expense(l.company, 2, 0)) {
+                        l.costs += 2;
+                        const stop = slot * l.count / l.fleet;
+                        const n = l.stops[stop];
+                        v.* = .{ .active = true, .shift_day = operators.daytime(elapsed), .company = l.company, .line = @intCast(id), .node = n, .next = n, .target = n, .stop = stop, .dwell = 5, .version = l.version, .unit = unit, .x = city.nodes[n].x, .z = city.nodes[n].z };
+                    } else operators.releaseUnit(l.company, unit);
                 }
             }
             if (v.active and !v.retiring) {
-                v.retiring = slot >= l.fleet or !l.active or v.version != l.version or v.company != l.company or !operators.scheduled(l.window, elapsed);
+                v.retiring = slot >= l.fleet or !l.active or v.version != l.version or v.company != l.company or !operators.scheduled(l.window, elapsed) or operators.unitUnavailable(v.company, v.unit);
                 if (!v.retiring) {
                     if (operators.expense(v.company, @as(f64, dt) * 0.06, @as(f64, dt) * 0.12)) {
                         l.costs += @as(f64, dt) * 0.18;
+                        operators.wear(v.company, index, @as(f64, dt) * operators.wear_rate);
+                        if (operators.unitUnavailable(v.company, v.unit)) v.retiring = true;
                     } else v.retiring = true;
                 }
             }
@@ -269,7 +279,11 @@ pub fn update(dt: f32, elapsed: f64) void {
                 if (v.retiring or !l.active or v.version != l.version) {
                     // Residents leave a withdrawn/changed bus at this junction, never teleport.
                     v.dwell = 5;
-                    if (v.passengers == 0) v.active = false;
+                    if (v.passengers == 0) {
+                        v.active = false;
+                        operators.releaseUnit(v.company, v.unit);
+                        v.unit = -1;
+                    }
                     continue;
                 }
                 // Relief happens at a junction. Aggregate labour is charged once;
@@ -365,6 +379,13 @@ pub fn update(dt: f32, elapsed: f64) void {
         }
     }
 }
+// Ask a bus occupying an owned unit to retire safely at its next stop.
+pub fn retire(bus: i32) void {
+    if (bus < 0 or bus >= vehicles.len) return;
+    const v = &vehicles[@intCast(bus)];
+    if (v.active) v.retiring = true;
+}
+
 // Private services also reserve their nominal requirements; selected line is replaced by a quote.
 pub fn committed(company: usize, night: bool, exclude: usize) usize {
     var n: usize = 0;
@@ -380,14 +401,15 @@ pub fn occupied(company: usize) usize {
     }
     return n;
 }
-// 0 ready, 1 off hours, 2 no cash, 3 no vehicle, 4 no on-duty driver.
+// 0 ready, 1 off hours, 2 no cash, 3 no free unit, 4 no on-duty driver,
+// 5 depot capacity (never blocks dispatch directly), 6 all units in
+// maintenance, 7 every serviceable unit is committed to a running/clearing bus.
 pub fn blocker(line: usize) u32 {
     const l = &lines[line];
     if (!operators.scheduled(l.window, clock)) return 1;
     if (operators.accounts[l.company].cash < 2.18) return 2;
-    const used = occupied(l.company);
-    if (used >= operators.accounts[l.company].capacity) return 3;
-    if (used >= operators.drivers(l.company, clock)) return 4;
+    if (operators.freeUnits(l.company) == 0) return if (operators.available(l.company) == 0) 6 else 7;
+    if (occupied(l.company) >= operators.drivers(l.company, clock)) return 4;
     return 0;
 }
 // Mutually exclusive live states for each requested fleet slot. Signals and

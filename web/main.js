@@ -1,5 +1,6 @@
 import { createPlanning } from "./planning.js";
 import { createTransport } from "./transport.js";
+import { createOperators } from "./operators.js";
 import { createRenderer } from "./renderer.js";
 import { createInterface } from "./ui.js";
 import { createReports } from "./reports.js";
@@ -39,6 +40,7 @@ function start(renderer) {
   const refresh = () => {
     reports.update();
     transport?.update();
+    operators?.update();
   };
   const speed = (value) => {
     game.set_speed(value);
@@ -62,6 +64,7 @@ function start(renderer) {
     inspect: () => reports.inspectBuilding(metric(10)),
   });
   transport = createTransport(game, ui);
+  const operators = createOperators(game, (text) => { $("operator-message").textContent = text; });
   reports = createReports(game, ui, transport);
   planning = createPlanning(game, transport);
   $("restart").onclick = () => {
@@ -70,6 +73,7 @@ function start(renderer) {
     reports.reset();
     planning.reset();
     transport.reset();
+    operators.reset();
     refresh();
   };
   const saveStatus = text => { $("save-status").textContent = text; };
@@ -117,7 +121,7 @@ function start(renderer) {
       restored = true;
       keys.clear(); drag = null; uiElapsed = 0;
       lastSpeed = game.saved_resume_speed();
-      reports.reset(); planning.reset(); transport.reset();
+      reports.reset(); planning.reset(); transport.reset(); operators.reset();
       refresh();
       saveStatus(`Loaded ${file.name}. Day ${Math.floor(metric(0)/480)+1}; ${metric(13) ? `running at ${metric(13)}×` : "paused"}. Unapplied drafts cleared.`);
     } catch (error) {

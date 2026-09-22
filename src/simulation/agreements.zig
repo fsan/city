@@ -55,12 +55,18 @@ fn validTerms(company: usize, fleet: usize, days: f64, price: f64) bool {
 pub fn minimum(fleet: usize, days: f64, window: u32) f64 {
     return @ceil((days * (if (window == 0) @as(f64, 480) else 320) * 0.18 + @ceil(days) * 2) * @as(f64, @floatFromInt(fleet)) * 1.15 * 100 - 1e-7) / 100;
 }
+// Refusals (docs/abi.md): 0 eligible, 1 insufficient owned buses,
+// 2 price below cost and margin, 3 invalid terms, 4 insufficient drivers,
+// 5 working capital below the buffer, 6 off-hours coverage gap,
+// 7 vehicle under maintenance, 8 unit still committed to a live service.
 pub fn reason(line: usize, company: usize, fleet: usize, days: f64, price: f64, window: u32) u32 {
     if (!validTerms(company, fleet, days, price) or window > 1) return 3;
     const c = &operators.accounts[company];
     const used = transport.committed(company, false, line);
-    if (c.capacity -| used < fleet) return 1;
-    if (c.day -| used < fleet or (window == 0 and c.night -| transport.committed(company, true, line) < fleet)) return 4;
+    if ((operators.owned(company) -| used) < fleet) return 1;
+    if ((operators.available(company) -| used) < fleet) return 7;
+    if ((c.day -| used) < fleet) return 4;
+    if (window == 0 and (operators.covered(company, true) -| transport.committed(company, true, line)) < fleet) return 6;
     if (c.cash < @as(f64, @floatFromInt(used + fleet)) * 12.8) return 5;
     if (finance.cents(price) < minimum(fleet, days, window)) return 2;
     return 0;
@@ -70,7 +76,7 @@ pub fn quote(line: usize, company: usize, fleet: usize, days: f64, price: f64, w
     return switch (field) {
         0 => minimum(fleet, days, window),
         1 => @floatFromInt(reason(line, company, fleet, days, price, window)),
-        2 => @floatFromInt(operators.accounts[company].capacity -| transport.committed(company, false, line)),
+        2 => @floatFromInt(operators.available(company) -| transport.committed(company, false, line)),
         3 => @as(f64, @floatFromInt(transport.committed(company, false, line) + fleet)) * 12.8,
         else => -1,
     };

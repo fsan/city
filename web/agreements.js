@@ -6,7 +6,7 @@ export function createAgreements(game, selectedLine, message) {
   const r = (group, id, field) => game.read(group, id, field);
   const money = n => `£${n.toFixed(2)}`;
   const statuses = ["No agreement", "Offered", "Active", "Expired", "Cancelled", "Revised", "Line withdrawn"];
-  const reasons = ["Eligible at this price", "Insufficient owned buses", "Price below cost and margin", "Enter valid fleet, days and price", "Insufficient drivers across promised hours", "Working capital below operating buffer"];
+  const reasons = ["Eligible at this price", "Insufficient owned buses for this fleet", "Price below cost and margin", "Enter valid fleet, days and price", "Not enough recruited drivers for the promised hours", "Working capital below the operating buffer", "No night-qualified driver for the all-day window", "Owned buses are under maintenance", "Serviceable buses are committed to another live service"];
   const stamp = t => `day ${Math.floor(t / 480) + 1}, ${String(Math.floor(t % 480 / 20)).padStart(2, "0")}:${String(Math.floor(t % 20 * 3)).padStart(2, "0")}`;
   const rows = operatorNames.map(name => {
     const row = document.createElement("tr");
@@ -29,7 +29,7 @@ export function createAgreements(game, selectedLine, message) {
       cells[2].textContent = minimum < 0 ? "—" : money(minimum);
       cells[3].textContent = `${reasons[reason]}. Cash ${money(r(14,company,4))}; required buffer ${money(game.service_window_quote(selectedLine(), company, fleet, days, price, window(), 3))}.`;
     });
-    $("operator-receipts").textContent = operatorNames.map((name,id) => `${name}: opening ${money(r(14,id,3))} + fares ${money(r(14,id,5))} + subsidies ${money(r(14,id,6))} + agreements ${money(r(14,id,2))} − vehicle/clearance ${money(r(14,id,7))} − labour ${money(r(14,id,8))} = cash ${money(r(14,id,4))}. Drivers: ${r(14,id,9)} on duty, ${r(14,id,13)} occupied (includes clearing), ${r(14,id,14)} available. Committed day/night: ${r(14,id,1)}/${r(14,id,12)}; roster day/night: ${r(14,id,10)}/${r(14,id,11)}.`).join("\n");
+    $("operator-receipts").textContent = operatorNames.map((name,id) => `${name}: opening ${money(r(14,id,3))} + fares ${money(r(14,id,5))} + subsidies ${money(r(14,id,6))} + agreements ${money(r(14,id,2))} + bus sales ${money(r(14,id,22))} − bus purchases ${money(r(14,id,21))} − recruitment ${money(r(14,id,23))} − severance ${money(r(14,id,24))} − maintenance ${money(r(14,id,25))} − vehicle/clearance ${money(r(14,id,7))} − wages ${money(r(14,id,8))} = cash ${money(r(14,id,4))}. Fleet: ${r(14,id,0)} owned / ${r(14,id,15)} depot, ${r(14,id,17)} serviceable, ${r(14,id,16)} under maintenance, ${r(14,id,19)} attached to live or clearing buses, ${r(14,id,18)} free; mean condition ${r(14,id,20).toFixed(0)}%. Roster: ${r(14,id,10)} day-qualified / ${r(14,id,11)} night-qualified; on duty ${r(14,id,9)} of ${r(14,id,14) + r(14,id,13)} committed. Committed day/night: ${r(14,id,1)}/${r(14,id,12)}.`).join("\n");
     const line = selectedLine();
     const status = line < 0 ? 0 : r(13,line,0);
     const available = r(0,0,3) + (status === 1 ? r(13,line,6) : 0);

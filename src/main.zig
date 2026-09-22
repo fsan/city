@@ -414,6 +414,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 11 => @floatFromInt(v.company),
                 12 => if (v.retiring) 1 else 0,
                 13 => if (v.shift_day) 1 else 0,
+                14 => @floatFromInt(v.unit),
                 else => -1,
             };
         },
@@ -425,7 +426,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             if (id >= 3) return -1;
             const c = transport.operators.accounts[id];
             return switch (field) {
-                0 => @floatFromInt(c.capacity),
+                0 => @floatFromInt(transport.operators.owned(id)),
                 1 => @floatFromInt(transport.committed(id, false, transport.max_lines)),
                 2 => c.receipts,
                 3 => c.opening,
@@ -440,8 +441,39 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 12 => @floatFromInt(transport.committed(id, true, transport.max_lines)),
                 13 => @floatFromInt(transport.occupied(id)),
                 14 => @floatFromInt(transport.operators.drivers(id, game.elapsed) -| transport.occupied(id)),
+                // Slice 4 fleet and roster detail.
+                15 => @floatFromInt(c.depot),
+                16 => @floatFromInt(transport.operators.underMaintenance(id)),
+                17 => @floatFromInt(transport.operators.available(id)),
+                18 => @floatFromInt(transport.operators.freeUnits(id)),
+                19 => @floatFromInt(transport.operators.attached(id)),
+                20 => transport.operators.condition(id),
+                21 => c.purchases,
+                22 => c.sales,
+                23 => c.recruitment,
+                24 => c.severance,
+                25 => c.maintenance,
+                26 => @floatFromInt(@as(u32, @intFromEnum(transport.operators.buyReason(id)))),
+                27 => @floatFromInt(@as(u32, @intFromEnum(transport.operators.recruitReason(id, false)))),
+                28 => @floatFromInt(@as(u32, @intFromEnum(transport.operators.recruitReason(id, true)))),
+                29 => @floatFromInt(@as(u32, @intFromEnum(transport.operators.dismissReason(id, false)))),
+                30 => @floatFromInt(@as(u32, @intFromEnum(transport.operators.dismissReason(id, true)))),
+                31 => transport.operators.quote(id, 0),
+                32 => transport.operators.quote(id, 2),
+                33 => transport.operators.quote(id, 3),
+                34 => transport.operators.quote(id, 4),
+                35 => transport.operators.quote(id, 5),
+                36 => @floatFromInt(c.depot -| transport.operators.owned(id)),
+                37 => @floatFromInt(transport.operators.covered(id, false)),
+                38 => @floatFromInt(transport.operators.covered(id, true)),
                 else => -1,
             };
+        },
+        23 => {
+            const company = id / transport.operators.max_units;
+            const unit = id % transport.operators.max_units;
+            if (company >= 3) return -1;
+            return transport.operators.unitQuote(company, unit, field);
         },
         20, 21 => {
             const record = id / transport.max_stops;
@@ -586,6 +618,26 @@ export fn transport_policy(cap: f64, subsidy: f64) bool {
     transport.subsidy = finance.cents(subsidy);
     return true;
 }
+export fn fleet_buy(company: u32) bool {
+    return company < 3 and transport.operators.buy(company);
+}
+export fn fleet_sell(company: u32, unit: u32) bool {
+    return company < 3 and transport.operators.sell(company, unit);
+}
+export fn fleet_maintain(company: u32, unit: u32) bool {
+    if (company >= 3 or unit >= transport.operators.max_units) return false;
+    // Mark the occupying bus for safe retirement before the unit leaves service.
+    const bus = transport.operators.accounts[company].units[unit].bus;
+    if (bus >= 0) transport.retire(bus);
+    return transport.operators.maintain(company, unit);
+}
+export fn staff_recruit(company: u32, night: u32) bool {
+    return company < 3 and night <= 1 and transport.operators.recruit(company, night == 1);
+}
+export fn staff_dismiss(company: u32, night: u32) bool {
+    return company < 3 and night <= 1 and transport.operators.dismiss(company, night == 1);
+}
+
 export fn transport_select(id: i32) void {
     transport.selected = if (id >= 0 and id < transport.max_lines) id else -1;
 }

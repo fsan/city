@@ -102,8 +102,8 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 2,
-        .rules = "bellwether-2026-09-v2",
+        .version = 3,
+        .rules = "bellwether-2026-09-v3",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = &city.buildings, .parcels = parcels.storage[0..parcels.count], .next_node = next_rows[0..city.node_count], .walk_next = walk_rows[0..city.node_count], .distance = distance_rows[0..city.node_count] },
@@ -188,7 +188,7 @@ fn validAgreement(a: *const agreements.Agreement, s: *const State, closed: bool)
         a.number == 0 or a.number >= s.services.next_number or a.stop_count < 2 or a.stop_count > 16 or
         !between(a.duration, 480, 3360) or @mod(a.duration, 480) != 0 or !between(a.price, 0.01, 1e9) or
         !between(a.paid, 0, a.price) or !between(a.reserved, 0, a.price) or !between(a.released, 0, a.price) or
-        !agreements.validInterval(a.max_interval) or a.reason > 5 or a.route_version == 0 or
+        !agreements.validInterval(a.max_interval) or a.reason > 8 or a.route_version == 0 or
         !between(a.offered, 0, s.clock.elapsed) or !between(a.start, 0, s.clock.elapsed) or !between(a.ended, 0, s.clock.elapsed) or
         !between(a.updated, 0, s.clock.elapsed) or !between(a.regularity_updated, 0, s.clock.elapsed) or !between(a.regularity_time, 0, s.clock.elapsed) or
         a.delivered < 0 or a.expected < a.delivered or a.baseline < 0 or a.target < 0) return false;
@@ -298,6 +298,22 @@ fn validate(s: *const State) bool {
     for (town.buildings, 0..) |b, i| if (b.occupants != occupants[i]) return false;
     for (m.vehicles, 0..) |v, i| {
         if (v.node >= n or v.next >= n or v.target >= n or v.company >= 3 or v.lane > 1 or !index(v.line, 8) or v.stop >= 16 or !between(v.dwell, 0, 5) or v.speed < 0 or v.progress < 0 or v.passengers != riders[i] or v.passengers > 24 or (!v.active and v.passengers != 0)) return false;
+        if (i < city.population) {
+            // Parked personal cars never hold an owned bus unit.
+            if (v.unit != -1) return false;
+        } else {
+            if (v.unit < -1 or v.unit >= operators.max_units) return false;
+            if (v.active and v.unit < 0) return false;
+            if (v.unit >= 0) {
+                const owner = m.accounts[v.company].units[@intCast(v.unit)];
+                if (!owner.present or owner.bus != @as(i32, @intCast(i))) return false;
+            }
+        }
+        if (v.unit != -1) {
+            if (i < city.population or v.unit >= operators.max_units) return false;
+            const owner = m.accounts[v.company].units[@intCast(v.unit)];
+            if (!owner.present or owner.bus != @as(i32, @intCast(i))) return false;
+        } else if (i >= city.population and v.active) return false;
         if (v.active) {
             if ((i < city.population and v.line != -1) or (i >= city.population and v.line != @as(i32, @intCast((i - city.population) / 3)))) return false;
             if (v.node != v.next and (edges[v.node][v.next] < 0 or v.progress > roads[@intCast(edges[v.node][v.next])].length + 0.1)) return false;
@@ -317,12 +333,31 @@ fn validate(s: *const State) bool {
     var receipts: f64 = 0;
     var expenses: f64 = 0;
     var subsidy_sum: f64 = 0;
-    const capacity_expected = [_]usize{ 4, 3, 2 };
-    const day = [_]usize{ 4, 3, 2 };
-    const night = [_]usize{ 2, 1, 0 };
     const opening = [_]f64{ 600, 300, 5 };
+    const depots = [_]usize{ 6, 5, 3 };
     for (m.accounts, 0..) |account, i| {
-        if (account.capacity != capacity_expected[i] or account.day != day[i] or account.night != night[i] or account.opening != opening[i] or account.cash < 0 or account.fares < 0 or account.subsidies < 0 or account.receipts < 0 or account.vehicle < 0 or account.labour < 0 or !near(account.cash, account.opening + account.fares + account.subsidies + account.receipts - account.vehicle - account.labour)) return false;
+        if (account.opening != opening[i] or account.depot != depots[i] or
+            account.day > 12 or account.night > account.day or account.cash < 0 or account.fares < 0 or account.subsidies < 0 or account.receipts < 0 or
+            account.vehicle < 0 or account.labour < 0 or account.purchases < 0 or account.sales < 0 or account.recruitment < 0 or account.severance < 0 or account.maintenance < 0) return false;
+        const expected = account.opening + account.fares + account.subsidies + account.receipts + account.sales -
+            account.purchases - account.recruitment - account.severance - account.maintenance - account.vehicle - account.labour;
+        if (!near(account.cash, expected)) return false;
+        var present: usize = 0;
+        for (account.units, 0..) |unit, slot| {
+            if (!unit.present) {
+                if (unit.bus != -1 or unit.service or unit.paid or unit.service_end != 0 or unit.condition != 100) return false;
+                continue;
+            }
+            present += 1;
+            if (!between(unit.condition, 0, 100) or !between(unit.service_end, 0, c.elapsed + operators.maintenance_seconds + 0.001) or !index(unit.bus, m.vehicles.len)) return false;
+            if (unit.paid and !unit.service) return false;
+            if (unit.service and unit.bus >= 0 and !m.vehicles[@intCast(unit.bus)].retiring) return false;
+            if (unit.bus >= 0) {
+                const bus: usize = @intCast(unit.bus);
+                if (bus < city.population or m.vehicles[bus].unit != @as(i32, @intCast(slot)) or m.vehicles[bus].company != i) return false;
+            }
+        }
+        if (present > account.depot) return false;
         receipts += account.fares + account.subsidies + account.receipts;
         expenses += account.vehicle + account.labour;
         subsidy_sum += account.subsidies;
@@ -477,13 +512,27 @@ fn commit(s: *const State) void {
     restored_accumulator = s.clock.accumulator;
 }
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
+const Header = struct { format: []const u8, version: u32, rules: []const u8 };
+fn supported(version: u32, rules: []const u8) bool {
+    return version == 3 and std.mem.eql(u8, rules, "bellwether-2026-09-v3");
+}
+// A file whose metadata already declares another schema is incompatible, not
+// malformed. This second scan runs only after the strict parse has failed, so a
+// genuine town still pays a single parse.
+fn incompatibleHeader(length: usize) bool {
+    var fixed = std.heap.FixedBufferAllocator.init(&parse_memory);
+    const parsed = std.json.parseFromSlice(Header, fixed.allocator(), buffer[0..length], .{ .max_value_len = 1024, .allocate = .alloc_always, .ignore_unknown_fields = true }) catch return false;
+    defer parsed.deinit();
+    return !std.mem.eql(u8, parsed.value.format, "Common Ground town") or !supported(parsed.value.version, parsed.value.rules);
+}
+// 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 pub fn load(length: usize) u32 {
     if (length == 0 or length > capacity) return 1;
     var fixed = std.heap.FixedBufferAllocator.init(&parse_memory);
-    const parsed = std.json.parseFromSlice(State, fixed.allocator(), buffer[0..length], .{ .max_value_len = 1024, .allocate = .alloc_always }) catch return 2;
+    const parsed = std.json.parseFromSlice(State, fixed.allocator(), buffer[0..length], .{ .max_value_len = 1024, .allocate = .alloc_always }) catch return if (incompatibleHeader(length)) 3 else 2;
     defer parsed.deinit();
     const state = &parsed.value;
-    if (!std.mem.eql(u8, state.format, "Common Ground town") or state.version != 2 or !std.mem.eql(u8, state.rules, "bellwether-2026-09-v2")) return 3;
+    if (!std.mem.eql(u8, state.format, "Common Ground town") or !supported(state.version, state.rules)) return 3;
     if (!validate(state)) return 4;
     commit(state);
     return 0;

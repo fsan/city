@@ -5,7 +5,7 @@ This is a proposed dependency order against the canonical scope, not authorizati
 1. **Agreement regularity targets — complete:** optional targets, overdue diagnostics and retained agreement results; no financial penalties in this slice.
 2. **Save/load — complete:** versioned manual local files preserve towns, accounts, agreements, routes, observations and live journeys across sessions; no backend or autosave.
 3. **Passenger service outcomes — complete:** real wait starts/boardings, per-dwell capacity denials, abandonment causes and district comparison, with save/load and no payment changes.
-4. **Bus staffing and fleet investment:** recruitment, vehicle purchases and operating commitments.
+4. **Bus staffing and fleet investment — complete:** explicit recruit/dismiss driver cohorts with wages and qualification, an owned bus pool with purchase, sale, depot capacity, condition and paid maintenance, and shared dispatch/acceptance commitments. See [operator-workforce-slice.md](operator-workforce-slice.md).
 5. **Transport contract enforcement:** explicitly designed remedies and financial consequences, if authorized.
 6. **Civic calendar and realistic routines:** weekdays, shifts, weekends and longer budget periods.
 7. **Households and household budgets:** shared income, essential expenses and financial pressure.

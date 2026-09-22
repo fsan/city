@@ -54,6 +54,8 @@ pub fn update(dt: f32) void {
     for (&trust, 0..) |*value, i| value.* += (20 + city.condition(i) * 0.65 - value.*) * dt / 120;
     transport.subsidy_available = finance.available();
     transport.subsidy_due = 0;
+    // Finish or fund routine fleet maintenance before dispatch decides.
+    transport.operators.update(elapsed);
     transport.update(dt, elapsed);
     residents.update(dt, elapsed);
     agreements.update(elapsed);

@@ -145,3 +145,72 @@ Gap age uses acceptance or the current coverage-window opening until its first r
 To import, size-check the file, copy its bytes to that buffer, then call `save_load(length) -> u32`. Results: 0 success, 1 empty/oversized input, 2 malformed JSON/schema or parse-budget exhaustion, 3 unsupported format/version/rules, 4 inconsistent state. Parsing uses a separate bounded 64 MiB arena. All validation precedes live mutation. Unknown/duplicate fields and invalid enum tags are rejected. A failed import leaves the town unchanged.
 
 Successful load restores simulation speed and fixed-step remainder. `saved_resume_speed() -> f32` supplies the previous nonzero speed for Space after paused import. The browser clears UI drafts and refreshes report metadata only after success. `format = "Common Ground town"`, `version = 2`, `rules = "bellwether-2026-09-v2"`. Version 1 and other incompatible files are rejected with result 3; there is no migration layer. See `save-load-slice.md` and the explicit `State` contract in `src/simulation/persistence.zig`.
+
+## Slice 4 — fleet units and recruited staff
+
+Group 14 keeps every existing field number. Field 0 is now the number of owned
+units in that operator's pool (was the fixed fleet capacity). New fields:
+
+| Field | Value |
+| --- | --- |
+| 15 | Depot/yard capacity, the maximum owned units |
+| 16 | Units currently unavailable for maintenance |
+| 17 | Serviceable units (owned − under maintenance) |
+| 18 | Free units: serviceable and attached to no bus |
+| 19 | Units attached to a running or clearing bus |
+| 20 | Mean unit condition, 0–100 |
+| 21 / 22 | Lifetime bus purchases / sale receipts |
+| 23 / 24 | Lifetime recruitment / severance payments |
+| 25 | Lifetime maintenance payments |
+| 26 | Purchase refusal (see codes below) |
+| 27 / 28 | Day / night recruitment refusal |
+| 29 / 30 | Day / night dismissal refusal |
+| 31 | Bus purchase price |
+| 32 | Maintenance charge per repair |
+| 33 / 34 | Day / night recruitment fee |
+| 35 | Severance payment |
+| 36 | Free depot slots |
+| 37 / 38 | Drivers able to cover daytime / the night window |
+
+Refusal codes for fields 26–30: 0 eligible, 1 insufficient cash, 2 no depot
+space, 3 a day-qualified driver is required first, 4 night coverage gap,
+5 the unit is under maintenance, 6 the unit is still committed to a live
+service, 7 invalid selection.
+
+Group 23 reads one owned unit. ID = operator × 8 + unit index; an absent unit
+returns -1 for every field.
+
+| Field | Value |
+| --- | --- |
+| 0 | Present in the pool |
+| 1 | Condition, 0–100 |
+| 2 | Under maintenance |
+| 3 | Attached to a running or clearing bus |
+| 4 | Attached vehicle slot, -1 when free |
+| 5 | Repair funded |
+| 6 | Repair completion time, 0 before the window starts |
+| 7 | Current resale value at this condition |
+| 8 | Sale refusal (same codes as above) |
+| 9 | Repair charge at this condition |
+
+Group 12 field 14 is the owning unit of a bus, -1 for cars and idle slots.
+Group 10 field 34 adds dispatch states 5 (depot capacity), 6 (every remaining
+unit is under maintenance) and 7 (every serviceable unit is committed to a
+running or clearing bus).
+
+Service-quote refusals (group 13 field 8, `service_window_quote` field 1) now
+run to 8: 0 eligible, 1 insufficient owned buses, 2 price below cost and
+margin, 3 invalid terms, 4 insufficient drivers, 5 working capital below the
+operating buffer, 6 no night-qualified driver for the all-day window, 7 owned
+buses are under maintenance, 8 serviceable buses are committed elsewhere.
+
+Commands: `fleet_buy(company)`, `fleet_sell(company, unit)`,
+`fleet_maintain(company, unit)`, `staff_recruit(company, night)`,
+`staff_dismiss(company, night)`. All validate in Zig and return a boolean;
+a refused action never moves money. `fleet_maintain` marks the occupying bus
+for safe retirement before the unit leaves service, so riders still alight at
+a stop.
+
+Persistence is now `version: 3`, `rules: "bellwether-2026-09-v3"`. Every unit,
+roster count and lifetime flow is serialized and validated; version 2 and
+older files are rejected with result 3 and no migration layer.

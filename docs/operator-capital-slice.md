@@ -22,3 +22,16 @@ Docker Compose / Zig 0.14.1 ReleaseSafe builds and JavaScript syntax checks pass
 Reproduce a remedy in a fresh town: offer Ridgeway two all-day buses on Line 1 (vehicle refusal because its initial Line 2 uses two); revise to one bus (three day drivers and one night driver suffice). Community Bus's £5 opening balance cannot satisfy even the one-bus £12.80 buffer, regardless of promised price. No time-based cash grant rescues it.
 
 Limits: aggregate driver cohorts and fixed-fee clearance/relief overtime; empty deployment is abstracted; requirements continue privately after contracts; quotes reserve nominal requirements, while clearing can delay physical dispatch. Driver cohorts are relieved at safe junctions. No recruitment, resident payroll, fleet purchases, save/load or regularity targets.
+
+## Superseded in part by slice 4
+
+This note documents the first operator-capital increment: fixed aggregate driver
+cohorts and fixed owned-fleet numbers. Slice 4 replaces both with explicit
+commitments in [operator-workforce-slice.md](operator-workforce-slice.md): a
+recruited day and night roster with training fees and severance, and a pool of
+individually owned buses with condition, paid maintenance, depot capacity and
+purchase and sale. Quotes and acceptance now read the live
+owned/serviceable/committed split, and refusal codes extend to 8. The account
+identity, shift semantics, clearance fee, price formula, cash buffer, reserves,
+ledger categories and safe-retirement rules below are unchanged and remain
+authoritative.

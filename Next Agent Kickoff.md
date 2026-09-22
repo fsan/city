@@ -1,16 +1,18 @@
-# Next agent kickoff — save/load and passenger outcomes complete; staffing next
+# Next agent kickoff — authorized goal: slices 4–9
 
-Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Measured arrivals, optional agreement regularity targets, **manual local save/load (slice 2)** and **passenger service outcomes (slice 3) are complete**. Read docs/passenger-outcomes-slice.md, docs/save-load-slice.md, docs/regularity-target-slice.md and docs/development-roadmap.md. The roadmap lists 39 proposed batches; slice 4 (bus staffing and fleet investment) is next. The list is not authorization to implement all batches.
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`: optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, and smoother inter-segment vehicle movement.
 
-Inspect current code, git status and recent commits before editing. Save/load started at e8f1a31 with uncommitted regularity-target work already present. These slices remain uncommitted; preserve them and any subsequent work. Do not reset, rewrite history or push without a request.
+**Authorized goal:** implement slices 4, 5, 6, 7, 8 and 9 of the numbered development sequence, in order, as six bounded batches. Each slice must have its own short slice note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation, and a refreshed kickoff before the next slice starts. This authorizes these six slices; it does not authorize slices 10–39 or a single unbounded rewrite.
+
+Inspect current code, git status and recent commits before editing. The worktree currently has one cleanup item: `.tmp_degrees.zig` was accidentally committed in `704a918` and is deleted in the worktree. Remove that temporary file cleanly as part of the first batch. Do not reset, rewrite history or push without a request.
 
 ## Read first
 
-Start with `docs/save-load-slice.md`, then `docs/regularity-target-slice.md` and `docs/stop-regularity-slice.md`.
+Start with `docs/development-roadmap.md`, then `docs/passenger-outcomes-slice.md`, `docs/save-load-slice.md`, `docs/regularity-target-slice.md` and `docs/stop-regularity-slice.md`.
 
-Read `README.md`, `docs/operator-capital-slice.md`, `docs/service-agreements.md`, `docs/transport.md`, `docs/abi.md`, and `docs/city-planning.md`. The operator slice note contains exact accounting rules, limitations, reproducible refusal/remedy scenarios and verification results. The Development Agent Kickoff and Modern City Management Game Scope Specification provide product direction; their old planning-only phase does not replace a new implementation request.
+Read `README.md`, `docs/operator-capital-slice.md`, `docs/service-agreements.md`, `docs/transport.md`, `docs/abi.md` and `docs/city-planning.md`. The operator-capital note contains the exact accounting rules, limitations, refusal/remedy scenarios and verification history. The Development Agent Kickoff and Modern City Management Game Scope Specification provide product direction; their old planning-only phase does not replace a new implementation request.
 
-Use Zig for rules and measurements, JavaScript for WebGL/input/reports. Compile with Docker Compose and Zig 0.14.1 (`make build`, `make run`). No host compiler, bundler, framework, permanent test suite or parallel agent work unless specifically requested. Before coding, write a short slice note and then carry authorized implementation through verification and documentation.
+Use Zig for rules and measurements, JavaScript for WebGL/input/reports. Compile with Docker Compose and Zig 0.14.1 (`make build`, `make run`), but confirm the container build actually publishes the current source. The watch loop and `make build` use disposable Zig caches because a stale shared cache previously published an old WASM while reporting success. No host compiler, bundler, framework, permanent test suite or parallel agent work unless specifically requested. Before coding each slice, write a short slice note and then carry that slice through verification and documentation.
 
 ## Preserve this baseline
 
@@ -18,104 +20,141 @@ Use Zig for rules and measurements, JavaScript for WebGL/input/reports. Compile 
 - Player-built straight/curved streets, splitting/junctions, construction debits, parcel/block zoning and pedestrian overlay.
 - Protected municipal commitments and penny ledger; company crews must physically travel and perform street repairs before payment.
 - Walking, cycles, cars and real bus passengers; directional queues/signals/lane allocation, route editing and safe bus retirement. Eight line slots, 1–3 buses, 24 seats, 2–16 stops.
-- Quotes, offer/revision/cancellation/expiry/paused withdrawal, earned movement/dwell payments and immutable newest-64 closed agreement history. Unique agreement IDs link ledger category 8.
+- Bus stops are validated against `city.validStop`, rendered at kerbside `city.stopPoint` positions, and active lines keep visible stop markers even when the Transport Authority window is closed. Route-editor stop selection uses valid kerbside projections.
+- Vehicles carry momentum across ordinary street segments. They brake for target stops, red signals, blocked downstream lanes and following gaps instead of stopping at every node. Keep this behavior unless a later slice explicitly changes it.
 - Authoritative operator accounts in `operators.zig`: opening £600/£300/£5, independent fares/subsidies/agreement receipts, £0.06 vehicle + £0.12 driver labour per bus-second, £2 prepaid dispatch clearance fee. Line totals are attribution only.
 - Owned buses 4/3/2, abstract day/night driver cohorts 4/2, 3/1, 2/0. Daytime 06:00–22:00 (seconds 120–440); all-day includes midnight. One day is 480 seconds. Acceptance accounts for private lines as well as contracts, with cash buffer, vehicle, coverage and price refusals.
 - Each vehicle retains its operator while clearing. No money transfers on handover and no cash resets on reuse. Clearing is paid by the already-expensed flat fee, occupies physical resources and earns no delivery. Low cash retires safely without negative balances. All-day driver relief occurs at a junction.
 - Off-hours add no delivery target. Contracts retain window and target. Private service continues with the last operator/fleet/window after closure. Refresh/Restart clears the live session; manual import restores an exported town.
+- Passenger outcomes are measured from real transitions, not report polling: wait starts, completed waits with mean/min/max, per-dwell full-bus denials, abandonment causes, and home-district comparison. Existing data stays tied to stable route versions.
+- Manual save/load is local and browser-owned. The current schema is `version: 2`, `rules: "bellwether-2026-09-v2"`. Version 1 files are rejected explicitly; there is no migration layer.
 
-## Completed stop-regularity slice
+## Completed work relevant to the authorized goal
 
-- Zig records a visit exactly at physical approach completion into target-stop dwell, only for current, scheduled, non-retiring service. Deployment, clearance and relief-only stops are excluded; a full bus still counts.
-- Each line keeps current and most recent retired route/window records, with stable route version and stop nodes. Up to 16 stop records hold visits, latest timestamp, eligible interval count and last/mean/min/max. No observations and no intervals have explicit missing values.
-- Applying a route archives the prior record immediately (even paused / same draft). Withdrawal archives and empties current; reuse starts fresh. Window changes synchronize before the next transport step's arrivals. Company/fleet/lane changes alone retain the same route/window measurements.
-- Daytime pairs spanning closed hours are omitted. The new day's first visit updates latest time without inventing an overnight interval; older eligible statistics remain. All-day intervals cross midnight normally.
-- Transport Authority offers current/retired selection, coverage/off-hours labels, session clock, live waiting counts, stop locate, unobserved/insufficient states and completed eligible interval statistics.
-- Payments, dispatch, boarding, account rules and resident routing were not changed. No permanent tests added.
+- **Regularity targets:** offers accept 0 or a whole 30–600 simulation seconds. Review is advisory and agreement-specific; no payment penalty. Retired/current stop records are bounded.
+- **Save/load:** typed JSON snapshots preserve clock, speed, graph, routing tables, zoning, residents, journeys, riders, operators, vehicles, shifts, taxes, ledger, reserves, orders, crews, routes, observations, agreements, targets, history and next IDs. Parsing is bounded and staged; invalid imports leave the live town unchanged.
+- **Passenger outcomes:** Zig records actual wait starts, boardings, completed wait statistics, capacity denials, timeout/off-hours/fare/service abandonment and district comparison. Route edits close old-version waits before archiving. Save version 2 preserves every new counter and in-progress wait.
+- **Transport polish:** stop validity and kerbside markers are in `city.zig`, `render/scene.zig`, `main.zig` and `web/transport.js`. Movement smoothing is in `transport.zig`; the measured old/new comparison showed per-step skips falling from 79 to 4 and mean moving speed rising from 1.54 to 2.73 m/s.
 
-## Completed agreement-target slice
+## Authorized slice 4 — bus staffing and fleet investment
 
-- Offers accept target 0 (disabled) or a whole 30–600 simulation seconds. Zig validates before mutation; legacy offer commands disable the target.
-- Financial/resource quote, acceptance, earned movement/dwell payment, reserves and settlement are unchanged. Review targets do not guarantee feasible headways and incur no deductions.
-- Transport emits at most 24 actual arrival events per step. Agreement-specific evidence excludes arrivals at/before acceptance, after expiry, on other versions or by other operators. Simultaneous arrivals are retained individually.
-- Each originally offered stop retains visits, latest arrival, eligible/exceeded pairs, last and worst intervals. Counts describe observed pairs, never a blanket pass.
-- Gap diagnostics distinguish not accepted, first-arrival grace, first arrival overdue, within current gap allowance, arrival gap overdue, off-hours and suspended. Each open window starts with one target-length grace period; no historical overdue-episode log.
-- Daytime cross-closure pairs are omitted; all-day midnight pairs remain eligible. Equality is not exceeded, with 0.00001 s tolerance for fixed-step drift.
-- Route edits immediately and permanently suspend target review, including paused edits. Existing results and agreement clocks remain. Changed routes before acceptance also suspend; cancel/re-offer to define a new target. No automatic renegotiation.
-- Targets/results/gap state at closure remain in the immutable newest-64 agreement ring, separate from current/previous route observations.
-- UI includes target validation, current/closed per-stop tables, locate actions and explicit no-payment-effect/insufficient-evidence wording.
+This slice replaces the fixed aggregate driver cohorts and owned-fleet numbers with explicit operating commitments. It needs its own short note before code.
 
-## Completed save/load slice
+- Driver cohorts become recruit/dismiss decisions with explicit wages, availability, shift coverage and qualification/training prerequisites.
+- Fleet becomes an owned asset pool with explicit purchase/sale, depot/yard capacity, maintenance condition and operating availability.
+- Line dispatch and agreement acceptance use the same live fleet/driver commitments, including clearing vehicles and off-hours coverage.
+- Operator accounts remain independent. Purchases, sales, wages, maintenance and recruitment reconcile with opening capital, fares, subsidies, agreement receipts and existing expenses. No hidden cash creation.
+- Refusals and remedies must be explicit: insufficient cash, no depot space, no qualified drivers, off-hours coverage gap, vehicle under maintenance, full commitment elsewhere.
+- Preserve fares, passenger boarding, passenger outcomes, route/stop behavior, agreement payments, reserves, ledger categories, municipal funds and safe retirement behavior.
+- Define retirement/depreciation/maintenance semantics, including what happens when an operator has insufficient cash or a line is withdrawn.
+- Extend save/load if the schema changes. Bump version/rules, validate every new field and reject incompatible files explicitly.
 
-Management → Save / load town (also Controls) exports or imports explicit versioned JSON. The simulation is browser-owned Zig WASM; Docker compiles it and nginx serves static files. There is no backend authority. Preserve the local/manual scope unless the user requests a different persistence architecture.
+Likely ABI/UI additions: operator fleet/driver breakdown, owned/available/committed/maintenance vehicles, recruitment quotes and blockers, purchase/sale quotes, depot capacity, wages and maintenance costs. Reports use usable units/denominators and explicit unavailable states. Do not infer availability from a line simply being active.
 
-Snapshots preserve clock, speed/resume/remainder/deadlines, camera, graph and stable IDs/routing tables, zoning, residents/journeys/riders, operators/vehicles/shifts, taxes/ledger/reserves, orders/crews, routes/observations/agreements/targets/history/next IDs. Parsing is bounded (16 MiB file, 64 MiB arena), staged and validated before commit. Invalid imports leave the live town unchanged. UI drafts/selections are excluded and cleared on success. See docs/save-load-slice.md for verification and limits.
+Verification must cover atomic purchase/recruitment/refusal, cash exhaustion without negative balances, shift and off-hours coverage, vehicle purchase/sale/maintenance lifecycle, agreement acceptance/dispatch with shared capacity, safe handover/clearing, passenger conservation, ledger/account reconciliation, protected reserves, route/stop behavior, movement continuity, save/load round trips with every new counter and in-progress commitment, and browser/report behavior.
 
-## Completed passenger outcomes slice
+## Authorized slice 5 — transport contract enforcement
 
-Transport Authority now reports real passenger transitions in addition to vehicle arrivals. Wait starts occur on the first fixed step at the boarding stop; completed waits are actual boardings; current waiting is separate live evidence. Per route version and stop, Zig retains wait starts, completed waits, completed wait total/mean/min/max, per-dwell capacity denials, scheduled timeout, closed-hours timeout, unaffordable fare, route/service removal, and abandoned-after-capacity. Full buses count once per waiting resident per dwell, using a persisted mask; a later boarding does not erase the denial. Records use the existing current/most-recent-retired stop observation slots, and route edits/withdrawal close in-progress waits against the old route version before archiving. District comparison groups observed waits by home district and is explicitly not population-wide access.
+This slice follows slice 4 and must be designed explicitly before coding. It may add financial consequences or remedies for agreed service failures, but it must not silently change existing agreement payments or turn the review-only regularity targets from slices 1–3 into penalties.
 
-Save format is now `version: 2`, `rules: "bellwether-2026-09-v2"`. Version 1 files are rejected as incompatible. Every new counter and in-progress wait is persisted and validated. No fare, boarding order, dispatch, routing, agreement or payment rule changed. See docs/passenger-outcomes-slice.md.
+- Define which contractual outcomes are enforceable and from which evidence: delivered bus-seconds, target-stop arrivals, missed windows, suspended review after a route change, cancellation, expiry or withdrawal.
+- Distinguish review-only regularity evidence from enforceable contract performance. Route edits suspend target review; decide explicitly whether they suspend, terminate, or renegotiate enforcement.
+- Define remedies: deductions, refunds, service credits, cure periods, replacement obligations, escrow/release changes, or cancellation rights. No remedy may create negative operator cash or hidden municipal debt.
+- Preserve protected municipal reserves and ledger categories, or add a new explicit category with validation and UI reconciliation.
+- Refusals and remedies must be reproducible and explainable in reports: why money moved, what evidence was used, and what remains disputed or unobserved.
+- Extend save/load for every new obligation, remedy, penalty, cure period and settlement field.
+- Verification must cover evidence boundaries, expiry/closure, route changes, paused actions, simultaneous arrivals, off-hours, atomic rejection, cash floors, ledger/account reconciliation, passenger conservation and save/load continuation.
 
-## Proposed next slice — bus staffing and fleet investment (slice 4)
+Do not add a full court/legal system, discretionary adjudication, or later policing/courts slices here.
 
-If the user asks to continue, inspect operators.zig, transport dispatch/clearance, agreements acceptance and persistence before writing a bounded slice note. This proposed slice would add recruitment, vehicle purchases and operating commitments with explicit cash, driver, fleet, depreciation/maintenance and save/load semantics. It must not silently import later roadmap items such as contract penalties, timetables, transfers or backend persistence. The user has not authorized this slice yet.
+## Authorized slice 6 — civic calendar and realistic routines
+
+This slice follows slice 5. It introduces a bounded civic calendar and richer routine time while preserving the current passenger, vehicle, accounting and agreement behavior.
+
+- Define weekdays, weekends, shifts, holidays or longer budget periods only as far as they affect existing simulation systems. Do not create a full national calendar or political system.
+- Residents get realistic routine phases beyond the current shortened work/home loop: sleep, commute windows, shifts, school/errand placeholders if already supported, and recovery/leisure time.
+- Transport demand, road congestion and passenger wait outcomes must respond to the calendar through actual resident transitions, not report polling.
+- Contract windows and operator staffing must use the same calendar/time abstraction. Preserve all-day and 06:00–22:00 semantics or extend them explicitly.
+- Municipal budget periods, taxes, operating disbursements and ledger/history sampling may gain longer periods, but every recurring transaction must be explicit, bounded and reconciled.
+- Save/load must preserve calendar state, routine phase, shift membership, pending events and next-deadline scheduling.
+- Verification must cover ordinary weekdays, weekends, shift boundaries, off-hours, day rollover, long budget periods, passenger conservation, transport dispatch, agreement windows, accounting identities, save/load continuation and browser reports.
+
+Do not add elections, national holidays, seasonal weather or demographic life stages here.
+
+## Authorized slice 7 — households and household budgets
+
+This slice follows slice 6. It replaces individual placeholder wallets with bounded household budgets while preserving transport, employment and accounting behavior.
+
+- Define households, shared income, essential expenses, discretionary spending, savings or arrears, and how household members share resources.
+- Existing resident income/employment placeholders must map into household income. Do not create a complete macroeconomy or banking system.
+- Essential expenses may include housing, food, utilities, transport and other bounded categories. Spending must be explicit and reconciled; no silent money creation.
+- Financial pressure should affect travel choices, bus affordability, household arrears or savings, and potentially housing later. It must not break safe walking fallback or passenger conservation.
+- Household budgets must interact with taxes, subsidies, fares, wages and operator receipts through existing municipal/operator interfaces.
+- Save/load must preserve household membership, budgets, arrears, shared balances and any pending transfers.
+- Verification must cover income/expense conservation, shared household accounting, affordability transitions, transport fallback, tax/ledger reconciliation, operator accounts, save/load and browser reports.
+
+Do not add retail purchasing, banking/credit or housing markets in this slice; those belong to later batches.
+
+## Authorized slice 8 — employment and hiring
+
+This slice follows slice 7. It turns the current fixed employer assignment into bounded vacancies, unemployment, skills, wages and business staffing.
+
+- Employers have vacancies/capacity, wage offers, skill requirements and staffing pressure. Residents have skills or qualifications and job-search/commuting decisions.
+- Hiring, firing, vacancies and unemployment must reconcile with existing employer counts, household income, routines and transport demand.
+- Business staffing affects openings/closures or service capacity only within an explicitly bounded model. No full production/trade economy yet.
+- Wage payments must reconcile with employer cash and household income without hidden transfers.
+- Save/load must preserve vacancies, applications, employment links, skills, wages and hiring state.
+- Verification must cover vacancy filling, unemployment, skill mismatch, wage changes, employer cash, household income, routine changes, passenger demand, transport dispatch, accounting identities, save/load and reports.
+
+Do not add regional trade, production inputs, business credit or national labour markets here.
+
+## Authorized slice 9 — housing and occupancy
+
+This slice follows slice 8. It adds renting, ownership, affordability, moves and displacement on top of the household and employment models.
+
+- Define housing units, occupancy, rent/ownership costs, affordability thresholds, moves, vacancies and displacement.
+- Households may move or be displaced based on affordability, employment/commute changes or housing availability. Moves must use actual resident transitions, not teleportation.
+- Housing costs interact with household budgets, wages, municipal taxes/benefits and transport access. No silent money creation or unexplained occupancy changes.
+- Property ownership, rent collection and municipal assessments must reconcile with the existing ledger, arrears and building data.
+- Save/load must preserve housing units, tenure, occupancy, rents, arrears, applications and move state.
+- Verification must cover moves, displacement, affordability, vacancy, rent/income conservation, tax/ledger reconciliation, commuting/transport effects, passenger conservation, save/load and reports.
+
+Do not add physical building construction, property development permits, valuation/sunlight modelling, parks or demolition here; those are later slices.
 
 ## Code map and cautions
 
-- `src/simulation/persistence.zig`: explicit typed JSON snapshot, bounded validation/commit; graph lookup restoration in city.zig. Keep any new persistent fields represented and validated.
-- `main.zig`: save buffer/write/load exports and remembered resume speed. `web/main.js`: file export/import and successful-load reset coordination. Reports/transport/agreements reset cached metadata and unapplied drafts.
-
-- agreements.zig: offerTarget/validInterval, measureRegularity, checkRoute, readStop and regularity fields in Agreement. No financial changes.
-- transport.zig: per-step Arrival list resets each update; recordArrival also feeds existing route observations.
-- main.zig: service_target_offer/service_target_valid; groups 13/17 fields 23–28; groups 20/21 ID = agreement line/history index × 16 + stop index.
-- web/agreements.js and web/index.html: target input plus persistent current/history table rows.
-
-- transport.zig: Observation / StopObservation, syncObservation and recordArrival own bounded stop measurements. Current/previous records are independent of agreement history.
-- main.zig: groups 18/19 expose stop records (ID = line × 16 + stop index); focus(11,node) locates stops. web/transport.js and web/index.html own the compact stop report.
-
-- `src/simulation/operators.zig`: independent accounts, day/night cohorts, service-window integral.
-- `transport.zig`: physical fleet, original bus ownership, clearance, drivers, fares/costs, delivered seconds. Keep independent of finance/residents.
-- `agreements.zig`: quote/acceptance, settlement, window-aware targets and history.
-- `residents.zig`: actual boarding/alighting, safe walking fallback, passenger wait transitions and district outcome counters. `closeLineWaits(line,time)` is called by route apply/remove so old-version waits are attributed before archiving.
-- `game.zig`: transport → residents → agreement settlement, then subsidy ledger coordination.
-- `main.zig`: validated exports and scalar ABI. Preserve field numbers. Group 10 fields 32–34 expose company/window/dispatch blocker; groups 13/17 fields 21–22 window/target; group 14 account/driver breakdown; group 12 fields 11–13 bus owner/retirement/cohort.
-- `web/agreements.js`: quotes, accounts, coverage, current/closed delivery. `web/transport.js`: routes/map gestures. `web/reports.js`: municipal ledger.
-- `roads.zig`, `parcels.zig`, `web/planning.js`: planning baseline.
+- `src/simulation/operators.zig`: independent accounts, day/night cohorts, service-window integrals. Slice 4 will likely replace or extend the fixed cohort/asset numbers here.
+- `src/simulation/transport.zig`: physical fleet, original bus ownership, clearance, drivers, fares/costs, delivered seconds, dispatch blockers and service-state counts. Keep it independent of finance/residents except through explicit interfaces. Movement smoothing lives here; do not reintroduce per-segment hard brakes.
+- `src/simulation/agreements.zig`: quote/acceptance, settlement, window-aware targets, history. Slice 5 must define enforcement without silently changing slices 1–4 payment semantics.
+- `src/simulation/residents.zig`: actual boarding/alighting, walking fallback, passenger wait transitions and district outcomes. Slices 6–9 will extend routines, households and employment here or in adjacent modules. Do not change boarding order without an explicit request.
+- `src/simulation/persistence.zig`: explicit typed JSON snapshot, bounded validation/commit. Every new persistent field in slices 4–9 must be represented and validated; bump compatibility identifiers when the schema changes.
+- `src/main.zig`: validated exports and scalar ABI. Preserve field numbers. Existing groups include 10 fields 32–40, 13/17 agreement fields, 14 operator accounts/drivers, 18/19 stop/passenger observations, 20/21 agreement stop results and group 22 district passenger outcomes.
+- `src/scene/city.zig`: `validStop`, `stopPoint`, `sidewalk`, graph/routing data.
+- `src/render/scene.zig`: kerbside stop markers drawn for all active lines; selected lines add a larger highlight. Keep finite vertex output.
+- `web/transport.js`: routes/map gestures, stop-address filtering, kerbside projections, passenger and stop reports. `web/agreements.js`: quotes, accounts, coverage, current/closed delivery. `web/reports.js`: municipal ledger. `web/index.html` owns the report controls.
+- `Makefile`, `docker/watch.sh`: build the WASM with disposable local/global Zig caches. Verify the served `/build/city.wasm` hash or behavior after a rebuild; a failed build retains the last good artifact.
 
 Never iterate the large resident array by value; it previously exhausted the WASM stack. Read through scalar ABI, not inferred struct layouts. Existing operator totals retain sub-penny operating accrual; municipal transactions and policy fares/subsidies round at penny boundaries.
 
 ## Verification and remaining limits
 
-Save/load: Docker ReleaseSafe build, initial/active/paused round trips, nine byte-identical continuation checkpoints over 720 simulated seconds, active repair completion, construction/zoning, clearing/handover, payment/reserve/rider identity checks and invalid-file atomicity passed. A 640-node fixture exports within 16 MiB. Browser import restores pause and 4× resume; malformed import preserves the live town. The version-2 schema preserves in-progress waits and passenger counters. See docs/save-load-slice.md for full current results. Temporary scripts live outside the repo and may disappear.
+Current completed checks include Docker ReleaseSafe builds, passenger wait/capacity/abandonment accounting, save/load of in-progress waits, route-edit attribution, passenger/rider conservation, operator account identities, off-hours/timeout abandonment, kerbside stop validity, and old/new movement comparisons. A headless browser DOM probe confirmed the report controls; the headless environment lacked WebGL, so live report population was verified through the scalar ABI rather than a rendered screenshot.
 
-Passenger outcomes: an isolated temporary Zig test forced a full bus and repeated fixed steps, confirming one capacity denial per bus dwell plus service-removal, closed-hours, scheduled-timeout and fare-abandonment buckets and exact boarding completion. Served-WASM checks reconfirmed wait accounting (starts = completed + abandoned + waiting), line boardings equal completed waits where no route history exists, rider/passenger conservation, operator account identities, route-edit/withdrawal attribution to the retired record, daytime closure/reopening abandonment, and save/load continuation of a live wait. The Docker watch loop now builds with disposable local and global caches; an earlier stale-cache path could publish an old WASM while reporting success. No permanent test suite was added.
+Manual save/load, bounded history, aggregate driver cohorts, fixed clearance fees, authored population and graph limits, and review-only regularity targets remain until their authorized slice changes them. Each of slices 4–9 must add its own verification evidence and limitations; do not claim later slices work merely because earlier hooks exist. Keep save/load compatible or bump and reject explicitly at each schema change.
 
-Previous regularity-target batch: Docker ReleaseSafe build/startup, JS syntax/diff and fresh-browser checks passed. /tmp/city-regularity-target-check.mjs reconstructed 28 post-acceptance visits and 20 eligible pairs, including four daytime omissions and four all-day midnight pairs, checked atomic invalid terms, paused suspension, grace/overdue, expiry, reset and history rollover. Paired target-on/off simulations were financially and physically identical over 720 simulation seconds. Docker-compiled /tmp/city-regularity-edge/edge.zig (outside repo, copied sources) checked simultaneous events, exact thresholds, wrong operator, same-time duplicate prevention, expiry clipping and sticky suspension. Capital and original stop checks still passed, including physical repair, protected reserves and 241 passenger samples. Browser checks covered invalid input, offer, expiry, archived exceeded intervals, locate, paused route suspension and cancellation; no warnings/errors captured. Temporary fixtures may disappear.
+## Numbered development sequence
 
+The original numbering is retained so requests such as “work on slice 4” or “slices 4–9” are unambiguous. Slices 1–3 are complete. **Slices 4–9 are the authorized goal. Slices 10–39 remain proposed work, not authorization to implement them.**
 
-See docs/stop-regularity-slice.md for this slice's checks. Docker ReleaseSafe build/startup, JS syntax/diff checks and fresh browser inspection passed. Temporary /tmp/city-stop-check.mjs matched 29 physical arrivals over 24,000 steps, omitted seven closed-window pairs and observed three all-day midnight pairs. /tmp/city-stop-stats.mjs independently recomputed last/mean/min/max and reconciled stop waiting counts over 21,000 steps (six visits per stop on a two-stop route), including live bus-lane changes. Existing /tmp/city-capital-check.mjs and /tmp/city-capital-extra.mjs passed accounts, reserve/ledger, rider, cash exhaustion, shift/expiry and physical repair checks. Temporary scripts are not repository dependencies and may disappear.
-
-See `docs/operator-capital-slice.md` for completed checks: cash exhaustion without rescue, shared company capacity, shift/midnight/expiry, quote/refusal/revision, handover, ledger/account reconciliation, passenger conservation, route editing/reuse/paused withdrawal, physical repair, road construction/zoning and finite rendering. No permanent tests were added.
-
-Use a fresh temporary tab at `http://localhost:8080/`; never reset the user's town. Confirm compiler success before refreshing: failed builds retain the last good WASM. Keep accounting/reserve checks in temporary scripts outside the repository.
-
-Driver staff are aggregate cohorts, empty deployment is abstracted, clearance/relief uses a fixed prepaid fee, and operating buffers are acceptance thresholds rather than escrow. No resident employment/payroll link, purchases/recruitment, transfers, full timetable, collisions, new service domains or city expansion. Manual local save/load is complete; autosave, backend storage and migrations remain deferred. Route observations retain one retired record per line. Agreement targets are review-only and newest-64 closed records retain their own evidence. No historical waiting-duration distribution, overall compliance score or financial regularity penalties.
-
-
-## Numbered development sequence and follow-up slices
-
-The original numbering is retained so requests such as “work on slice 3” are unambiguous. Slices 1–3 are complete; **slice 4 is next**. Later slices are proposed work, not authorization to implement the whole list. Inspect the actual code and write a bounded slice note before starting each one; later entries may need subdivision. Keep `docs/development-roadmap.md` and this list consistent when priorities change.
-
-1. **Agreement regularity targets — complete:** optional targets, overdue diagnostics and retained agreement results; no financial penalties in this slice.
-2. **Save/load — complete:** versioned manual local files preserve towns, accounts, agreements, routes, observations and live journeys across sessions; no backend or autosave.
-3. **Passenger service outcomes — complete:** real wait starts/boardings, capacity denials, abandonment causes, district comparison, save/load and reports; no payment changes.
-4. **Bus staffing and fleet investment:** recruitment, vehicle purchases and operating commitments.
-5. **Transport contract enforcement:** explicitly designed remedies and financial consequences, if authorized.
-6. **Civic calendar and realistic routines:** weekdays, shifts, weekends and longer budget periods.
-7. **Households and household budgets:** shared income, essential expenses and financial pressure.
-8. **Employment and hiring:** vacancies, unemployment, skills, wages and business staffing.
-9. **Housing and occupancy:** renting, ownership, affordability, moves and displacement.
+1. **Agreement regularity targets — complete:** optional targets, overdue diagnostics and retained agreement results; no financial penalties.
+2. **Save/load — complete:** versioned manual local files preserve towns, accounts, agreements, routes, observations and live journeys.
+3. **Passenger service outcomes — complete:** real wait starts/boardings, capacity denials, abandonment causes, district comparison and save/load.
+4. **Bus staffing and fleet investment — authorized:** recruitment, vehicle purchases and operating commitments.
+5. **Transport contract enforcement — authorized:** explicitly designed remedies and financial consequences.
+6. **Civic calendar and realistic routines — authorized:** weekdays, shifts, weekends and longer budget periods.
+7. **Households and household budgets — authorized:** shared income, essential expenses and financial pressure.
+8. **Employment and hiring — authorized:** vacancies, unemployment, skills, wages and business staffing.
+9. **Housing and occupancy — authorized:** renting, ownership, affordability, moves and displacement.
 10. **Development proposals and permits:** private construction responding to zoning and demand.
 11. **Physical building construction:** access, crews, materials, terrain and foundation costs.
 12. **Property valuation and sunlight:** obstruction assessment and development trade-offs.
@@ -151,4 +190,4 @@ Timetables, transfers and automatic route optimisation need separate transport s
 
 ## Continuation instruction
 
-If the next user asks to continue from this kickoff, carry slice 3 through implementation, Docker build/startup, focused simulation and browser verification, documentation and a refreshed kickoff. Preserve existing uncommitted work. Do not stop at a plan, add a permanent test suite, alter agreement payments or expand into later slices. Finish with what changed, what was verified and remaining limitations. If the user requests another numbered slice or changes the scope, follow that instruction instead.
+If the next user asks to continue from this kickoff, carry slices 4–9 through implementation in order. For each slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the next slice. Preserve existing work, remove the accidental `.tmp_degrees.zig` cleanup item, and do not stop at a plan. Do not add a permanent test suite or expand into slices 10–39 without authorization. Finish each slice with what changed, what was verified and remaining limitations.
