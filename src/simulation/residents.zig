@@ -2,8 +2,8 @@ const transport = @import("transport.zig");
 const city = @import("../scene/city.zig");
 const calendar = @import("calendar.zig");
 const households = @import("households.zig");
-pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0, wallet: f64 = 0, income: f64 = 0, owns_car: bool = false, owns_bike: bool = false, car_node: usize = 0, bike_node: usize = 0, scores: [4]f32 = @splat(-1), crew: bool = false, chosen: bool = false, bus_line: i32 = -1, bus: i32 = -1, boarding: usize = 0, exit_node: usize = 0, bus_version: u32 = 0, bus_wait: f32 = 0, bus_wait_start: f64 = -1, bus_full_mask: u8 = 0, bus_stage: u8 = 0, walk_side: f32 = 1, shift: u8 = 0, routine: u8 = 0, home: usize, current_building: usize = 0, destination_building: usize = 0, origin_building: usize = 0, employer: i32 = -1, origin: usize = 0, destination: usize, node: usize, next: usize, wait: f32, trips: u32 = 0, travel: f32 = 0, last_trip: f32 = 0, order: i32 = -1, arrived: bool = false };
-pub const Company = struct { building: usize, employees: usize = 0, capacity: usize, cash: f64 = 45000, contractor: bool, crew: [4]usize = .{ 0, 0, 0, 0 }, crew_count: usize = 0, order: i32 = -1, margin: f64, labour: f64, costs: f64 = 0 };
+pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0, wallet: f64 = 0, income: f64 = 0, owns_car: bool = false, owns_bike: bool = false, car_node: usize = 0, bike_node: usize = 0, scores: [4]f32 = @splat(-1), crew: bool = false, chosen: bool = false, bus_line: i32 = -1, bus: i32 = -1, boarding: usize = 0, exit_node: usize = 0, bus_version: u32 = 0, bus_wait: f32 = 0, bus_wait_start: f64 = -1, bus_full_mask: u8 = 0, bus_stage: u8 = 0, walk_side: f32 = 1, shift: u8 = 0, routine: u8 = 0, skill: u8 = 0, home: usize, current_building: usize = 0, destination_building: usize = 0, origin_building: usize = 0, employer: i32 = -1, origin: usize = 0, destination: usize, node: usize, next: usize, wait: f32, trips: u32 = 0, travel: f32 = 0, last_trip: f32 = 0, order: i32 = -1, arrived: bool = false };
+pub const Company = struct { building: usize, employees: usize = 0, capacity: usize, cash: f64 = 45000, contractor: bool, crew: [4]usize = .{ 0, 0, 0, 0 }, crew_count: usize = 0, order: i32 = -1, margin: f64, labour: f64, costs: f64 = 0, wage: f64 = 40, skill_required: u8 = 0, wage_arrears: f64 = 0, staffing_pressure: f64 = 0 };
 pub const DistrictOutcome = struct {
     wait_starts: u32 = 0,
     completed: u32 = 0,
@@ -36,7 +36,11 @@ pub fn init() void {
         }
         if (b.capacity == 0) continue;
         b.employer = @intCast(company_count);
-        companies[company_count] = .{ .building = i, .capacity = b.capacity, .contractor = b.kind == .depot, .margin = 1.15 + @as(f64, @floatFromInt(company_count % 3)) * 0.12, .labour = 14 + @as(f64, @floatFromInt(company_count % 3)) * 3 };
+        companies[company_count] = .{ .building = i, .capacity = b.capacity, .contractor = b.kind == .depot, .margin = 1.15 + @as(f64, @floatFromInt(company_count % 3)) * 0.12, .labour = 14 + @as(f64, @floatFromInt(company_count % 3)) * 3, .wage = 40 + @as(f64, @floatFromInt(company_count % 3)) * 15, .skill_required = switch (b.kind) {
+            .office, .hall => 1,
+            .clinic => 2,
+            else => 0,
+        } };
         company_count += 1;
     }
     // Fill actual employer capacities round-robin; remaining residents are jobseekers.
@@ -57,7 +61,7 @@ pub fn init() void {
         }
         const node = city.buildings[home].node;
         const b = city.buildings[home];
-        p.* = .{ .x = b.entry_x, .z = b.entry_z, .y = b.ground + 0.35, .wallet = @as(f64, @floatFromInt(100 + i % 9000)), .income = @as(f64, @floatFromInt(30 + i % 170)), .owns_bike = i % 3 != 0, .car_node = node, .bike_node = node, .shift = @intCast(@intFromEnum(calendar.shiftFor(i))), .routine = 0, .home = home, .current_building = home, .origin_building = home, .destination_building = if (employer >= 0) companies[@intCast(employer)].building else home, .origin = node, .employer = employer, .destination = if (employer >= 0) city.buildings[companies[@intCast(employer)].building].node else node, .node = node, .next = node, .wait = @as(f32, @floatFromInt(i % 100)) * 0.14 };
+        p.* = .{ .x = b.entry_x, .z = b.entry_z, .y = b.ground + 0.35, .wallet = @as(f64, @floatFromInt(100 + i % 9000)), .income = if (employer >= 0) companies[@intCast(employer)].wage else 0, .owns_bike = i % 3 != 0, .car_node = node, .bike_node = node, .shift = @intCast(@intFromEnum(calendar.shiftFor(i))), .routine = 0, .skill = @intCast(i % 3), .home = home, .current_building = home, .origin_building = home, .destination_building = if (employer >= 0) companies[@intCast(employer)].building else home, .origin = node, .employer = employer, .destination = if (employer >= 0) city.buildings[companies[@intCast(employer)].building].node else node, .node = node, .next = node, .wait = @as(f32, @floatFromInt(i % 100)) * 0.14 };
         considerCar(p);
         city.buildings[home].occupants += 1;
     }

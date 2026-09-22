@@ -9,6 +9,7 @@ pub const agreements = @import("agreements.zig");
 pub const contracts = @import("contracts.zig");
 pub const calendar = @import("calendar.zig");
 pub const households = @import("households.zig");
+pub const employment = @import("employment.zig");
 pub var elapsed: f64 = 160;
 pub var trust: [city.district_count]f32 = undefined;
 pub const Sample = struct { time: f64, cash: f64, reserved: f64, walking: usize, condition: f32 };
@@ -31,6 +32,7 @@ pub fn init() void {
     finance.operating(elapsed);
     contracts.init();
     agreements.init();
+    employment.init();
     roadworks.reset();
     parcels.init();
     for (&trust, 0..) |*value, i| value.* = 20 + city.condition(i) * 0.65;
@@ -45,6 +47,7 @@ pub fn update(dt: f32) void {
             if (!c.contractor) c.cash += @as(f64, @floatFromInt(c.employees)) * 12;
         }
         finance.daily(elapsed);
+        employment.daily();
         households.daily();
         residents.daily();
     }

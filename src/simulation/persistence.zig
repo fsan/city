@@ -288,7 +288,7 @@ fn validate(s: *const State) bool {
     var employees: [city.buildings.len]usize = @splat(0);
     var occupants: [city.buildings.len]usize = @splat(0);
     for (people) |*p| {
-        if (p.phase > 3 or p.mode > 3 or p.bus_stage > 2 or p.shift > 2 or p.routine > 5 or p.node >= n or p.next >= n or p.destination >= n or p.origin >= n or p.car_node >= n or p.bike_node >= n or p.boarding >= n or p.exit_node >= n or
+        if (p.phase > 3 or p.mode > 3 or p.bus_stage > 2 or p.shift > 2 or p.routine > 5 or p.skill > 2 or p.node >= n or p.next >= n or p.destination >= n or p.origin >= n or p.car_node >= n or p.bike_node >= n or p.boarding >= n or p.exit_node >= n or
             p.home >= town.buildings.len or p.current_building >= town.buildings.len or p.origin_building >= town.buildings.len or p.destination_building >= town.buildings.len or
             !index(p.employer, companies.len) or !index(p.order, services.orders.len) or !index(p.bus_line, 8) or !index(p.bus, m.vehicles.len) or p.wallet < 0 or p.income <= 0 or p.bus_wait < 0 or p.travel < 0 or p.last_trip < 0 or
             !between(p.bus_wait_start, -1, c.elapsed) or p.bus_full_mask > 7) return false;
@@ -310,7 +310,7 @@ fn validate(s: *const State) bool {
     }
     var employed: usize = 0;
     for (companies, 0..) |*company, i| {
-        if (company.building >= town.buildings.len or company.cash < 0 or company.costs < 0 or company.margin < 1 or company.labour <= 0 or company.crew_count > 4 or company.employees != employees[i] or company.employees > company.capacity or !index(company.order, services.orders.len) or town.buildings[company.building].employer != @as(i32, @intCast(i))) return false;
+        if (company.building >= town.buildings.len or company.cash < 0 or company.costs < 0 or company.margin < 1 or company.labour <= 0 or company.crew_count > 4 or company.employees != employees[i] or company.employees > company.capacity or !index(company.order, services.orders.len) or town.buildings[company.building].employer != @as(i32, @intCast(i)) or company.wage < 0 or company.wage > 1000 or company.skill_required > 2 or company.wage_arrears < 0 or !between(company.staffing_pressure, 0, 1)) return false;
         if (company.capacity != town.buildings[company.building].capacity) return false;
         employed += employees[i];
         for (company.crew[0..company.crew_count], 0..) |id, k| {

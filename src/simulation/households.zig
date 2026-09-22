@@ -62,6 +62,16 @@ pub fn credit(index: usize, amount: f64) void {
 
 // Daily household budget: credit employed income, then bill a bounded essential
 // amount. Unpaid essentials become explicit arrears, never hidden debt.
+// Recompute posted household income from current employment links. Actual
+// paid wages are assigned by employment.daily(); this keeps reports honest
+// between day rollovers.
+pub fn recomputeIncome() void {
+    for (&homes) |*h| h.income = 0;
+    for (&residents.people) |*p| {
+        if (p.employer >= 0) homes[p.home].income += p.income;
+    }
+}
+
 pub fn daily() void {
     for (&homes) |*h| {
         if (!h.present) continue;
