@@ -214,3 +214,32 @@ a stop.
 Persistence is now `version: 3`, `rules: "bellwether-2026-09-v3"`. Every unit,
 roster count and lifetime flow is serialized and validated; version 2 and
 older files are rejected with result 3 and no migration layer.
+
+
+## Transport contract enforcement (slice 5)
+
+Groups 13 and 17 retain fields 0-28 and add:
+
+| Field | Value |
+| --- | --- |
+| 29 | Enforcement state: 0 none, 1 curing, 2 breached after cure, 3 credit capped, 4 closed while breached, 5 suspended by route/service change |
+| 30 | Credit accrued to date |
+| 31 | Credit paid to the municipality |
+| 48 | Credit waived because the operator was at or below the GBP 2.18 floor |
+| 49 | Credit cap (25% of agreement price) |
+| 50 | Breach start time, 0 while none |
+| 51 | Cure deadline, 0 while none |
+| 52 | Breach/accrual observation counter |
+| 53 | 1 while an active agreement is below the breach floor and enforcement is not suspended |
+| 54 | Outstanding credit (accrued - paid - waived, rounded to pennies) |
+
+Group 14 adds field 39: lifetime operator service credits paid to the municipality.
+The account identity is now
+cash = opening + fares + subsidies + receipts + sales - purchases - recruitment -
+severance - maintenance - vehicle - labour - credits.
+
+Ledger kind 10 is a service credit: party is the operator (0-2) and order is the
+one-based agreement number. The reports label it "Service credit".
+
+Save schema is version 4, rules "bellwether-2026-10-v4"; version 3 and older are
+rejected with result 3.

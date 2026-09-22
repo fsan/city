@@ -89,4 +89,80 @@ new field.
 
 ## Implementation record
 
-_Pending._
+Implemented in `src/simulation/agreements.zig`, `src/simulation/persistence.zig`,
+`src/main.zig`, `web/agreements.js`, `web/reports.js` and `web/index.html`.
+
+The enforceable figure is the same windowed integral that earns payment:
+`operators.hours(window, start, end) * fleet` compared with the line's measured
+delivered bus-seconds. Regularity totals, gap states, off-hours periods,
+route-version mismatches and unobserved stops cannot move money.
+
+`enforce()` opens a 480-simulation-second cure the first time
+`expected >= 480` and `delivered < 0.85 * expected`. While the cure is open the
+settled integrals track the live figures and no credit accrues. After the cure,
+each measured step adds `max(0, expected_delta - delivered_delta) * 0.18` to
+`credit_accrued`, capped at 25% of the agreement price. Accrual stays unrounded
+and is rounded only when collected, so sub-penny steps cannot inflate the
+remedy.
+
+`collectCredit()` pays from the operator's own cash above the existing £2.18
+dispatch floor, in whole pennies and in one transaction. The payment debits the
+operator account, increments its lifetime `credits` total, and records
+municipal ledger kind 10 with `party = operator` and `order = agreement number`.
+Any unpaid remainder is recorded as waived; it is not a receivable, never
+becomes negative cash and never creates hidden municipal debt.
+
+A route, window or operator change permanently suspends enforcement for that
+agreement, clearing any open breach without charge; previously collected credit
+is retained and settled at closure. Cancellation, expiry and line withdrawal
+keep their existing settlement semantics and are not penalties. Expiry during
+an open cure closes as a cure state without a charge; expiry after a settled
+breach closes as a breached record.
+
+Persistence is schema `version: 4`, `rules: "bellwether-2026-10-v4"`. Version 3
+and older files are rejected with result 3. Every new field is bounded and
+validated, the operator identity subtracts `credits`, retained kind-10 ledger
+entries must match an agreement's paid credit, and an over-cap credit field is
+rejected as inconsistent.
+
+## Verification — 22 September 2026
+
+Docker Compose Zig 0.14.1 ReleaseSafe build passed and the served
+`/build/city.wasm` hash matched the build volume byte-for-byte
+(`4ee8a7651f7d4225f1457379faff52b0a0b2729071a53e5adcc6e07858371c3a`).
+JavaScript syntax checks passed for the changed report modules. No permanent
+test suite was added.
+
+A temporary native Zig probe (`src/slice5_probe.zig`, deleted before commit)
+drove the published rules directly and passed with 0 failures. It covered:
+
+- initial zero credit state and no enforcement on empty records;
+- offer publication below the operator minimum, with atomic cancellation of the reserved offer;
+- pre-breach grace below one whole day of expected service;
+- first-breach cure opening, a full 480-second cure with no accrual, and the exact cure deadline;
+- post-cure accrual at £0.18 per missing bus-second, penny settlement, the 25% cap and cap stability;
+- operator cash debit, lifetime `credits`, the account identity including credits, and municipal receipts reconciling to credit paid;
+- ledger kind 10 `(party = operator, order = agreement number)`;
+- the £2.18 cash floor: unpaid credit waived, zero paid, zero outstanding, cash never negative;
+- route-version change suspending enforcement with no charge and no later accrual;
+- off-hours adding no target, expiry releasing the reserve and settling the price, and cancellation retaining settled credit;
+- schema v4 save/load preserving accrued/paid/waived credit and operator credits, over-cap credit rejected as inconsistent (4), and version 3 rejected as incompatible (3);
+- passenger conservation, non-negative operator cash and protected reserves across 600 live simulation steps.
+
+The probe also caught and fixed a measurement-share defect: `measure()` is now
+called once per update, so the last-step share is applied once instead of being
+squared across two calls. Payment and enforcement therefore read the same
+integral.
+
+## Remaining limits
+
+The remedy is a single capped service credit; there is no adjudication, dispute
+register, cure extension, replacement-service obligation, escrow or automatic
+cancellation. `breach_days` is an accrual-observation counter, not a calendar
+day count. Waived credit is final and is not retried if the operator later has
+cash. The last 1,024 ledger entries are retained, so per-agreement
+reconciliation is complete only while those records remain; older paid credit is
+verified through the agreement and account totals. Municipal budget text labels
+`collected` as taxes, so service-credit receipts are reconciled through the
+ledger and the operator report rather than that figure. No court, legal,
+policing or courts slice was added.

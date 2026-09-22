@@ -466,6 +466,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 36 => @floatFromInt(c.depot -| transport.operators.owned(id)),
                 37 => @floatFromInt(transport.operators.covered(id, false)),
                 38 => @floatFromInt(transport.operators.covered(id, true)),
+                39 => c.credits,
                 else => -1,
             };
         },

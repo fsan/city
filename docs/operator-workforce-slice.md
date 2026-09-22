@@ -27,10 +27,11 @@ night roster and eight owned units. Each unit tracks its condition, whether it
 is under maintenance, whether that repair is funded, its completion time and
 which physical bus currently occupies it. The account keeps lifetime fares,
 subsidies, agreement receipts, sales, purchases, recruitment, severance,
-maintenance, vehicle and labour totals, so
+maintenance, vehicle, labour and slice-5 service-credit totals, so
 
     cash = opening + fares + subsidies + receipts + sales
          - purchases - recruitment - severance - maintenance - vehicle - labour
+         - credits
 
 holds for every operator at every step. A refused action never partly mutates
 the account or the pool.

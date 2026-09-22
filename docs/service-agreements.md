@@ -37,3 +37,17 @@ Each service window allows one target-length grace period for its first arrival,
 Editing the route permanently suspends review against the original route, including while paused, without erasing measured results or restarting the agreement clock. A changed offered route before acceptance is likewise unassessable. Re-offer explicitly to agree a new route/target. Operator/window mismatches also suspend; fleet/lane changes do not erase evidence.
 
 The newest 64 closed agreements retain target, per-stop evidence and gap state at closure, independently of subsequent private operation, route edits and slot reuse. A closure during off-hours records off-hours, not a history of earlier overdue episodes. See regularity-target-slice.md for precise limits and verification.
+
+
+## Contract enforcement (slice 5)
+
+Only delivered bus-seconds against the agreed windowed target integral are
+enforceable. When a whole day of expected service has elapsed and delivery is
+below 85%, a 480-simulation-second cure opens with no charge. After the cure,
+each measured shortfall adds GBP 0.18 per missing bus-second to a service
+credit, capped at 25% of the agreement price. Credits are paid from the
+operator's own cash above the GBP 2.18 dispatch floor; anything unpaid is
+recorded as waived, never as debt. A route, window or operator change suspends
+enforcement and cannot create a charge. Regularity targets remain review-only.
+Ledger kind 10 records money actually received, and the agreement report
+reconciles accrued = paid + waived + outstanding.

@@ -209,7 +209,14 @@ pub fn creditCap(a: *const Agreement) f64 {
 }
 // 0 none, 1 curing, 2 breached, 3 capped, 4 closed while breached.
 pub fn enforcementState(a: *const Agreement, time: f64) u32 {
-    if (a.status >= 3) return if (a.breach_days > 0) 4 else 0;
+    if (a.status >= 3) {
+        if (a.breach_days == 0) return 0;
+        // Closed during an open cure is still a cure state; closed after that
+        // means the agreement ended with the shortfall unresolved or settled.
+        if (a.credit_accrued <= 0 and a.updated < a.cure_until) return 1;
+        return 4;
+    }
+    if (enforcementSuspended(a)) return 5; // suspended by a route/service change
     if (a.status != 2 or a.breach_start == 0) return 0;
     if (a.credit_accrued >= creditCap(a) - 0.0001) return 3;
     return if (time < a.cure_until) 1 else 2;
@@ -217,13 +224,32 @@ pub fn enforcementState(a: *const Agreement, time: f64) u32 {
 fn breach_now(a: *const Agreement) bool {
     return a.expected >= 480 and a.delivered < a.expected * breach_floor;
 }
+// A route, window or operator change suspends enforcement just as it suspends
+// regularity review. The agreed clock keeps running; no charge can accrue
+// against a service the operator was no longer contracted to run.
+pub fn enforcementSuspended(a: *const Agreement) bool {
+    if (a.status != 2 or a.line >= transport.lines.len) return false;
+    const l = &transport.lines[a.line];
+    return l.version != a.route_version or l.window != a.window or l.company != a.company;
+}
 // Cure first, then accrue the refund of unrun service up to the cap. Accrual is
 // computed from the same measured integrals that earn payment, prorated on the
 // final step exactly as measure() does, so no other evidence can charge money.
 fn enforce(a: *Agreement, time: f64) void {
+    if (enforcementSuspended(a)) {
+        // A route, window or operator change permanently suspends enforcement
+        // for this agreement. Retained credits are still settled at closure.
+        a.breach_start = 0;
+        a.cure_until = 0;
+        a.breach_days = 0;
+        a.settled_expected = a.expected;
+        a.settled_delivered = a.delivered;
+        return;
+    }
     if (!breach_now(a)) {
         a.breach_start = 0;
         a.cure_until = 0;
+        a.breach_days = 0;
         a.settled_expected = a.expected;
         a.settled_delivered = a.delivered;
         return;
@@ -248,10 +274,13 @@ fn enforce(a: *Agreement, time: f64) void {
     const missing = expected_delta - @min(expected_delta, delivered_delta);
     if (missing <= 0) return;
     a.breach_days +|= 1;
-    a.credit_accrued = @min(creditCap(a), finance.cents(a.credit_accrued + missing * credit_rate));
+    a.credit_accrued = @min(creditCap(a), a.credit_accrued + missing * credit_rate);
 }
 // Pay from the operator's own cash above the dispatch floor, in whole pennies,
 // in one transaction. Anything unpaid is waived, never debt.
+pub fn creditOutstanding(a: *const Agreement) f64 {
+    return finance.cents(@max(0, a.credit_accrued - a.credit_paid - a.credit_waived));
+}
 fn collectCredit(a: *Agreement, time: f64) void {
     const due = finance.cents(@max(0, a.credit_accrued - a.credit_paid - a.credit_waived));
     if (due <= 0) return;
@@ -376,9 +405,10 @@ pub fn read(a: *const Agreement, field: u32) f64 {
         48 => a.credit_waived,
         49 => creditCap(a),
         50 => a.breach_start,
-        51 => a.regularity_time.max(a.cure_until),
+        51 => a.cure_until,
         52 => @floatFromInt(a.breach_days),
-        53 => if (breach_now(a)) 1 else 0,
+        53 => if (a.status == 2 and breach_now(a) and !enforcementSuspended(a)) 1 else 0,
+        54 => creditOutstanding(a),
         32...47 => if (field - 32 < a.stop_count) @floatFromInt(a.stops[field - 32]) else -1,
         else => -1,
     };

@@ -71,3 +71,16 @@ Operator working capital, driver coverage, fleet ownership and staffing are impl
 Transport Authority also reports measured stop arrivals, eligible interarrival intervals and live waiting counts, with separate current/retired route records. See [stop regularity mechanics and verification](docs/stop-regularity-slice.md). These observations introduce no timetable or payment penalties.
 
 Bus offers can optionally include a maximum interarrival review target, with agreement-specific evidence, overdue diagnostics and archived results. This does not change price or payment. See [target mechanics](docs/regularity-target-slice.md) and the [proposed numbered roadmap](docs/development-roadmap.md).
+
+
+## Transport contract enforcement
+
+Agreed service can carry one bounded remedy. Delivery below 85% of the windowed
+target after a whole day of expected service opens a 480-second cure; an
+unresolved shortfall then accrues a service credit at GBP 0.18 per missing
+bus-second, capped at 25% of the agreement price. The credit is paid only from
+the operator's cash above the GBP 2.18 dispatch floor, and unpaid credit is
+waived rather than turned into debt. Route, window or operator changes suspend
+enforcement. Regularity intervals remain review-only. Ledger category 10
+records credits received. Manual save files now use schema version 4,
+bellwether-2026-10-v4; older files are rejected.

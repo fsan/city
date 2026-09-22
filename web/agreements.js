@@ -29,7 +29,7 @@ export function createAgreements(game, selectedLine, message) {
       cells[2].textContent = minimum < 0 ? "—" : money(minimum);
       cells[3].textContent = `${reasons[reason]}. Cash ${money(r(14,company,4))}; required buffer ${money(game.service_window_quote(selectedLine(), company, fleet, days, price, window(), 3))}.`;
     });
-    $("operator-receipts").textContent = operatorNames.map((name,id) => `${name}: opening ${money(r(14,id,3))} + fares ${money(r(14,id,5))} + subsidies ${money(r(14,id,6))} + agreements ${money(r(14,id,2))} + bus sales ${money(r(14,id,22))} − bus purchases ${money(r(14,id,21))} − recruitment ${money(r(14,id,23))} − severance ${money(r(14,id,24))} − maintenance ${money(r(14,id,25))} − vehicle/clearance ${money(r(14,id,7))} − wages ${money(r(14,id,8))} = cash ${money(r(14,id,4))}. Fleet: ${r(14,id,0)} owned / ${r(14,id,15)} depot, ${r(14,id,17)} serviceable, ${r(14,id,16)} under maintenance, ${r(14,id,19)} attached to live or clearing buses, ${r(14,id,18)} free; mean condition ${r(14,id,20).toFixed(0)}%. Roster: ${r(14,id,10)} day-qualified / ${r(14,id,11)} night-qualified; on duty ${r(14,id,9)} of ${r(14,id,14) + r(14,id,13)} committed. Committed day/night: ${r(14,id,1)}/${r(14,id,12)}.`).join("\n");
+    $("operator-receipts").textContent = operatorNames.map((name,id) => `${name}: opening ${money(r(14,id,3))} + fares ${money(r(14,id,5))} + subsidies ${money(r(14,id,6))} + agreements ${money(r(14,id,2))} + bus sales ${money(r(14,id,22))} − bus purchases ${money(r(14,id,21))} − recruitment ${money(r(14,id,23))} − severance ${money(r(14,id,24))} − maintenance ${money(r(14,id,25))} − service credits ${money(r(14,id,39))} − vehicle/clearance ${money(r(14,id,7))} − wages ${money(r(14,id,8))} = cash ${money(r(14,id,4))}. Fleet: ${r(14,id,0)} owned / ${r(14,id,15)} depot, ${r(14,id,17)} serviceable, ${r(14,id,16)} under maintenance, ${r(14,id,19)} attached to live or clearing buses, ${r(14,id,18)} free; mean condition ${r(14,id,20).toFixed(0)}%. Roster: ${r(14,id,10)} day-qualified / ${r(14,id,11)} night-qualified; on duty ${r(14,id,9)} of ${r(14,id,14) + r(14,id,13)} committed. Committed day/night: ${r(14,id,1)}/${r(14,id,12)}.`).join("\n");
     const line = selectedLine();
     const status = line < 0 ? 0 : r(13,line,0);
     const available = r(0,0,3) + (status === 1 ? r(13,line,6) : 0);
@@ -39,12 +39,16 @@ export function createAgreements(game, selectedLine, message) {
     $("service-offer").disabled = line < 0 || !r(10,line,0) || status === 2 || !validTarget;
     $("service-cancel").disabled = status !== 1 && status !== 2;
   }
+  const enforcement = ["No enforceable shortfall", "Cure period", "Breach after cure", "Credit capped", "Closed while breached", "Suspended by route / service change"];
   function describe(group, id) {
     const a = field => r(group,id,field);
     if (!a(0)) return "No agreement. This line operates privately from its operator account.";
     const expected = a(11), delivered = a(7);
     const performance = expected > 0 ? `${(100*delivered/expected).toFixed(1)}% of elapsed target` : "No contracted time delivered yet";
-    return `Agreement #${a(10)} · Line ${a(16)+1} · ${statuses[a(0)]} · ${operatorNames[a(1)]}.\n${a(2)} buses, ${a(21) ? "06:00–22:00" : "all day (00:00–24:00)"}, for ${(a(3)/480).toFixed(2)} days; maximum ${money(a(4))}.\nPaid ${money(a(5))}; reserved ${money(a(6))}; released ${money(a(13))}.\nDelivery ${delivered.toFixed(1)} / ${expected.toFixed(1)} bus-seconds (${performance}). ${a(0) === 1 || a(0) === 5 ? reasons[a(8)] + "." : `Earned ${money(a(12))}; ${money(Math.max(0, a(4)*expected/Math.max(1,a(22))-a(12)))} not earned through under-delivery to date.`}\nOffered ${stamp(a(14))}${a(0) >= 3 ? `; closed ${stamp(a(15))}` : ""}.`;
+    const state = a(29);
+    const remedy = !a(29) && !a(30) && !a(50) ? "No service credit has been accrued or waived." :
+      `Enforcement: ${enforcement[state]}.${a(50) > 0 ? ` Breach observed ${stamp(a(50))}.` : ""}${a(51) > 0 ? ` Cure deadline ${stamp(a(51))}.` : ""} Accrued ${money(a(30))} = paid ${money(a(31))} + waived ${money(a(48))} + outstanding ${money(a(54))}; cap ${money(a(49))}. Only delivered bus-seconds can move this money; regularity intervals and missed windows cannot.`;
+    return `Agreement #${a(10)} · Line ${a(16)+1} · ${statuses[a(0)]} · ${operatorNames[a(1)]}.\n${a(2)} buses, ${a(21) ? "06:00–22:00" : "all day (00:00–24:00)"}, for ${(a(3)/480).toFixed(2)} days; maximum ${money(a(4))}.\nPaid ${money(a(5))}; reserved ${money(a(6))}; released ${money(a(13))}.\nDelivery ${delivered.toFixed(1)} / ${expected.toFixed(1)} bus-seconds (${performance}). ${a(0) === 1 || a(0) === 5 ? reasons[a(8)] + "." : `Earned ${money(a(12))}; ${money(Math.max(0, a(4)*expected/Math.max(1,a(22))-a(12)))} not earned through under-delivery to date.`}\n${remedy}\nOffered ${stamp(a(14))}${a(0) >= 3 ? `; closed ${stamp(a(15))}` : ""}.`;
   }
   function regularityReport(id) {
     const container = $(id);
@@ -82,7 +86,7 @@ export function createAgreements(game, selectedLine, message) {
       const target = exists ? r(group,record,23) : 0;
       scroll.hidden = !target;
       summary.textContent = !exists ? "" : !target ? "No regularity target was included in this agreement." :
-        `Maximum interval: ${target} simulation seconds. ${r(group,record,25)} of ${r(group,record,24)} completed eligible pairs exceeded; ${r(group,record,26)} of ${r(group,record,18)} stops have interval evidence. ${r(group,record,27) ? "Assessment suspended after a route or service change; retained results are unchanged." : "Counts describe observed pairs, not a blanket service pass."} ${r(group,record,0) >= 3 ? "Gap states are frozen at closure." : "Gap states are live."} No payment penalty applies.`;
+        `Maximum interval: ${target} simulation seconds. ${r(group,record,25)} of ${r(group,record,24)} completed eligible pairs exceeded; ${r(group,record,26)} of ${r(group,record,18)} stops have interval evidence. ${r(group,record,27) ? "Assessment suspended after a route or service change; retained results are unchanged." : "Counts describe observed pairs, not a blanket service pass."} ${r(group,record,0) >= 3 ? "Gap states are frozen at closure." : "Gap states are live."} Regularity remains review-only; an enforceable remedy uses delivered bus-seconds only, never these intervals.`;
       if (!target) return;
       const stopGroup = group === 13 ? 20 : 21;
       rows.forEach(({row,cells,locate,setNode}, index) => {

@@ -379,6 +379,7 @@ export function createReports(game, ui, transport) {
     "Bus boarding subsidy",
     "Bus service agreement",
     "Road construction",
+    "Service credit",
   ];
   function ledgerValues(limit) {
     return Array.from({ length: limit }, (_, id) => {
@@ -392,8 +393,8 @@ export function createReports(game, ui, transport) {
           ? "City"
           : kind === 1 || kind === 2
             ? `Property ${party + 1}`
-            : kind === 8 ? operatorNames[party] : companyName(party),
-        order < 0 ? "—" : kind === 8 ? `Agreement #${order}` : String(order + 1),
+            : kind === 8 || kind === 10 ? operatorNames[party] : companyName(party),
+        order < 0 ? "—" : kind === 8 || kind === 10 ? `Agreement #${order}` : String(order + 1),
         r(7, id, 1).toFixed(2),
         r(7, id, 2).toFixed(2),
       ];

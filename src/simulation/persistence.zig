@@ -102,8 +102,8 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 3,
-        .rules = "bellwether-2026-09-v3",
+        .version = 4,
+        .rules = "bellwether-2026-10-v4",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = &city.buildings, .parcels = parcels.storage[0..parcels.count], .next_node = next_rows[0..city.node_count], .walk_next = walk_rows[0..city.node_count], .distance = distance_rows[0..city.node_count] },
@@ -192,6 +192,13 @@ fn validAgreement(a: *const agreements.Agreement, s: *const State, closed: bool)
         !between(a.offered, 0, s.clock.elapsed) or !between(a.start, 0, s.clock.elapsed) or !between(a.ended, 0, s.clock.elapsed) or
         !between(a.updated, 0, s.clock.elapsed) or !between(a.regularity_updated, 0, s.clock.elapsed) or !between(a.regularity_time, 0, s.clock.elapsed) or
         a.delivered < 0 or a.expected < a.delivered or a.baseline < 0 or a.target < 0) return false;
+    // Slice 5: cure-first service credit. Only delivered bus-seconds against the
+    // windowed target integral can move money, and a waived balance is never debt.
+    if (!between(a.breach_start, 0, s.clock.elapsed) or !between(a.cure_until, 0, s.clock.elapsed + agreements.cure_seconds + 0.001) or
+        a.breach_days > 64 or a.credit_accrued < 0 or a.credit_paid < 0 or a.credit_waived < 0 or
+        a.credit_accrued > agreements.creditCap(a) + 0.001 or a.credit_paid + a.credit_waived > a.credit_accrued + 0.011 or
+        !between(a.settled_expected, 0, a.expected + 0.001) or !between(a.settled_delivered, 0, a.delivered + 0.001)) return false;
+    if (a.breach_start == 0 and (a.cure_until != 0 or a.breach_days != 0)) return false;
     if (closed and a.status < 3) return false;
     if (a.status >= 3) {
         if (a.reserved != 0 or !near(a.paid + a.released, a.price)) return false;
@@ -338,9 +345,9 @@ fn validate(s: *const State) bool {
     for (m.accounts, 0..) |account, i| {
         if (account.opening != opening[i] or account.depot != depots[i] or
             account.day > 12 or account.night > account.day or account.cash < 0 or account.fares < 0 or account.subsidies < 0 or account.receipts < 0 or
-            account.vehicle < 0 or account.labour < 0 or account.purchases < 0 or account.sales < 0 or account.recruitment < 0 or account.severance < 0 or account.maintenance < 0) return false;
+            account.vehicle < 0 or account.labour < 0 or account.purchases < 0 or account.sales < 0 or account.recruitment < 0 or account.severance < 0 or account.maintenance < 0 or account.credits < 0) return false;
         const expected = account.opening + account.fares + account.subsidies + account.receipts + account.sales -
-            account.purchases - account.recruitment - account.severance - account.maintenance - account.vehicle - account.labour;
+            account.purchases - account.recruitment - account.severance - account.maintenance - account.vehicle - account.labour - account.credits;
         if (!near(account.cash, expected)) return false;
         var present: usize = 0;
         for (account.units, 0..) |unit, slot| {
@@ -399,6 +406,16 @@ fn validate(s: *const State) bool {
         if ((a.status == 1 or a.status == 2) and !m.lines[i].active) return false;
         if (a.status == 2 and (a.company != m.lines[i].company or a.window != m.lines[i].window or a.fleet != m.lines[i].fleet or !near(a.baseline, m.lines[i].delivered))) return false;
         for (services.current[0..i]) |other| if (a.number != 0 and a.number == other.number) return false;
+        // Money actually received must appear in the retained ledger; a credit
+        // whose records have already rolled out is allowed to be unpaid here.
+        var recorded: f64 = 0;
+        const first_entry = f.entry_count - f.entries.len;
+        for (first_entry..f.entry_count) |entry| {
+            const e = f.entries[entry % 1024];
+            if (e.kind == 10 and e.party == @as(i32, @intCast(a.company)) and e.order == @as(i32, @intCast(a.number))) recorded += e.amount;
+        }
+        if (recorded > a.credit_paid + 0.011) return false;
+        if (recorded < a.credit_paid - 0.011 and f.entry_count - f.entries.len <= 0) return false;
         reserved += a.reserved;
     }
     for (services.history, 0..) |*a, i| {
@@ -406,16 +423,24 @@ fn validate(s: *const State) bool {
         const current = &services.current[a.line];
         if (current.number == a.number and !std.meta.eql(current.*, a.*)) return false;
         for (services.history[0..i]) |old| if (old.number == a.number) return false;
+        var recorded: f64 = 0;
+        const first_entry = f.entry_count - f.entries.len;
+        for (first_entry..f.entry_count) |entry| {
+            const e = f.entries[entry % 1024];
+            if (e.kind == 10 and e.party == @as(i32, @intCast(a.company)) and e.order == @as(i32, @intCast(a.number))) recorded += e.amount;
+        }
+        if (recorded > a.credit_paid + 0.011) return false;
+        if (recorded < a.credit_paid - 0.011 and f.entry_count - f.entries.len <= 0) return false;
     }
     if (!near(f.reserved, reserved) or !near(f.entries[(f.entry_count - 1) % 1024].balance, f.cash)) return false;
     const first = f.entry_count - f.entries.len;
     for (first..f.entry_count) |i| {
         const e = f.entries[i % 1024];
-        if (!between(e.time, 0, c.elapsed) or e.kind > 9 or e.balance < 0) return false;
+        if (!between(e.time, 0, c.elapsed) or e.kind > 10 or e.balance < 0) return false;
         switch (e.kind) {
             1, 2 => if (e.party < 0 or !index(e.party, town.buildings.len) or e.order != -1) return false,
             5, 6 => if (e.party < 0 or !index(e.party, companies.len) or e.order < 0 or !index(e.order, services.orders.len)) return false,
-            8 => if (e.party < 0 or !index(e.party, 3) or e.order < 1 or e.order >= services.next_number) return false,
+            8, 10 => if (e.party < 0 or !index(e.party, 3) or e.order < 1 or e.order >= services.next_number) return false,
             9 => if (e.party < 0 or !index(e.party, town.street_count) or e.order != -1) return false,
             else => if (e.party != -1 or e.order != -1) return false,
         }
@@ -514,7 +539,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 3 and std.mem.eql(u8, rules, "bellwether-2026-09-v3");
+    return version == 4 and std.mem.eql(u8, rules, "bellwether-2026-10-v4");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

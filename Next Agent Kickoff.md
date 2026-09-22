@@ -1,8 +1,8 @@
 # Next agent kickoff — authorized goal: slices 5–9
 
-Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 is complete and committed at `60a000a`. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, and explicit bus fleet and staffing commitments.
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 is complete and committed at `60a000a`; slice 5 is complete in the current worktree on top of `25098eb`. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, explicit bus fleet and staffing commitments, and cure-first transport contract enforcement.
 
-**Authorized goal:** implement slices 5, 6, 7, 8 and 9 of the numbered development sequence, in order, as five bounded batches. Each slice must have its own short slice note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation, and a refreshed kickoff before the next slice starts. This authorizes these five slices; it does not authorize slices 10–39 or a single unbounded rewrite.
+**Authorized goal:** implement slices 5, 6, 7, 8 and 9 of the numbered development sequence, in order, as five bounded batches; slice 5 is complete. Each slice must have its own short slice note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation, and a refreshed kickoff before the next slice starts. This authorizes slices 6–9; it does not authorize slices 10–39 or a single unbounded rewrite.
 
 Inspect current code, git status and recent commits before editing. The `.tmp_degrees.zig` cleanup item is done: the temporary file was removed in `60a000a`. Do not reset, rewrite history or push without a request.
 
@@ -27,7 +27,7 @@ Use Zig for rules and measurements, JavaScript for WebGL/input/reports. Compile 
 - Each vehicle retains its operator while clearing. No money transfers on handover and no cash resets on reuse. Clearing is paid by the already-expensed flat fee, occupies physical resources and earns no delivery. Low cash retires safely without negative balances. All-day driver relief occurs at a junction.
 - Off-hours add no delivery target. Contracts retain window and target. Private service continues with the last operator/fleet/window after closure. Refresh/Restart clears the live session; manual import restores an exported town.
 - Passenger outcomes are measured from real transitions, not report polling: wait starts, completed waits with mean/min/max, per-dwell full-bus denials, abandonment causes, and home-district comparison. Existing data stays tied to stable route versions.
-- Manual save/load is local and browser-owned. The current schema is `version: 3`, `rules: "bellwether-2026-09-v3"`. Version 2 and older files are rejected explicitly; there is no migration layer.
+- Manual save/load is local and browser-owned. The current schema is `version: 4`, `rules: "bellwether-2026-10-v4"` after slice 5. Version 3 and older files are rejected explicitly; there is no migration layer.
 
 ## Completed work relevant to the authorized goal
 
@@ -35,6 +35,7 @@ Use Zig for rules and measurements, JavaScript for WebGL/input/reports. Compile 
 - **Save/load:** typed JSON snapshots preserve clock, speed, graph, routing tables, zoning, residents, journeys, riders, operators, vehicles, shifts, taxes, ledger, reserves, orders, crews, routes, observations, agreements, targets, history, next IDs, and every slice-4 fleet unit, roster count and lifetime flow. Parsing is bounded and staged; invalid imports leave the live town unchanged.
 - **Passenger outcomes:** Zig records actual wait starts, boardings, completed wait statistics, capacity denials, timeout/off-hours/fare/service abandonment and district comparison. Route edits close old-version waits before archiving. Save version 3 preserves every new counter and in-progress wait.
 - **Transport polish:** stop validity and kerbside markers are in `city.zig`, `render/scene.zig`, `main.zig` and `web/transport.js`. Movement smoothing is in `transport.zig`; the measured old/new comparison showed per-step skips falling from 79 to 4 and mean moving speed rising from 1.54 to 2.73 m/s.
+- **Transport contract enforcement (slice 5):** cure-first service credit on delivered bus-seconds only; 480-second cure, GBP 0.18 per missing bus-second, 25% price cap, GBP 2.18 cash floor with waiver instead of debt, route/service-change suspension, ledger kind 10, schema version 4. See `docs/transport-enforcement-slice.md`.
 - **Bus staffing and fleet investment (slice 4):** `operators.zig` holds a depot capacity, a recruited day and night roster and eight tracked units per operator. Units carry condition, a maintenance state and the physical bus occupying them. Recruiting a day driver costs £150, a night endorsement £260 and requires a day-qualified driver already on the roster; dismissal pays £60. A bus costs £520, sells for 55% of its condition-scaled value, wears only while a service bus is moving, dwelling or held in traffic, and enters a £160/240-second repair when exhausted. Clearing buses hold their unit until every rider has left, so they physically block replacement dispatch. Quotes and acceptance read the same live owned/serviceable/committed split and the recruited cohorts. Save schema is version 3. See `docs/operator-workforce-slice.md` for rules, verification and limits. Browser verification of the new Fleet & staff panel was limited to served-markup, module parse, scalar-ABI contract and served-WASM identity checks because no headless browser was available.
 
 ## Completed slice 4 — bus staffing and fleet investment
@@ -54,9 +55,9 @@ Likely ABI/UI additions: operator fleet/driver breakdown, owned/available/commit
 
 Verification must cover atomic purchase/recruitment/refusal, cash exhaustion without negative balances, shift and off-hours coverage, vehicle purchase/sale/maintenance lifecycle, agreement acceptance/dispatch with shared capacity, safe handover/clearing, passenger conservation, ledger/account reconciliation, protected reserves, route/stop behavior, movement continuity, save/load round trips with every new counter and in-progress commitment, and browser/report behavior.
 
-## Authorized slice 5 — transport contract enforcement (current batch)
+## Completed slice 5 — transport contract enforcement
 
-This slice follows slice 4 and must be designed explicitly before coding. Write `docs/transport-enforcement-slice.md` before any code, then carry it through build, focused checks, documentation and a kickoff refresh. It may add financial consequences or remedies for agreed service failures, but it must not silently change existing agreement payments or turn the review-only regularity targets from slices 1–3 into penalties.
+Complete. `docs/transport-enforcement-slice.md` records the implemented rules, verification and limits. The enforceable figure is the delivered bus-second integral; regularity remains review-only; route/service changes suspend enforcement; unpaid credit is waived. It may add financial consequences or remedies for agreed service failures, but it must not silently change existing agreement payments or turn the review-only regularity targets from slices 1–3 into penalties.
 
 - Define which contractual outcomes are enforceable and from which evidence: delivered bus-seconds, target-stop arrivals, missed windows, suspended review after a route change, cancellation, expiry or withdrawal.
 - Distinguish review-only regularity evidence from enforceable contract performance. Route edits suspend target review; decide explicitly whether they suspend, terminate, or renegotiate enforcement.
@@ -68,9 +69,9 @@ This slice follows slice 4 and must be designed explicitly before coding. Write 
 
 Do not add a full court/legal system, discretionary adjudication, or later policing/courts slices here.
 
-## Authorized slice 6 — civic calendar and realistic routines
+## Authorized slice 6 — civic calendar and realistic routines (current batch)
 
-This slice follows slice 5. It introduces a bounded civic calendar and richer routine time while preserving the current passenger, vehicle, accounting and agreement behavior.
+This slice follows slice 5 and is the current batch. It introduces a bounded civic calendar and richer routine time while preserving the current passenger, vehicle, accounting and agreement behavior.
 
 - Define weekdays, weekends, shifts, holidays or longer budget periods only as far as they affect existing simulation systems. Do not create a full national calendar or political system.
 - Residents get realistic routine phases beyond the current shortened work/home loop: sleep, commute windows, shifts, school/errand placeholders if already supported, and recovery/leisure time.
@@ -139,20 +140,20 @@ Never iterate the large resident array by value; it previously exhausted the WAS
 
 ## Verification and remaining limits
 
-Current completed checks include Docker ReleaseSafe builds, passenger wait/capacity/abandonment accounting, save/load of in-progress waits, route-edit attribution, passenger/rider conservation, operator account identities, off-hours/timeout abandonment, kerbside stop validity, old/new movement comparisons, and the slice-4 fleet and staffing batch (94 focused checks, 0 failures, plus a scalar-ABI panel contract and a served-asset identity check). This environment has no browser and lacks WebGL, so report population is verified through the scalar ABI, served markup and served-asset hashes rather than a rendered screenshot.
+Current completed checks include Docker ReleaseSafe builds, passenger wait/capacity/abandonment accounting, save/load of in-progress waits, route-edit attribution, passenger/rider conservation, operator account identities, off-hours/timeout abandonment, kerbside stop validity, old/new movement comparisons, the slice-4 fleet and staffing batch (94 focused checks, 0 failures, plus a scalar-ABI panel contract and a served-asset identity check), and the slice-5 enforcement probe (0 failures: cure/cap/waiver/suspension/expiry/cancel/schema-v4 save-load/tamper rejection/passenger conservation, plus a served-WASM hash match). This environment has no browser and lacks WebGL, so report population is verified through the scalar ABI, served markup and served-asset hashes rather than a rendered screenshot.
 
-Manual save/load, bounded history, fixed clearance fees, authored population and graph limits, and review-only regularity targets remain until their authorized slice changes them. Aggregate driver cohorts and fixed owned-fleet numbers were replaced in slice 4; `docs/operator-workforce-slice.md` lists what that model still abstracts. Each remaining slice must add its own verification evidence and limitations; do not claim later slices work merely because earlier hooks exist. Keep save/load compatible or bump and reject explicitly at each schema change.
+Manual save/load, bounded history, fixed clearance fees, authored population and graph limits remain until their authorized slice changes them. Review-only regularity targets remain review-only by design; slice 5 added a separate delivered-bus-second remedy. Aggregate driver cohorts and fixed owned-fleet numbers were replaced in slice 4; `docs/operator-workforce-slice.md` lists what that model still abstracts. Each remaining slice must add its own verification evidence and limitations; do not claim later slices work merely because earlier hooks exist. Keep save/load compatible or bump and reject explicitly at each schema change.
 
 ## Numbered development sequence
 
-The original numbering is retained so requests such as “work on slice 5” or “slices 5–9” are unambiguous. Slices 1–4 are complete. **Slices 5–9 are the authorized goal. Slices 10–39 remain proposed work, not authorization to implement them.**
+The original numbering is retained so requests such as “work on slice 5” or “slices 5–9” are unambiguous. Slices 1–5 are complete. **Slices 6–9 are the authorized goal. Slices 10–39 remain proposed work, not authorization to implement them.**
 
 1. **Agreement regularity targets — complete:** optional targets, overdue diagnostics and retained agreement results; no financial penalties.
 2. **Save/load — complete:** versioned manual local files preserve towns, accounts, agreements, routes, observations and live journeys.
 3. **Passenger service outcomes — complete:** real wait starts/boardings, capacity denials, abandonment causes, district comparison and save/load.
 4. **Bus staffing and fleet investment — complete:** recruited day and night driver rosters, purchased and maintained owned buses, depot capacity, and shared dispatch and acceptance commitments. See `docs/operator-workforce-slice.md`.
-5. **Transport contract enforcement — authorized, current batch:** explicitly designed remedies and financial consequences.
-6. **Civic calendar and realistic routines — authorized:** weekdays, shifts, weekends and longer budget periods.
+5. **Transport contract enforcement — complete:** cure-first capped service credit, cash-floor waiver, route-change suspension, ledger kind 10, schema v4.
+6. **Civic calendar and realistic routines — authorized, current batch:** weekdays, shifts, weekends and longer budget periods.
 7. **Households and household budgets — authorized:** shared income, essential expenses and financial pressure.
 8. **Employment and hiring — authorized:** vacancies, unemployment, skills, wages and business staffing.
 9. **Housing and occupancy — authorized:** renting, ownership, affordability, moves and displacement.
@@ -191,4 +192,4 @@ Timetables, transfers and automatic route optimisation need separate transport s
 
 ## Continuation instruction
 
-If the next user asks to continue from this kickoff, carry slices 5–9 through implementation in order. For each slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the next slice. Preserve existing work and do not stop at a plan. Do not add a permanent test suite or expand into slices 10–39 without authorization. Finish each slice with what changed, what was verified and remaining limitations.
+If the next user asks to continue from this kickoff, carry slices 6–9 through implementation in order; slice 5 is complete. For each slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the next slice. Preserve existing work and do not stop at a plan. Do not add a permanent test suite or expand into slices 10–39 without authorization. Finish each slice with what changed, what was verified and remaining limitations.
