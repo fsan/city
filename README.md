@@ -84,3 +84,15 @@ waived rather than turned into debt. Route, window or operator changes suspend
 enforcement. Regularity intervals remain review-only. Ledger category 10
 records credits received. Manual save files now use schema version 4,
 bellwether-2026-10-v4; older files are rejected.
+
+
+## Civic calendar and routine time
+
+The shared clock now drives a bounded civic calendar: Monday-to-Sunday
+weekdays, weekday/weekend routine phases, three resident shifts (day 06-14,
+evening 14-22, night 22-06), local weekend errands and a weekly municipal
+budget period. One day is still 480 simulation seconds and the transport
+windows are unchanged (daytime 06:00-22:00, all-day 00:00-24:00). Weekly
+budget summaries reconcile recorded ledger movements only and cannot create or
+destroy money. Manual save files use schema version 5,
+bellwether-2026-11-v5; older files are rejected.

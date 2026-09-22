@@ -7,6 +7,7 @@ pub const roadworks = @import("roads.zig");
 pub const parcels = @import("../scene/parcels.zig");
 pub const agreements = @import("agreements.zig");
 pub const contracts = @import("contracts.zig");
+pub const calendar = @import("calendar.zig");
 pub var elapsed: f64 = 160;
 pub var trust: [city.district_count]f32 = undefined;
 pub const Sample = struct { time: f64, cash: f64, reserved: f64, walking: usize, condition: f32 };
@@ -15,11 +16,13 @@ pub var history_count: usize = 0;
 pub var next_sample: f64 = 160;
 pub var next_routes: f64 = 220;
 pub var next_operating: f64 = 190;
+pub var next_week: f64 = 0;
 pub fn init() void {
     elapsed = 160;
     next_sample = 160;
     next_routes = 220;
     next_operating = 190;
+    next_week = calendar.nextWeekStart(elapsed);
     history_count = 0;
     transport.init();
     residents.init();
@@ -46,6 +49,10 @@ pub fn update(dt: f32) void {
     if (elapsed >= next_operating) {
         finance.operating(elapsed);
         next_operating = elapsed + 30;
+    }
+    if (elapsed >= next_week) {
+        finance.closeWeek(calendar.weekIndex(elapsed));
+        next_week = calendar.nextWeekStart(elapsed);
     }
     for (city.roads) |*r| {
         const gain: f32 = @floatCast(@as(f64, @floatFromInt(finance.active_funding)) * 0.03 * finance.maintenance_paid - 0.025);

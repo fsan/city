@@ -6,11 +6,11 @@ The gameplay loop runs in Zig WebAssembly inside the browser. Docker builds the 
 
 ## Preserved state
 
-- Simulation clock, speed, remembered resume speed, fixed-step remainder and future sample/routing/operating deadlines; camera.
+- Simulation clock, speed, remembered resume speed, fixed-step remainder and future sample/routing/operating/weekly budget deadlines; camera.
 - Graph nodes/roads, IDs/revisions, road condition and lane allocation, parcels/zoning/buildings, routing and distance tables.
 - Residents, companies/employment, trips and walking progress, cars/buses, passenger links, clearing/driver cohorts, operator accounts and line attribution.
 - Tax/funding policies, treasury, protected reserves, arrears, latest 1,024 ledger entries and counters; work orders, company crews and review schedule.
-- Bus lines, current/previous route observations, passenger wait starts/completed waits/capacity denials/abandonment causes, district access counters, current agreements, review targets/results, breach/cure state, accrued/paid/waived service credit, newest 64 closed agreements and next agreement ID.
+- Bus lines, current/previous route observations, passenger wait starts/completed waits/capacity denials/abandonment causes, district access counters, current agreements, review targets/results, breach/cure state, accrued/paid/waived service credit, resident shifts/routines, weekly budget-period summaries, the next week boundary, newest 64 closed agreements and next agreement ID.
 - Trust and latest 96 history samples with their counters.
 
 Only initialized live prefixes and physical ring contents are serialized. Existing retention limits remain. Restoring repeatedly does not append records or replay payments. Routing tables and deadlines are retained because immediately recomputing a scheduled cache could alter the next journey. Graph lookup and parcel-block caches are rebuilt; transient per-step arrival events, pending subsidy coordination, renderer buffers and selection are cleared. Vehicle queues rebuild at the next simulation step.
@@ -19,7 +19,7 @@ Unapplied road/route/offer/work-order drafts, selected records, overlays and win
 
 ## Contract and rejection
 
-`src/simulation/persistence.zig` defines an explicit typed JSON State; this is not a WASM memory dump and JavaScript does not infer native struct layouts. Metadata is `format: "Common Ground town"`, now `version: 4`, `rules: "bellwether-2026-10-v4"` after slice 5. Schema or incompatible rules changes require an identifier bump. No migration layer is included; version 3 and older files are rejected with result 3.
+`src/simulation/persistence.zig` defines an explicit typed JSON State; this is not a WASM memory dump and JavaScript does not infer native struct layouts. Metadata is `format: "Common Ground town"`, now `version: 5`, `rules: "bellwether-2026-11-v5"` after slice 6. Schema or incompatible rules changes require an identifier bump. No migration layer is included; version 4 and older files are rejected with result 3.
 
 Maximum file size is 16 MiB; parsing has a separate fixed 64 MiB arena. Save/load is synchronous after the browser has read the file, so large operations can briefly pause rendering. Typical tested towns are about 9.6–10.0 MB; routing matrices dominate. A 640-node capacity fixture exported at 14,694,433 bytes. Export reports failure if it cannot fit; there is no silent truncation.
 

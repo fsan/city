@@ -9,6 +9,7 @@ const contracts = game.contracts;
 const agreements = game.agreements;
 const parcels = game.parcels;
 const scene = @import("../render/scene.zig");
+const calendar = game.calendar;
 
 // JSON fields, not native struct bytes. Bump version/rules when changing this contract.
 pub const capacity = 16 * 1024 * 1024;
@@ -17,7 +18,7 @@ var parse_memory: [64 * 1024 * 1024]u8 = undefined;
 pub var restored_speed: f32 = 1;
 pub var restored_resume: f32 = 1;
 pub var restored_accumulator: f32 = 0;
-const Clock = struct { elapsed: f64, speed: f32, resume_speed: f32, accumulator: f32, next_sample: f64, next_routes: f64, next_operating: f64 };
+const Clock = struct { elapsed: f64, speed: f32, resume_speed: f32, accumulator: f32, next_sample: f64, next_routes: f64, next_operating: f64, next_week: f64 };
 const Camera = struct { x: f32, z: f32, zoom: f32, angle: f32 };
 const Town = struct {
     revision: u32,
@@ -65,6 +66,13 @@ const Treasury = struct {
     arrears: []const f64,
     entry_count: usize,
     entries: []const finance.Entry,
+    periods: []const finance.Period,
+    period_count: u32,
+    period_opening: f64,
+    period_receipts: f64,
+    period_expenses: f64,
+    period_entries: u32,
+    period_week: u32,
 };
 const Services = struct {
     orders: []const contracts.Order,
@@ -102,14 +110,14 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 4,
-        .rules = "bellwether-2026-10-v4",
-        .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating },
+        .version = 5,
+        .rules = "bellwether-2026-11-v5",
+        .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = &city.buildings, .parcels = parcels.storage[0..parcels.count], .next_node = next_rows[0..city.node_count], .walk_next = walk_rows[0..city.node_count], .distance = distance_rows[0..city.node_count] },
         .citizens = .{ .people = &residents.people, .companies = residents.companies[0..residents.company_count], .walking = residents.walking, .employed = residents.employed, .pedestrians = residents.pedestrians[0..city.road_count], .district_outcomes = &residents.district_outcomes },
         .mobility = .{ .vehicles = &transport.vehicles, .lines = &transport.lines, .accounts = &operators.accounts, .observations = &transport.observations, .previous_observations = &transport.previous_observations, .lanes = lane_values[0..city.road_count], .occupancy = transport.occupancy[0..city.road_count], .queues = transport.queues[0..city.road_count], .congestion = transport.congestion[0..city.road_count], .fare_cap = transport.fare_cap, .subsidy = transport.subsidy, .subsidy_total = transport.subsidy_total },
-        .treasury = .{ .cash = finance.cash, .reserved = finance.reserved, .residential_rate = finance.residential_rate, .commercial_rate = finance.commercial_rate, .funding = finance.funding, .active_funding = finance.active_funding, .maintenance_paid = finance.maintenance_paid, .collected = finance.collected, .spent = finance.spent, .arrears = &finance.arrears, .entry_count = finance.entry_count, .entries = finance.entries[0..@min(finance.entry_count, finance.entries.len)] },
+        .treasury = .{ .cash = finance.cash, .reserved = finance.reserved, .residential_rate = finance.residential_rate, .commercial_rate = finance.commercial_rate, .funding = finance.funding, .active_funding = finance.active_funding, .maintenance_paid = finance.maintenance_paid, .collected = finance.collected, .spent = finance.spent, .arrears = &finance.arrears, .entry_count = finance.entry_count, .entries = finance.entries[0..@min(finance.entry_count, finance.entries.len)], .periods = finance.periods[0..@min(finance.period_count, finance.periods.len)], .period_count = finance.period_count, .period_opening = finance.period_opening, .period_receipts = finance.period_receipts, .period_expenses = finance.period_expenses, .period_entries = finance.period_entries, .period_week = finance.period_week },
         .services = .{ .orders = contracts.orders[0..contracts.count], .next_review = contracts.next_review, .current = &agreements.agreements, .history = agreements.history[0..@min(agreements.history_count, agreements.history.len)], .history_count = agreements.history_count, .next_number = agreements.next_number },
         .trust = &game.trust,
         .history = game.history[0..@min(game.history_count, game.history.len)],
@@ -229,6 +237,7 @@ fn validate(s: *const State) bool {
     const services = &s.services;
     if (!between(c.elapsed, 160, 1e9) or !between(c.speed, 0, 16) or !between(c.resume_speed, 0.001, 16) or !between(c.accumulator, 0, @as(f32, 1.0 / 30.0)) or
         !between(c.next_sample, c.elapsed, c.elapsed + 30.1) or !between(c.next_routes, c.elapsed, c.elapsed + 60.1) or !between(c.next_operating, c.elapsed, c.elapsed + 30.1) or
+        !between(c.next_week, c.elapsed, c.elapsed + calendar.seconds_per_week + 0.1) or
         !between(s.camera.zoom, 0.5, 12) or !between(s.camera.x, -100, city.size_x + 100) or !between(s.camera.z, -100, city.size_z + 100) or
         n < 2 or n > city.max_nodes or roads.len == 0 or roads.len > city.max_roads or town.street_count < 14 or town.street_count > city.max_roads + 14 or
         town.buildings.len != city.buildings.len or town.parcels.len > parcels.max_parcels or town.parcels.len < city.buildings.len or
@@ -241,7 +250,13 @@ fn validate(s: *const State) bool {
         services.orders.len > 64 or services.current.len != 8 or services.history.len != @min(services.history_count, 64) or services.next_number == 0) return false;
     if (!between(m.fare_cap, 0, 10) or !between(m.subsidy, 0, 10) or m.subsidy_total < 0 or
         f.cash < 0 or f.reserved < 0 or f.reserved > f.cash + 0.001 or f.funding > 2 or f.active_funding > 2 or
-        !between(f.residential_rate, 0, 5) or !between(f.commercial_rate, 0, 5) or !between(f.maintenance_paid, 0, 1) or f.collected < 0 or f.spent < 0) return false;
+        !between(f.residential_rate, 0, 5) or !between(f.commercial_rate, 0, 5) or !between(f.maintenance_paid, 0, 1) or f.collected < 0 or f.spent < 0 or
+        f.periods.len != @min(f.period_count, 12) or f.period_opening < 0 or f.period_receipts < 0 or f.period_expenses < 0 or f.period_week > 1000000000) return false;
+    for (f.periods) |period| {
+        if (period.week > 1000000000 or period.opening < 0 or period.receipts < 0 or period.expenses < 0 or period.closing < 0 or
+            !near(period.closing, period.opening + period.receipts - period.expenses)) return false;
+    }
+    if (!near(f.period_opening + f.period_receipts - f.period_expenses, f.cash)) return false;
     for (f.arrears) |v| if (v < 0) return false;
     for (s.trust) |v| if (!between(v, 0, 100)) return false;
     for (s.citizens.district_outcomes) |d| {
@@ -270,7 +285,7 @@ fn validate(s: *const State) bool {
     var employees: [city.buildings.len]usize = @splat(0);
     var occupants: [city.buildings.len]usize = @splat(0);
     for (people) |*p| {
-        if (p.phase > 3 or p.mode > 3 or p.bus_stage > 2 or p.node >= n or p.next >= n or p.destination >= n or p.origin >= n or p.car_node >= n or p.bike_node >= n or p.boarding >= n or p.exit_node >= n or
+        if (p.phase > 3 or p.mode > 3 or p.bus_stage > 2 or p.shift > 2 or p.routine > 5 or p.node >= n or p.next >= n or p.destination >= n or p.origin >= n or p.car_node >= n or p.bike_node >= n or p.boarding >= n or p.exit_node >= n or
             p.home >= town.buildings.len or p.current_building >= town.buildings.len or p.origin_building >= town.buildings.len or p.destination_building >= town.buildings.len or
             !index(p.employer, companies.len) or !index(p.order, services.orders.len) or !index(p.bus_line, 8) or !index(p.bus, m.vehicles.len) or p.wallet < 0 or p.income <= 0 or p.bus_wait < 0 or p.travel < 0 or p.last_trip < 0 or
             !between(p.bus_wait_start, -1, c.elapsed) or p.bus_full_mask > 7) return false;
@@ -509,6 +524,13 @@ fn commit(s: *const State) void {
     @memcpy(&finance.arrears, f.arrears);
     finance.entry_count = f.entry_count;
     @memcpy(finance.entries[0..f.entries.len], f.entries);
+    finance.period_count = f.period_count;
+    @memcpy(finance.periods[0..f.periods.len], f.periods);
+    finance.period_opening = f.period_opening;
+    finance.period_receipts = f.period_receipts;
+    finance.period_expenses = f.period_expenses;
+    finance.period_entries = f.period_entries;
+    finance.period_week = f.period_week;
     contracts.count = s.services.orders.len;
     @memcpy(contracts.orders[0..contracts.count], s.services.orders);
     contracts.next_review = s.services.next_review;
@@ -520,6 +542,7 @@ fn commit(s: *const State) void {
     game.next_sample = s.clock.next_sample;
     game.next_routes = s.clock.next_routes;
     game.next_operating = s.clock.next_operating;
+    game.next_week = s.clock.next_week;
     @memcpy(&game.trust, s.trust);
     game.history_count = s.history_count;
     @memcpy(game.history[0..s.history.len], s.history);
@@ -539,7 +562,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 4 and std.mem.eql(u8, rules, "bellwether-2026-10-v4");
+    return version == 5 and std.mem.eql(u8, rules, "bellwether-2026-11-v5");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

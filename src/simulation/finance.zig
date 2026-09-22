@@ -1,7 +1,10 @@
 const std = @import("std");
 const city = @import("../scene/city.zig");
 const residents = @import("residents.zig");
+const calendar = @import("calendar.zig");
 pub const Entry = struct { time: f64, amount: f64, balance: f64, kind: u32, party: i32, order: i32 };
+// Slice 6: bounded weekly budget period derived from recorded ledger entries.
+pub const Period = struct { week: u32 = 0, opening: f64 = 0, receipts: f64 = 0, expenses: f64 = 0, closing: f64 = 0, entries: u32 = 0 };
 pub var entries: [1024]Entry = undefined;
 pub var entry_count: usize = 0;
 pub var cash: f64 = 180000;
@@ -16,6 +19,13 @@ pub var maintenance_paid: f64 = 1;
 pub var active_funding: usize = 1;
 pub var collected: f64 = 0;
 pub var spent: f64 = 0;
+pub var periods: [12]Period = @splat(.{});
+pub var period_count: u32 = 0;
+pub var period_opening: f64 = 0;
+pub var period_receipts: f64 = 0;
+pub var period_expenses: f64 = 0;
+pub var period_entries: u32 = 0;
+pub var period_week: u32 = 0;
 pub fn init(time: f64) void {
     cash = 0;
     reserved = 0;
@@ -27,8 +37,16 @@ pub fn init(time: f64) void {
     active_funding = 1;
     collected = 0;
     spent = 0;
+    periods = @splat(.{});
+    period_count = 0;
+    period_opening = 0;
+    period_receipts = 0;
+    period_expenses = 0;
+    period_entries = 0;
+    period_week = calendar.weekIndex(time);
     @memset(&arrears, 0);
     record(time, 180000, 0, -1, -1);
+    period_opening = cash;
 }
 pub fn cents(value: f64) f64 {
     return @round(value * 100) / 100;
@@ -43,6 +61,40 @@ pub fn record(time: f64, amount: f64, kind: u32, party: i32, order: i32) void {
     if (value < 0) spent -= value;
     entries[entry_count % entries.len] = .{ .time = time, .amount = value, .balance = cash, .kind = kind, .party = party, .order = order };
     entry_count += 1;
+    // The opening reserves entry establishes the period opening balance, not a
+    // recurring receipt; every other movement is part of the weekly summary.
+    if (kind != 0) {
+        if (value >= 0) period_receipts = cents(period_receipts + value) else period_expenses = cents(period_expenses - value);
+    }
+    period_entries +|= 1;
+}
+
+// Close the current week from recorded ledger movements only. No money is
+// created, destroyed or moved; opening + receipts - expenses must equal closing.
+pub fn closeWeek(week: u32) void {
+    const summary = Period{ .week = week, .opening = period_opening, .receipts = period_receipts, .expenses = period_expenses, .closing = cash, .entries = period_entries };
+    periods[period_count % periods.len] = summary;
+    period_count +|= 1;
+    period_opening = cash;
+    period_receipts = 0;
+    period_expenses = 0;
+    period_entries = 0;
+    period_week = week + 1;
+}
+
+pub fn periodRead(index: u32, field: u32) f64 {
+    const count = @min(period_count, periods.len);
+    if (index >= count) return -1;
+    const p = periods[(period_count - 1 - index) % periods.len];
+    return switch (field) {
+        0 => @floatFromInt(p.week),
+        1 => p.opening,
+        2 => p.receipts,
+        3 => p.expenses,
+        4 => p.closing,
+        5 => @floatFromInt(p.entries),
+        else => -1,
+    };
 }
 pub fn base(home: bool) f64 {
     var total: f64 = 0;

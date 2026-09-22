@@ -1,6 +1,7 @@
 const transport = @import("transport.zig");
 const city = @import("../scene/city.zig");
-pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0, wallet: f64 = 0, income: f64 = 0, owns_car: bool = false, owns_bike: bool = false, car_node: usize = 0, bike_node: usize = 0, scores: [4]f32 = @splat(-1), crew: bool = false, chosen: bool = false, bus_line: i32 = -1, bus: i32 = -1, boarding: usize = 0, exit_node: usize = 0, bus_version: u32 = 0, bus_wait: f32 = 0, bus_wait_start: f64 = -1, bus_full_mask: u8 = 0, bus_stage: u8 = 0, walk_side: f32 = 1, home: usize, current_building: usize = 0, destination_building: usize = 0, origin_building: usize = 0, employer: i32 = -1, origin: usize = 0, destination: usize, node: usize, next: usize, wait: f32, trips: u32 = 0, travel: f32 = 0, last_trip: f32 = 0, order: i32 = -1, arrived: bool = false };
+const calendar = @import("calendar.zig");
+pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0, wallet: f64 = 0, income: f64 = 0, owns_car: bool = false, owns_bike: bool = false, car_node: usize = 0, bike_node: usize = 0, scores: [4]f32 = @splat(-1), crew: bool = false, chosen: bool = false, bus_line: i32 = -1, bus: i32 = -1, boarding: usize = 0, exit_node: usize = 0, bus_version: u32 = 0, bus_wait: f32 = 0, bus_wait_start: f64 = -1, bus_full_mask: u8 = 0, bus_stage: u8 = 0, walk_side: f32 = 1, shift: u8 = 0, routine: u8 = 0, home: usize, current_building: usize = 0, destination_building: usize = 0, origin_building: usize = 0, employer: i32 = -1, origin: usize = 0, destination: usize, node: usize, next: usize, wait: f32, trips: u32 = 0, travel: f32 = 0, last_trip: f32 = 0, order: i32 = -1, arrived: bool = false };
 pub const Company = struct { building: usize, employees: usize = 0, capacity: usize, cash: f64 = 45000, contractor: bool, crew: [4]usize = .{ 0, 0, 0, 0 }, crew_count: usize = 0, order: i32 = -1, margin: f64, labour: f64, costs: f64 = 0 };
 pub const DistrictOutcome = struct {
     wait_starts: u32 = 0,
@@ -55,7 +56,7 @@ pub fn init() void {
         }
         const node = city.buildings[home].node;
         const b = city.buildings[home];
-        p.* = .{ .x = b.entry_x, .z = b.entry_z, .y = b.ground + 0.35, .wallet = @as(f64, @floatFromInt(100 + i % 9000)), .income = @as(f64, @floatFromInt(30 + i % 170)), .owns_bike = i % 3 != 0, .car_node = node, .bike_node = node, .home = home, .current_building = home, .origin_building = home, .destination_building = if (employer >= 0) companies[@intCast(employer)].building else home, .origin = node, .employer = employer, .destination = if (employer >= 0) city.buildings[companies[@intCast(employer)].building].node else node, .node = node, .next = node, .wait = @as(f32, @floatFromInt(i % 100)) * 0.14 };
+        p.* = .{ .x = b.entry_x, .z = b.entry_z, .y = b.ground + 0.35, .wallet = @as(f64, @floatFromInt(100 + i % 9000)), .income = @as(f64, @floatFromInt(30 + i % 170)), .owns_bike = i % 3 != 0, .car_node = node, .bike_node = node, .shift = @intCast(@intFromEnum(calendar.shiftFor(i))), .routine = 0, .home = home, .current_building = home, .origin_building = home, .destination_building = if (employer >= 0) companies[@intCast(employer)].building else home, .origin = node, .employer = employer, .destination = if (employer >= 0) city.buildings[companies[@intCast(employer)].building].node else node, .node = node, .next = node, .wait = @as(f32, @floatFromInt(i % 100)) * 0.14 };
         considerCar(p);
         city.buildings[home].occupants += 1;
     }
@@ -204,6 +205,31 @@ fn moveTo(p: *Person, x: f32, y: f32, z: f32, speed: f32, dt: f32) bool {
     p.z += dz / distance * step;
     return false;
 }
+// Slice 6: bounded routine destination from the shared civic calendar.
+fn routineDestination(p: *const Person, index: usize, routine: calendar.Phase, time: f64) usize {
+    const weekend = calendar.isWeekend(time);
+    if (p.crew or p.order >= 0 or p.employer < 0) return p.home;
+    const work = companies[@intCast(p.employer)].building;
+    if (!weekend) {
+        const shift: calendar.Shift = @enumFromInt(p.shift);
+        if (calendar.onShift(shift, time)) return work;
+        // A short errand window keeps weekday demand on the network outside work.
+        if (routine == .evening and index % 7 == 0) return errandTarget(p);
+        return p.home;
+    }
+    if ((routine == .morning or routine == .leisure) and index % 8 == 0) return errandTarget(p);
+    return p.home;
+}
+
+fn errandTarget(p: *const Person) usize {
+    const district = city.buildings[p.home].district;
+    for (&city.buildings, 0..) |*b, i| {
+        if (b.district != district or b.kind == .home or b.kind == .vacant) continue;
+        if (b.kind == .park or b.kind == .hall or b.kind == .shop) return i;
+    }
+    return p.home;
+}
+
 pub fn update(dt: f32, elapsed: f64) void {
     walking = 0;
     for (&people, 0..) |*p, i| {
@@ -214,11 +240,10 @@ pub fn update(dt: f32, elapsed: f64) void {
         }
 
         if (p.phase == 3) {
-            const home = city.buildings[p.home].node;
-            const work = if (p.employer >= 0) city.buildings[companies[@intCast(p.employer)].building].node else home;
-            const hour = @mod(elapsed / 20, 24);
-            p.destination = if (hour < 7 or hour > 19 or p.destination == work) home else work;
-            p.destination_building = if (p.destination == home) p.home else companies[@intCast(p.employer)].building;
+            const routine = calendar.phase(elapsed);
+            p.routine = @intCast(@intFromEnum(routine));
+            p.destination_building = routineDestination(p, i, routine, elapsed);
+            p.destination = city.buildings[p.destination_building].node;
             if (p.destination == p.node and p.destination_building == p.current_building) {
                 p.wait = 10;
                 continue;

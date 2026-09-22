@@ -157,6 +157,13 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             26 => @floatFromInt(scene.selected_person),
             27 => scene.zoom,
             28 => @floatFromInt(city.revision),
+            // Slice 6 civic calendar.
+            29 => @floatFromInt(@intFromEnum(game.calendar.weekday(game.elapsed))),
+            30 => if (game.calendar.isWeekend(game.elapsed)) 1 else 0,
+            31 => @floatFromInt(@intFromEnum(game.calendar.phase(game.elapsed))),
+            32 => @floatFromInt(game.calendar.weekIndex(game.elapsed)),
+            33 => game.next_week,
+            34 => @floatFromInt(@min(finance.period_count, finance.periods.len)),
             else => -1,
         },
         1 => {
@@ -230,6 +237,9 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 29 => @floatFromInt(p.origin_building),
                 30 => p.bus_wait_start,
                 31 => @floatFromInt(p.bus_full_mask),
+                // Slice 6: shift and routine phase.
+                32 => @floatFromInt(p.shift),
+                33 => @floatFromInt(p.routine),
                 else => -1,
             };
         },

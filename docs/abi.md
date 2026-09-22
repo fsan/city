@@ -243,3 +243,18 @@ one-based agreement number. The reports label it "Service credit".
 
 Save schema is version 4, rules "bellwether-2026-10-v4"; version 3 and older are
 rejected with result 3.
+
+
+## Civic calendar and routines (slice 6)
+
+Group 0 adds: 29 weekday (0 Mon .. 6 Sun), 30 weekend flag, 31 routine phase
+(0 sleep, 1 morning commute, 2 work, 3 evening, 4 leisure, 5 night), 32 week
+index, 33 next weekly-period boundary (simulation seconds), 34 retained weekly
+period count. Group 3 adds: 32 resident shift (0 day 06-14, 1 evening 14-22,
+2 night 22-06), 33 resident routine phase.
+
+One day remains 480 simulation seconds, one hour 20 seconds and one week 3360
+seconds. Daytime service remains 06:00-22:00 and all-day remains 00:00-24:00.
+
+Save schema is version 5, rules "bellwether-2026-11-v5"; version 4 and older are
+rejected with result 3.

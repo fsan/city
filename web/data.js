@@ -38,7 +38,13 @@ export const signedMoney = (value) =>
   (Math.round(value) < 0 ? "−" : "+") + money(Math.abs(value));
 export function timeLabel(seconds) {
   const minutes = Math.floor(seconds * 3);
-  return `D${Math.floor(minutes / 1440) + 1} ${String(Math.floor(minutes / 60) % 24).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  const clock = `D${Math.floor(minutes / 1440) + 1} ${String(Math.floor(minutes / 60) % 24).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  const names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const phases = ["sleep", "morning commute", "work", "evening", "leisure", "night"];
+  const day = Math.floor(seconds / 480);
+  const hour = (seconds % 480) / 20;
+  const phase = hour < 6 ? 0 : hour < 9 ? 1 : hour < 17 ? 2 : hour < 20 ? 3 : hour < 22 ? 4 : 5;
+  return `${clock} ${names[day % 7]} · ${phases[phase]}`;
 }
 export function createData(game) {
   const read = (group, id, field) => game.read(group, id, field);

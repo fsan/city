@@ -417,6 +417,11 @@ export function createReports(game, ui, transport) {
     $("budget-balance").textContent = signedMoney(m(4) - m(5));
     $("actual-revenue").textContent = money(m(24));
     $("actual-expense").textContent = money(m(25));
+    const weekNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const phaseNames = ["sleep", "morning commute", "work", "evening", "leisure", "night"];
+    $("period-note").textContent =
+      `${weekNames[m(29)]} week ${m(32) + 1} · ${phaseNames[m(31)]} · next period boundary ${timeLabel(m(33))}; retained periods ${m(34)}. ` +
+      `Weekly summaries reconcile recorded ledger movements only.`;
     taxPreview();
     rows(
       "ledger-rows",
@@ -534,6 +539,8 @@ export function createReports(game, ui, transport) {
         ["Home", buildingName(home)],
         ["Employer", companyName(employer)],
         ["Activity", activity(id)],
+        ["Routine", ["sleep", "morning commute", "work", "evening", "leisure", "night"][r(3, id, 33)]],
+        ["Shift", ["day 06-14", "evening 14-22", "night 22-06"][r(3, id, 32)]],
         [
           "Travel scores · walk / cycle / car / bus",
           [21, 22, 23, 24]
