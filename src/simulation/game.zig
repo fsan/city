@@ -10,6 +10,9 @@ pub const contracts = @import("contracts.zig");
 pub const calendar = @import("calendar.zig");
 pub const households = @import("households.zig");
 pub const employment = @import("employment.zig");
+pub const housing = @import("housing.zig");
+pub const parking = @import("parking.zig");
+pub const travel = @import("travel.zig");
 pub var elapsed: f64 = 160;
 pub var trust: [city.district_count]f32 = undefined;
 pub const Sample = struct { time: f64, cash: f64, reserved: f64, walking: usize, condition: f32 };
@@ -33,6 +36,8 @@ pub fn init() void {
     contracts.init();
     agreements.init();
     employment.init();
+    housing.init();
+    parking.init();
     roadworks.reset();
     parcels.init();
     for (&trust, 0..) |*value, i| value.* = 20 + city.condition(i) * 0.65;
@@ -52,6 +57,9 @@ pub fn update(dt: f32) void {
         finance.daily(elapsed);
         employment.daily();
         households.daily();
+        housing.daily();
+        parking.daily();
+        parking.refreshPrices(&transport.movement);
         residents.daily();
     }
     if (elapsed >= next_operating) {
@@ -73,6 +81,13 @@ pub fn update(dt: f32) void {
     transport.operators.update(elapsed);
     transport.update(dt, elapsed);
     residents.update(dt, elapsed);
+    // Slice 10: the learned trip-time and parking models are folded in as one
+    // bounded batch of arrivals, and parking fees reach the municipal ledger.
+    residents.flushBatch();
+    if (parking.dues > 0) {
+        finance.record(elapsed, parking.dues, 11, -1, -1);
+        parking.dues = 0;
+    }
     agreements.update(elapsed);
     if (transport.subsidy_due > 0) finance.record(elapsed, -transport.subsidy_due, 7, -1, -1);
     contracts.update(dt, elapsed);

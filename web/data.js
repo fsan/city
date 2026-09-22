@@ -8,7 +8,12 @@ export const kinds = [
   "Park",
   "Works depot",
   "Vacant land",
+  "Bicycle park",
+  "Car park",
 ];
+export const streetClasses = ["Lane", "Street", "Avenue"];
+export const parkingKinds = ["Bicycle park", "Car park", "Kerbside"];
+export const parkingBands = ["free", "band 1", "band 2", "band 3", "band 4 (cap)"];
 export const statusNames = [
   "Offered",
   "Mobilising",

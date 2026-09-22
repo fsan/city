@@ -73,6 +73,42 @@ Transport Authority also reports measured stop arrivals, eligible interarrival i
 Bus offers can optionally include a maximum interarrival review target, with agreement-specific evidence, overdue diagnostics and archived results. This does not change price or payment. See [target mechanics](docs/regularity-target-slice.md) and the [proposed numbered roadmap](docs/development-roadmap.md).
 
 
+## Street types, parking and learned travel
+
+Streets carry a class — lane, street or avenue — chosen in the road tool
+(N) and priced at £18/£25/£40 per metre; class sets the car speed limit.
+Free-flow speeds are proportional, with pedestrians slowest at 1.4 m/s,
+cyclists at 4.2 m/s (5.0 in a protected cycle lane) and cars faster than both.
+Walkers and cyclists now obey the same signals as cars: a turn across a junction
+is admitted on the marked crossing's pedestrian phase, or on a gap when no
+crossing is marked, with a bounded patience so nobody is stuck.
+
+Bicycle parks and car parks are seeded where districts are busy, each with a
+hard slot count; streets and avenues add kerbside car spaces priced in bands by
+the movement actually observed on that segment, capped at £1.20. A traveller
+aims for the place they expect to be free, falls back to the nearest free space
+when it is full, and walks the rest of the way. Each resident keeps a very small
+learned model of trip time per mode and time of day and of the chance of finding
+a space, updated in batches when they arrive at work or home; mode choice and
+the time to leave home read it. Ownership now decides the municipal assessment:
+owners pay from the household, rented homes pay from the owner's collected
+rent. Manual save files use schema version 9, bellwether-2027-04-v9; older files
+are rejected. See [street types and parking](docs/street-types-parking-learning-slice.md).
+
+
+## Housing and occupancy
+
+Every authored home is one bounded housing unit with explicit tenure, daily
+rent or ownership cost, occupancy, a property-owner reserve, arrears, a move
+state and an application target. Housing payments are private money movements:
+a household pays its unit after essentials, and any shortfall becomes explicit
+unit arrears. A bounded daily rollover can move or displace households into
+vacant units with a lower charge and a shorter commute; residents then travel
+to the new address rather than teleporting. Manual save files now use schema
+version 8, bellwether-2027-03-v8; older files are rejected. See
+[housing mechanics](docs/housing-occupancy-slice.md).
+
+
 ## Transport contract enforcement
 
 Agreed service can carry one bounded remedy. Delivery below 85% of the windowed

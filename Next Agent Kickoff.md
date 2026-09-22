@@ -1,6 +1,6 @@
-# Next agent kickoff — slice 8 complete; authorized goal: slice 9
+# Next agent kickoff — slices 8, 9 and 10 complete in the worktree
 
-Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 at `60a000a`; slice 5 at `4e29f2f`; slice 6 at `cfa432d`; slice 7 at `dcc2577`; slice 8 is complete in the current worktree. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, explicit bus fleet and staffing commitments, and cure-first transport contract enforcement.
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 at `60a000a`; slice 5 at `4e29f2f`; slice 6 at `cfa432d`; slice 7 at `dcc2577`; slice 8 at `e71fa0b`. Slices 9 (housing and occupancy) and 10 (street types, parking and learned travel) are complete in the worktree and are **not yet committed**; commit them before starting slice 11. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, explicit bus fleet and staffing commitments, and cure-first transport contract enforcement.
 
 **Authorized goal:** implement slice 9 of the numbered development sequence as a bounded batch; slices 5, 6, 7 and 8 are complete. Each slice must have its own short slice note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation, and a refreshed kickoff before the next slice starts. This authorizes slice 9 only; it does not authorize slices 10–39 or a single unbounded rewrite.
 
@@ -114,7 +114,44 @@ Complete. `docs/employment-hiring-slice.md` records the implemented rules, verif
 
 Do not add regional trade, production inputs, business credit or national labour markets here.
 
-## Authorized slice 9 — housing and occupancy (current batch)
+## Completed slice 9 — housing and occupancy
+
+Complete in the worktree (not yet committed). `docs/housing-occupancy-slice.md`
+records the rules, verification and limits. Every authored home is one housing
+unit with tenure, rent or ownership cost, a property-owner reserve, explicit
+arrears, occupancy, a move state and an application target. A bounded daily
+rollover can move or displace households into a cheaper, shorter-commute vacant
+unit; residents walk to the new address. Save schema is version 8,
+`bellwether-2027-03-v8`.
+
+## Completed slice 10 — street types, parking and learned travel (current batch)
+
+Complete in the worktree (not yet committed). `docs/street-types-parking-learning-slice.md`
+records the implemented rules, verification and limits.
+
+- Street segments carry a class (0 lane, 1 street, 2 avenue) chosen in the road
+  tool and priced at £18/£25/£40 per metre; class sets the car speed limit.
+- Proportional free-flow speeds: walk 1.4 m/s, cycle 4.2 m/s (5.0 protected),
+  car 7 m/s scaled by class, bus 5.5 m/s.
+- Walkers and cyclists obey signals and crosswalks (`residents.crossingWait`,
+  bounded 30-second patience); cars yield while somebody is on a crossing.
+- `parking.zig` seeds bicycle parks and car parks by district density with hard
+  slot counts, plus kerbside car spaces on streets/avenues priced in bands by
+  the segment's smoothed movement and capped at £1.20; fees are municipal
+  ledger kind 11.
+- Travellers aim for the place they expect to be free, fall back to the nearest
+  free one, then walk the rest; cyclists ride the kerb-side lane of their own
+  direction of travel and park before entering a building.
+- Every resident keeps a tiny learned model (mean trip seconds per mode and
+  departure bucket; remembered parking chance per place and bucket), folded in
+  as one bounded batch on arrival at work or home; mode choice and departure
+  time read it. Car-owning households with the car preference drive.
+- Tenure drives the municipal assessment: owners pay from the household, rented
+  homes pay from the owner's collected rent; unpaid assessment stays arrears.
+- Save schema is version 9, `bellwether-2027-04-v9`; version 8 and older are
+  rejected with result 3. A 22-road expanded graph still fits the 16 MiB cap.
+
+## Superseded slice 9 plan text (historical)
 
 This slice follows slice 8 and is the current batch. It adds renting, ownership, affordability, moves and displacement on top of the household and employment models.
 

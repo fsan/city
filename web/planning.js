@@ -5,12 +5,13 @@ export function createPlanning(game, transport) {
   let mode=null, fixed=0, ready=false, parcel=-1;
   const errors=['Ready to build.','Keep the road inside the map, between 6 and 500 metres.','Road would overlap a building or park.','Grade is too steep.','Insufficient uncommitted funds.','Network capacity reached. Try a shorter road.','A street here has a reserved work order.','Road overlaps another road or makes a very shallow junction.','Connect the road to the existing street network.'];
   const names=['Unzoned','Residential','Commercial','Industrial','Mixed use','Civic / park reserve'];
+  const classes=['lane (£18/m, kerbside parking not allowed)','street (£25/m, kerbside parking banded by movement)','avenue (£40/m, wide and fastest, kerbside parking banded by movement)'];
   function close(){mode=null;fixed=0;ready=false;game.road_cancel();game.zoning_show(0);$('planning-panel').hidden=true;$('road-tool').setAttribute('aria-pressed','false');$('zone-tool').setAttribute('aria-pressed','false');}
-  function begin(next){transport.cancel();close();mode=next;$('planning-panel').hidden=false;$('road-options').hidden=next!=='road';$('zone-options').hidden=next!=='zone';$(next==='road'?'road-tool':'zone-tool').setAttribute('aria-pressed','true');if(next==='road')game.road_begin(Number($('road-shape').value));else game.zoning_show(1);status();}
+  function begin(next){transport.cancel();close();mode=next;$('planning-panel').hidden=false;$('road-options').hidden=next!=='road';$('zone-options').hidden=next!=='zone';$(next==='road'?'road-tool':'zone-tool').setAttribute('aria-pressed','true');if(next==='road'){game.road_class(Number($('road-class').value));game.road_begin(Number($('road-shape').value));}else game.zoning_show(1);status();}
   function status(){
     if(mode==='road'){
       const curved=$('road-shape').value==='1';
-      $('planning-status').textContent=fixed===0?'Click a start point. Existing streets and junctions snap automatically.':!ready?(curved&&fixed===1?'Click the bend control point, then choose the end.':'Choose the end point. Green is buildable; red shows a conflict.'):`${r(15,0,2).toFixed(0)} m · £${r(15,0,1).toFixed(2)} · ${errors[r(15,0,0)]}`;
+      $('planning-status').textContent=fixed===0?`${classes[Number($('road-class').value)]}. Click a start point. Existing streets and junctions snap automatically.`:!ready?(curved&&fixed===1?'Click the bend control point, then choose the end.':'Choose the end point. Green is buildable; red shows a conflict.'):`${r(15,0,2).toFixed(0)} m · £${r(15,0,1).toFixed(2)} · ${errors[r(15,0,0)]}`;
       $('road-build').disabled=!ready||r(15,0,0)!==0;
     }else if(mode==='zone'){
       $('zone-apply').disabled=parcel<0;
@@ -21,8 +22,9 @@ export function createPlanning(game, transport) {
   $('zone-tool').onclick=()=>mode==='zone'?close():begin('zone');
   $('planning-close').onclick=close;
   $('road-shape').onchange=()=>begin('road');
+  $('road-class').onchange=()=>{if(mode!=='road')return;game.road_class(Number($('road-class').value));status();};
   $('road-discard').onclick=()=>begin('road');
-  function build(){if(!ready)return;if(game.road_build()){transport.syncNetwork();fixed=0;ready=false;game.road_begin(Number($('road-shape').value));$('planning-status').textContent='Road built. New roadside parcels are unzoned. Click to start another road.';$('road-build').disabled=true;}else status();}
+  function build(){if(!ready)return;if(game.road_build()){transport.syncNetwork();game.parking_rebuild();fixed=0;ready=false;game.road_class(Number($('road-class').value));game.road_begin(Number($('road-shape').value));$('planning-status').textContent='Road built. New roadside parcels are unzoned. Click to start another road.';$('road-build').disabled=true;}else status();}
   $('road-build').onclick=build;
   $('zone-apply').onclick=()=>{if(game.zoning_apply(parcel,Number($('zone-kind').value),$('zone-scope').value==='block'?1:0))status();};
   return {

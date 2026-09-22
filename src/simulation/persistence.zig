@@ -11,6 +11,9 @@ const parcels = game.parcels;
 const scene = @import("../render/scene.zig");
 const calendar = game.calendar;
 const households = game.households;
+const housing = game.housing;
+const parking = game.parking;
+const travel = game.travel;
 
 // JSON fields, not native struct bytes. Bump version/rules when changing this contract.
 pub const capacity = 16 * 1024 * 1024;
@@ -40,6 +43,18 @@ const Citizens = struct {
     pedestrians: []const usize,
     district_outcomes: []const residents.DistrictOutcome,
 };
+const Parking = struct {
+    facilities: []const parking.Facility,
+    attempts: u32,
+    successes: u32,
+    fallbacks: u32,
+    refusals: u32,
+    revenue_today: f64,
+    revenue_total: f64,
+    kerbside_used: usize,
+    batches_applied: u64,
+    batches_dropped: u64,
+};
 const Mobility = struct {
     vehicles: []const transport.Vehicle,
     lines: []const transport.Line,
@@ -50,9 +65,22 @@ const Mobility = struct {
     occupancy: []const usize,
     queues: []const usize,
     congestion: []const f32,
+    movement: []const f32,
     fare_cap: f64,
     subsidy: f64,
     subsidy_total: f64,
+};
+const Parked = struct {
+    facilities: []const parking.Facility,
+    attempts: u32,
+    successes: u32,
+    fallbacks: u32,
+    refusals: u32,
+    revenue_today: f64,
+    revenue_total: f64,
+    kerbside_used: usize,
+    batches_applied: u64,
+    batches_dropped: u64,
 };
 const Treasury = struct {
     cash: f64,
@@ -92,7 +120,17 @@ const State = struct {
     town: Town,
     citizens: Citizens,
     homes: []const households.Household,
+    housing: []const housing.Unit,
+    housing_moves_today: u32,
+    housing_displacements_today: u32,
+    housing_applications_today: u32,
+    housing_failed_moves_today: u32,
+    housing_rent_collected_today: f64,
+    housing_ownership_collected_today: f64,
+    housing_rent_collected_total: f64,
+    housing_ownership_collected_total: f64,
     mobility: Mobility,
+    parked: Parked,
     treasury: Treasury,
     services: Services,
     trust: []const f32,
@@ -112,14 +150,24 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 7,
-        .rules = "bellwether-2027-02-v7",
+        .version = 9,
+        .rules = "bellwether-2027-04-v9",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = &city.buildings, .parcels = parcels.storage[0..parcels.count], .next_node = next_rows[0..city.node_count], .walk_next = walk_rows[0..city.node_count], .distance = distance_rows[0..city.node_count] },
+        .parked = .{ .facilities = parking.facilities[0..parking.count], .attempts = parking.attempts, .successes = parking.successes, .fallbacks = parking.fallbacks, .refusals = parking.refusals, .revenue_today = parking.revenue_today, .revenue_total = parking.revenue_total, .kerbside_used = parking.kerbside_used, .batches_applied = residents.batches_applied, .batches_dropped = residents.batches_dropped },
         .homes = &households.homes,
+        .housing = &housing.units,
+        .housing_moves_today = housing.moves_today,
+        .housing_displacements_today = housing.displacements_today,
+        .housing_applications_today = housing.applications_today,
+        .housing_failed_moves_today = housing.failed_moves_today,
+        .housing_rent_collected_today = housing.rent_collected_today,
+        .housing_ownership_collected_today = housing.ownership_collected_today,
+        .housing_rent_collected_total = housing.rent_collected_total,
+        .housing_ownership_collected_total = housing.ownership_collected_total,
         .citizens = .{ .people = &residents.people, .companies = residents.companies[0..residents.company_count], .walking = residents.walking, .employed = residents.employed, .pedestrians = residents.pedestrians[0..city.road_count], .district_outcomes = &residents.district_outcomes },
-        .mobility = .{ .vehicles = &transport.vehicles, .lines = &transport.lines, .accounts = &operators.accounts, .observations = &transport.observations, .previous_observations = &transport.previous_observations, .lanes = lane_values[0..city.road_count], .occupancy = transport.occupancy[0..city.road_count], .queues = transport.queues[0..city.road_count], .congestion = transport.congestion[0..city.road_count], .fare_cap = transport.fare_cap, .subsidy = transport.subsidy, .subsidy_total = transport.subsidy_total },
+        .mobility = .{ .vehicles = &transport.vehicles, .lines = &transport.lines, .accounts = &operators.accounts, .observations = &transport.observations, .previous_observations = &transport.previous_observations, .lanes = lane_values[0..city.road_count], .occupancy = transport.occupancy[0..city.road_count], .queues = transport.queues[0..city.road_count], .congestion = transport.congestion[0..city.road_count], .movement = transport.movement[0..city.road_count], .fare_cap = transport.fare_cap, .subsidy = transport.subsidy, .subsidy_total = transport.subsidy_total },
         .treasury = .{ .cash = finance.cash, .reserved = finance.reserved, .residential_rate = finance.residential_rate, .commercial_rate = finance.commercial_rate, .funding = finance.funding, .active_funding = finance.active_funding, .maintenance_paid = finance.maintenance_paid, .collected = finance.collected, .spent = finance.spent, .arrears = &finance.arrears, .entry_count = finance.entry_count, .entries = finance.entries[0..@min(finance.entry_count, finance.entries.len)], .periods = finance.periods[0..@min(finance.period_count, finance.periods.len)], .period_count = finance.period_count, .period_opening = finance.period_opening, .period_receipts = finance.period_receipts, .period_expenses = finance.period_expenses, .period_entries = finance.period_entries, .period_week = finance.period_week },
         .services = .{ .orders = contracts.orders[0..contracts.count], .next_review = contracts.next_review, .current = &agreements.agreements, .history = agreements.history[0..@min(agreements.history_count, agreements.history.len)], .history_count = agreements.history_count, .next_number = agreements.next_number },
         .trust = &game.trust,
@@ -247,7 +295,8 @@ fn validate(s: *const State) bool {
         people.len != city.population or companies.len == 0 or companies.len > city.buildings.len or
         m.vehicles.len != transport.vehicles.len or m.lines.len != transport.max_lines or m.accounts.len != 3 or
         m.observations.len != transport.max_lines or m.previous_observations.len != transport.max_lines or
-        m.lanes.len != roads.len or m.occupancy.len != roads.len or m.queues.len != roads.len or m.congestion.len != roads.len or s.citizens.pedestrians.len != roads.len or s.citizens.district_outcomes.len != city.district_count or
+        m.lanes.len != roads.len or m.occupancy.len != roads.len or m.queues.len != roads.len or m.congestion.len != roads.len or m.movement.len != roads.len or s.citizens.pedestrians.len != roads.len or s.citizens.district_outcomes.len != city.district_count or
+        s.parked.facilities.len > parking.max_facilities or
         f.arrears.len != city.buildings.len or f.entries.len != @min(f.entry_count, 1024) or f.entry_count == 0 or
         s.trust.len != city.district_count or s.history.len != @min(s.history_count, 96) or
         services.orders.len > 64 or services.current.len != 8 or services.history.len != @min(services.history_count, 64) or services.next_number == 0) return false;
@@ -291,7 +340,17 @@ fn validate(s: *const State) bool {
         if (p.phase > 3 or p.mode > 3 or p.bus_stage > 2 or p.shift > 2 or p.routine > 5 or p.skill > 2 or p.node >= n or p.next >= n or p.destination >= n or p.origin >= n or p.car_node >= n or p.bike_node >= n or p.boarding >= n or p.exit_node >= n or
             p.home >= town.buildings.len or p.current_building >= town.buildings.len or p.origin_building >= town.buildings.len or p.destination_building >= town.buildings.len or
             !index(p.employer, companies.len) or !index(p.order, services.orders.len) or !index(p.bus_line, 8) or !index(p.bus, m.vehicles.len) or p.wallet < 0 or p.income < 0 or p.bus_wait < 0 or p.travel < 0 or p.last_trip < 0 or
-            !between(p.bus_wait_start, -1, c.elapsed) or p.bus_full_mask > 7) return false;
+            !between(p.bus_wait_start, -1, c.elapsed) or p.bus_full_mask > 7 or
+            p.plan_mode > 3 or p.parked_vehicle > 2 or p.depart_bucket >= travel.bucket_count or
+            p.plan_facility < -1 or p.park_facility < -1 or p.plan_facility >= @as(i32, @intCast(parking.max_facilities)) or p.park_facility >= @as(i32, @intCast(parking.max_facilities)) or
+            p.via >= n or p.leg_target >= n or p.back >= n or p.last_outcome > 2 or
+            p.last_facility != travel.no_facility and p.last_facility >= s.parked.facilities.len or
+            !between(p.cross_wait, 0, 1e6) or p.cross_waits > 1000000000 or p.crossings > 1000000000 or
+            p.park_tries > 1000000000 or p.park_taken > 1000000000 or p.park_searched > 1000000000 or p.park_refused > 1000000000) return false;
+        if (p.park_facility >= 0 and @as(usize, @intCast(p.park_facility)) >= s.parked.facilities.len) return false;
+        for (0..travel.memory_count) |memory| {
+            if (p.model.facility[memory] != travel.no_facility and p.model.facility[memory] >= s.parked.facilities.len) return false;
+        }
         const waiting = p.mode == 3 and p.phase == 1 and p.bus < 0 and p.bus_stage == 0 and p.node == p.next and p.node == p.boarding;
         // A resident can reach the stop one fixed step before beginWait records
         // the wait. An active timestamp must still belong to a waiting person.
@@ -346,6 +405,49 @@ fn validate(s: *const State) bool {
         members_sum += h.members;
     }
     if (members_sum != people.len) return false;
+    // Slice 9 housing: units exist only on authored home buildings, occupancy
+    // must match the live household member count, and all housing money stays
+    // explicit and non-negative.
+    if (s.housing.len != town.buildings.len) return false;
+    if (s.housing_moves_today > 1000000000 or s.housing_displacements_today > s.housing_moves_today or
+        s.housing_applications_today > 1000000000 or s.housing_failed_moves_today > s.housing_applications_today or
+        s.housing_rent_collected_today < 0 or s.housing_ownership_collected_today < 0 or
+        s.housing_rent_collected_total < 0 or s.housing_ownership_collected_total < 0 or
+        s.housing_rent_collected_today > s.housing_rent_collected_total + 0.011 or
+        s.housing_ownership_collected_today > s.housing_ownership_collected_total + 0.011) return false;
+    for (s.housing, 0..) |*unit, i| {
+        if (unit.application != -1 and !index(unit.application, town.buildings.len)) return false;
+        if (unit.application >= 0 and !s.housing[@intCast(unit.application)].present) return false;
+        if (!unit.present) {
+            if (unit.tenure != .owned or unit.rent != 0 or unit.ownership_cost != 0 or unit.owner_cash != 0 or
+                unit.arrears != 0 or unit.occupants != 0 or unit.application != -1 or unit.move_state != .idle or
+                unit.paid_rent != 0 or unit.paid_ownership != 0) return false;
+            continue;
+        }
+        if (town.buildings[i].kind != .home or unit.rent <= 0 or unit.ownership_cost <= 0 or
+            unit.owner_cash < 0 or unit.arrears < 0 or unit.paid_rent < 0 or unit.paid_ownership < 0 or
+            unit.owner_cash < unit.paid_rent + unit.paid_ownership - 0.011 or
+            unit.occupants != town.buildings[i].occupants or unit.occupants > city.population or
+            @intFromEnum(unit.move_state) > 4) return false;
+        if (town.buildings[i].occupants == 0 and unit.application != -1) return false;
+    }
+    // Slice 10 parking: every facility is bounded, occupancy never exceeds the
+    // slot count, and the aggregate counters stay ordered.
+    if (s.parked.attempts > 1000000000 or s.parked.successes > s.parked.attempts or s.parked.fallbacks > s.parked.attempts or
+        s.parked.refusals > s.parked.attempts or s.parked.revenue_today < 0 or s.parked.revenue_total < 0 or
+        s.parked.revenue_today > s.parked.revenue_total + 0.011 or s.parked.kerbside_used > s.parked.facilities.len or
+        s.parked.batches_applied > 1000000000000 or s.parked.batches_dropped > 1000000000000) return false;
+    for (s.parked.facilities) |*facility| {
+        if (facility.slots == 0 or facility.slots > 1000 or facility.occupied > facility.slots or facility.price < 0 or facility.price > parking.kerbside_price_cap + 0.001) return false;
+        if (@intFromEnum(facility.kind) > 1) return false;
+        if (facility.building >= 0) {
+            if (!index(facility.building, town.buildings.len) or facility.road >= 0 or town.buildings[@intCast(facility.building)].kind != (if (facility.kind == .bike) city.Kind.bike_park else city.Kind.car_park)) return false;
+        } else if (facility.road >= 0) {
+            if (facility.road >= roads.len or facility.kind != .car or facility.node != roads[@intCast(facility.road)].a) return false;
+        } else return false;
+        if (facility.node >= n) return false;
+    }
+    for (m.movement) |value| if (!between(value, 0, 1e6)) return false;
     for (m.vehicles, 0..) |v, i| {
         if (v.node >= n or v.next >= n or v.target >= n or v.company >= 3 or v.lane > 1 or !index(v.line, 8) or v.stop >= 16 or !between(v.dwell, 0, 5) or v.speed < 0 or v.progress < 0 or v.passengers != riders[i] or v.passengers > 24 or (!v.active and v.passengers != 0)) return false;
         if (i < city.population) {
@@ -479,11 +581,12 @@ fn validate(s: *const State) bool {
     const first = f.entry_count - f.entries.len;
     for (first..f.entry_count) |i| {
         const e = f.entries[i % 1024];
-        if (!between(e.time, 0, c.elapsed) or e.kind > 10 or e.balance < 0) return false;
+        if (!between(e.time, 0, c.elapsed) or e.kind > 11 or e.balance < 0) return false;
         switch (e.kind) {
             1, 2 => if (e.party < 0 or !index(e.party, town.buildings.len) or e.order != -1) return false,
             5, 6 => if (e.party < 0 or !index(e.party, companies.len) or e.order < 0 or !index(e.order, services.orders.len)) return false,
             8, 10 => if (e.party < 0 or !index(e.party, 3) or e.order < 1 or e.order >= services.next_number) return false,
+            11 => if (e.party != -1 or e.order != -1 or e.amount < 0) return false,
             9 => if (e.party < 0 or !index(e.party, town.street_count) or e.order != -1) return false,
             else => if (e.party != -1 or e.order != -1) return false,
         }
@@ -508,6 +611,15 @@ fn commit(s: *const State) void {
     parcels.selected = -1;
     parcels.visible = false;
     @memcpy(&households.homes, s.homes);
+    @memcpy(&housing.units, s.housing);
+    housing.moves_today = s.housing_moves_today;
+    housing.displacements_today = s.housing_displacements_today;
+    housing.applications_today = s.housing_applications_today;
+    housing.failed_moves_today = s.housing_failed_moves_today;
+    housing.rent_collected_today = s.housing_rent_collected_today;
+    housing.ownership_collected_today = s.housing_ownership_collected_today;
+    housing.rent_collected_total = s.housing_rent_collected_total;
+    housing.ownership_collected_total = s.housing_ownership_collected_total;
     @memcpy(&residents.people, s.citizens.people);
     residents.company_count = s.citizens.companies.len;
     @memcpy(residents.companies[0..residents.company_count], s.citizens.companies);
@@ -530,6 +642,19 @@ fn commit(s: *const State) void {
     @memcpy(transport.occupancy[0..city.road_count], m.occupancy);
     @memcpy(transport.queues[0..city.road_count], m.queues);
     @memcpy(transport.congestion[0..city.road_count], m.congestion);
+    @memcpy(transport.movement[0..city.road_count], m.movement);
+    parking.count = s.parked.facilities.len;
+    @memcpy(parking.facilities[0..parking.count], s.parked.facilities);
+    parking.attempts = s.parked.attempts;
+    parking.successes = s.parked.successes;
+    parking.fallbacks = s.parked.fallbacks;
+    parking.refusals = s.parked.refusals;
+    parking.revenue_today = s.parked.revenue_today;
+    parking.revenue_total = s.parked.revenue_total;
+    parking.kerbside_used = s.parked.kerbside_used;
+    parking.dues = 0;
+    residents.batches_applied = s.parked.batches_applied;
+    residents.batches_dropped = s.parked.batches_dropped;
     transport.fare_cap = m.fare_cap;
     transport.subsidy = m.subsidy;
     transport.subsidy_total = m.subsidy_total;
@@ -591,7 +716,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 7 and std.mem.eql(u8, rules, "bellwether-2027-02-v7");
+    return version == 9 and std.mem.eql(u8, rules, "bellwether-2027-04-v9");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

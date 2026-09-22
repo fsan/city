@@ -6,7 +6,7 @@ T opens the movable Transport Authority window. G toggles queue pressure and veh
 
 Two circular bus lines start in Bellwether. Select a line, then Edit route on map. Stops have unique numbered street addresses and snap to valid kerbside sidewalk locations, not arbitrary road or building centres. Add addresses in the window, remove/reorder stops, drag gold stop markers, or drag a route segment to insert a stop. Active lines keep visible kerbside stop poles and signs on the map even when the Transport Authority window is closed; the selected line adds a larger highlight. The drawn route follows actual street links. Close or move the window to work on the map; WASD, zoom and rotation still work. Apply explicitly, or Escape to discard. New line and Remove line manage up to eight services, each initially with two buses and 2–16 unique stops. Withdrawn line slots retain their financial history and may be reused.
 
-Fare caps and subsidies apply only when submitted. Inspect bus occupancy, speed, boardings, revenue, running costs and available operator cash. Bus buttons locate individual vehicles. Resident inspectors show transport ownership, parked locations, travel wallet, income, chosen mode, time spent waiting and departure-time choice scores. These scores combine estimated time with a cost penalty weighted by income; they are not promises of actual arrival times.
+Fare caps and subsidies apply only when submitted. Inspect bus occupancy, speed, boardings, revenue, running costs and available operator cash. Bus buttons locate individual vehicles. Resident inspectors show transport ownership, parked locations, household balance, income, chosen mode, time spent waiting and departure-time choice scores. These scores combine estimated time with a cost penalty weighted by income; they are not promises of actual arrival times.
 
 ## Module boundaries
 
@@ -28,7 +28,7 @@ The traffic overlay displays a three-second smoothed pressure: queued vehicles /
 
 Residents compare walking, cycling, driving and a single bus journey before departure. Walking and cycling consider slope and road condition; driving includes expected signals, current queue pressure and fuel/parking cost. A bicycle or car is usable only at its parked location. Bus estimates include access/egress walking, expected wait, ride time and fare. Direct bus journeys only: no transfers. Access and egress are limited to 45 walking-cost units. Waiting residents fall back to walking after 180 simulation seconds or if they cannot afford the fare. A changed/withdrawn line also causes walking fallback. Those real transitions are counted in the passenger-outcome report, not inferred from arrivals.
 
-Initial transport cash and income are deterministic placeholders. A car costs £1,800; purchase needs £2,400 available and estimated commute time savings worth more than its running cost. Ownership is reconsidered daily at home. Car trips debit 0.014 × walking route cost + £0.30; ownership costs £8/day. Residents receive 25% of their placeholder daily income as disposable cash after living expenses. This is a mobility wallet, not a complete household/payroll economy. Bicycles are initially owned by two thirds of residents. The original short home/work routines remain; full shifts, schools and shopping are future work. Repair crews always walk so assignment interruption remains safe.
+Car ownership is a household purchase: a car costs £1,800 and the household must hold £2,400 to buy one. A purchase is made only when the daily time a car saves over the resident's own alternative (cycling where they own a bicycle, walking where they do not) is worth more than that day's running cost, valued at the resident's posted wage. Ownership is reconsidered daily at home. Car trips debit 0.014 × walking route cost + £0.30; ownership costs £8/day. Purchase and trip costs come from the shared household balance, not a separate mobility wallet. Bicycles are initially owned by two thirds of residents. The original short home/work routines remain; full shifts, schools and shopping are future work. Repair crews always walk so assignment interruption remains safe.
 
 ## Buses and money
 
@@ -68,3 +68,37 @@ Agreement-specific interval targets are now available under Bus operators & serv
 Transport Authority → Passenger waiting outcomes and District bus-wait comparison report what happened to residents who actually waited. A wait start is recorded on the first fixed step at the boarding stop. A completed wait is an actual boarding; mean/min/max use completed waits only. Current waiting is live and excluded from those averages. A full in-service bus encountered by an eligible waiting resident is one capacity denial per bus dwell; a later boarding does not erase the denial.
 
 Abandonments separate scheduled timeout, closed-hours timeout, unaffordable fare, and route/service removal. An abandoned-after-capacity flag records that a full bus had been encountered, without claiming that capacity alone caused the abandonment. Records stay with the current or most recent retired route/coverage version, and route edits/withdrawal close waits against the old version before archiving. District comparison groups observed waits by the resident's home district; it is not population-wide access and excludes trips that chose walking, cycling or driving. See [passenger outcomes slice](passenger-outcomes-slice.md). No fare, boarding-order, dispatch, routing, agreement or payment rule changed.
+
+## Street types, parking and learned travel
+
+Street segments now have a class — lane, street or avenue — chosen in the road
+tool and priced at £18/£25/£40 per metre. Class sets the car speed limit, so an
+avenue carries cars at 1.18× the 7 m/s base while a lane is limited to 0.82×.
+Free-flow speeds are proportional: pedestrians walk at 1.4 m/s, cyclists ride at
+4.2 m/s (5.0 in a protected cycle lane) and cars are faster than both.
+
+Walkers and cyclists now obey the same signals as cars. A turn across a junction
+is admitted while the marked crossing's parallel pedestrian phase is green, or
+while no vehicle is within 14 m of the junction when no crossing is marked; a
+30-second bounded patience stops anybody being stuck. Cars yield when somebody
+is actually on the crossing. Waiting is recorded per resident.
+
+Bicycle parks and car parks are seeded where districts are busy, each with a
+hard slot count, and streets and avenues add kerbside car spaces priced in bands
+by the movement actually observed on that segment, capped at £1.20. A traveller
+aims for the place they expect to be free, falls back to the nearest free space
+when the first choice is full, and walks the rest of the way; a cyclist rides
+the kerb-side lane of their own direction of travel and parks before entering a
+building. A bicycle kept at home is taken inside; a return journey parks on the
+street in this slice.
+
+Every resident keeps a small learned model: mean observed trip seconds per mode
+and departure bucket, and a remembered chance of a free space per parking place
+and arrival bucket, updated as a simple first-order Markov estimate. Both are
+folded in as one bounded batch when residents arrive at work or home. Mode
+choice and the time to leave home read that model, so a car-owning household
+that bought a car uses it unless another mode is clearly better. The departure
+lead is taken from the fastest mode the resident could actually use, so a longer
+learned commute leaves home earlier and car owners use the shorter car estimate. Parking fees
+are municipal receipts in ledger kind 11. See
+[the slice note](street-types-parking-learning-slice.md) for limits.

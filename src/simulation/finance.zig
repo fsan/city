@@ -1,6 +1,8 @@
 const std = @import("std");
 const city = @import("../scene/city.zig");
 const residents = @import("residents.zig");
+const housing = @import("housing.zig");
+const households = @import("households.zig");
 const calendar = @import("calendar.zig");
 pub const Entry = struct { time: f64, amount: f64, balance: f64, kind: u32, party: i32, order: i32 };
 // Slice 6: bounded weekly budget period derived from recorded ledger entries.
@@ -121,6 +123,20 @@ pub fn daily(time: f64) void {
             const company = &residents.companies[@intCast(b.employer)];
             payment = @min(payment, company.cash);
             company.cash = cents(company.cash - payment);
+        } else if (b.kind == .home and housing.valid(i)) {
+            // Slice 10: tenure decides who pays the municipal assessment. An
+            // owner-occupier pays from the shared household balance; a rented
+            // home is paid by its property owner out of rent actually collected.
+            // An unpaid assessment stays as explicit municipal arrears.
+            payment = if (housing.units[i].tenure == .rented) blk: {
+                const paid = @min(payment, housing.units[i].owner_cash);
+                housing.units[i].owner_cash = @max(0, housing.units[i].owner_cash - paid);
+                break :blk paid;
+            } else blk: {
+                const paid = @min(payment, households.balance(i));
+                if (paid > 0 and !households.spend(i, paid)) break :blk 0;
+                break :blk paid;
+            };
         }
         if (payment > 0) record(time, payment, if (b.kind == .home) 1 else 2, @intCast(i), -1);
         arrears[i] = cents(arrears[i] - payment);

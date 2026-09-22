@@ -1,5 +1,6 @@
 const std = @import("std");
 const city = @import("../scene/city.zig");
+const travel = @import("travel.zig");
 pub const operators = @import("operators.zig");
 pub var clock: f64 = 160;
 pub const max_lines = 8;
@@ -114,6 +115,13 @@ pub var lanes: [city.max_roads]u8 = @splat(0);
 pub var occupancy: [city.max_roads]usize = @splat(0);
 pub var queues: [city.max_roads]usize = @splat(0);
 pub var congestion: [city.max_roads]f32 = @splat(0);
+// Slice 10: smoothed traffic movement per segment drives kerbside parking
+// prices; junction counts support gap acceptance and crosswalk yielding.
+pub var movement: [city.max_roads]f32 = @splat(0);
+var flow: [city.max_roads]f32 = @splat(0);
+var baseline: [city.max_roads]f32 = @splat(0);
+pub var junction_traffic: [city.max_nodes]u16 = @splat(0);
+pub var crossing_active: [city.max_nodes]u16 = @splat(0);
 var heads: [city.max_roads * 4]i32 = @splat(-1);
 var entries: [city.max_roads * 4]bool = @splat(false);
 var links: [vehicles.len]i32 = @splat(-1);
@@ -142,6 +150,9 @@ pub fn init() void {
     occupancy = @splat(0);
     queues = @splat(0);
     congestion = @splat(0);
+    junction_traffic = @splat(0);
+    crossing_active = @splat(0);
+    seedMovement();
     fare_cap = 2;
     subsidy = 1;
     subsidy_due = 0;
@@ -163,6 +174,24 @@ pub fn init() void {
 }
 pub fn fare() f64 {
     return @min(fare_cap, 3);
+}
+
+// Background movement by class plus the measured flow on top. Rebuilt with the
+// graph so a new street starts with its class baseline and then learns.
+pub fn seedMovement() void {
+    for (city.roads, 0..) |*r, i| {
+        baseline[i] = switch (r.class) {
+            2 => 2.2,
+            1 => 0.8,
+            else => 0.15,
+        };
+        flow[i] = 0;
+        movement[i] = baseline[i];
+    }
+}
+
+pub fn classOf(road: usize) u8 {
+    return if (road < city.road_count) city.roads[road].class else 1;
 }
 pub fn apply(id: usize) bool {
     if (id >= max_lines or draft_count < 2 or draft_count > max_stops) return false;
@@ -241,6 +270,22 @@ pub fn update(dt: f32, elapsed: f64) void {
         if (v.speed < 0.6) queues[r] += 1;
     }
     for (&congestion, 0..) |*c, i| c.* += (@min(1, @as(f32, @floatFromInt(queues[i])) / 5) - c.*) * @min(1, dt / 3);
+    // Junction pressure for pedestrian gap acceptance, and the measured movement
+    // that bands kerbside parking prices.
+    junction_traffic = @splat(0);
+    for (vehicles[0..]) |v| {
+        if (!v.active or v.node == v.next) continue;
+        const a = city.nodes[v.node];
+        const b = city.nodes[v.next];
+        const da = (v.x - a.x) * (v.x - a.x) + (v.z - a.z) * (v.z - a.z);
+        const db = (v.x - b.x) * (v.x - b.x) + (v.z - b.z) * (v.z - b.z);
+        if (da < 196) junction_traffic[v.node] +|= 1;
+        if (db < 196) junction_traffic[v.next] +|= 1;
+    }
+    for (0..city.road_count) |r| {
+        flow[r] += (@as(f32, @floatFromInt(occupancy[r])) - flow[r]) * @min(1, dt / 45);
+        movement[r] = baseline[r] + flow[r];
+    }
     for (&lines, 0..) |*l, id| {
         syncObservation(id);
         for (0..buses_per_line) |slot| {
@@ -316,7 +361,9 @@ pub fn update(dt: f32, elapsed: f64) void {
         const leaving = bus and (!lines[@intCast(v.line)].active or v.version != lines[@intCast(v.line)].version or v.retiring or v.shift_day != operators.daytime(elapsed));
         // Service and retirement stops reach the node itself so departure does
         // not jump from a pre-stop clearance point onto the next segment.
-        const stop_point = if (at_target or leaving) road.length else @max(road.length * 0.6, road.length - (if (bus) @as(f32, 1.6) else 1.0));
+        // Cars yield at a crosswalk while somebody is actually crossing it.
+        const cross_yield = !bus and !at_target and !leaving and crossing_active[@min(v.next, city.max_nodes - 1)] > 0;
+        const stop_point = if (at_target or leaving) road.length else if (cross_yield) @max(road.length * 0.35, road.length - 2.6) else @max(road.length * 0.6, road.length - (if (bus) @as(f32, 1.6) else 1.0));
         const next_after = city.next_node[v.next][v.target];
         var lookahead = v.*;
         lookahead.node = v.next;
@@ -325,7 +372,7 @@ pub fn update(dt: f32, elapsed: f64) void {
         const blocked = next_after == v.next or !entryAllowed(lookahead, next_after, elapsed);
         // Only segment ends that actually stop the vehicle receive braking. Ordinary
         // short street segments keep their speed and hand momentum to the next one.
-        const must_stop = v.retiring or leaving or at_target or (v.next != v.target and blocked);
+        const must_stop = v.retiring or leaving or at_target or cross_yield or (v.next != v.target and blocked);
         const stop_at = if (must_stop) stop_point else road.length;
         var free = @max(0, stop_at - v.progress);
         var following = false;
@@ -341,7 +388,7 @@ pub fn update(dt: f32, elapsed: f64) void {
             }
             link = links[@intCast(link)];
         }
-        const limit: f32 = (if (bus) @as(f32, 5.5) else 7) * (0.5 + road.condition / 200) / (1 + road.slope * 2) * (if (road.works) @as(f32, 0.45) else 1) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1);
+        const limit: f32 = (if (bus) travel.bus_limit else travel.classSpeed(road.class, road.condition, road.slope, road.works)) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1);
         var target = limit;
         if (must_stop or following) target = @min(target, @sqrt(6 * free));
         if (v.speed < target) v.speed = @min(target, v.speed + dt * 2) else v.speed = @max(target, v.speed - dt * 3);

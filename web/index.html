@@ -119,6 +119,16 @@
             Companies
           </button>
           <button
+            id="housing-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="housing-report"
+            data-report="housing"
+            tabindex="-1"
+          >
+            Housing
+          </button>
+          <button
             id="history-tab"
             role="tab"
             aria-selected="false"
@@ -289,6 +299,41 @@
               </thead>
               <tbody id="company-rows"></tbody>
             </table>
+          </div>
+          <div
+            id="housing-report"
+            role="tabpanel"
+            aria-labelledby="housing-tab"
+            hidden
+          >
+            <h3>Housing &amp; occupancy</h3>
+            <p id="housing-summary"></p>
+            <div class="stat-grid">
+              <div><small>Units</small><strong id="housing-units">—</strong></div>
+              <div><small>Occupied</small><strong id="housing-occupied">—</strong></div>
+              <div><small>Vacant</small><strong id="housing-vacant">—</strong></div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Unit</th>
+                  <th>District</th>
+                  <th>Tenure</th>
+                  <th>Daily cost</th>
+                  <th>Residents</th>
+                  <th>Arrears</th>
+                  <th>Application</th>
+                  <th>Move</th>
+                </tr>
+              </thead>
+              <tbody id="housing-rows"></tbody>
+            </table>
+            <p class="note">
+              Housing charges are paid from household balances after essentials.
+              Shortfalls become explicit unit arrears. Moves use actual travel to
+              the new address, and a move is accepted only into a vacant unit
+              with a lower charge and a shorter home-to-work route.
+            </p>
           </div>
           <div
             id="history-report"
@@ -852,9 +897,12 @@
             <p id="fleet-sell-help" class="note"></p>
             <p id="fleet-maintain-help" class="note"></p>
             <div class="transport-controls"><button id="staff-recruit-day">Recruit day driver</button><button id="staff-recruit-night">Train night driver</button><button id="staff-dismiss-day">Dismiss day driver</button><button id="staff-dismiss-night">Withdraw night driver</button></div>
+            <p id="fleet-lifecycle" class="note"></p>
             <p id="fleet-recruit" class="note"></p>
             <p id="fleet-roster" class="note"></p>
             <p id="fleet-summary" class="note"></p>
+            <p id="staff-reasons" class="note"></p>
+            <p id="fleet-dispatch" class="note"></p>
             <p class="note">Buses wear only while a service bus is moving, dwelling or held in traffic; clearing earns nothing and causes no wear. An exhausted bus stops at the next stop, unloads and enters paid maintenance. A repair that cannot be funded leaves the unit unavailable instead of creating debt. Purchases, sales, recruitment, severance and maintenance are explicit cash movements inside the operator's own account. <span id="operator-message"></span></p>
             <h3>Agreement regularity review</h3>
             <p class="note">Optional target: whole 30–600 simulation seconds between arrivals. Review only; no penalty or price change, and financial eligibility does not guarantee this interval is achievable. Only arrivals after acceptance count. Each coverage window allows one target-length grace period for its first arrival. Closed-hour pairs are omitted. Missing samples never mean success. The enforceable remedy above uses delivered bus-seconds against the windowed target, never these intervals.</p>
@@ -930,6 +978,17 @@
             worn surfaces also slow traffic. G toggles the traffic map; click a
             street there to inspect it.
           </p>
+          <h3>Parking and street types</h3>
+          <div id="parking-summary" class="note"></div>
+          <p class="note">
+            Bicycle parks and car parks are seeded where districts are busy;
+            every space has a hard slot count. Cyclists and drivers aim for the
+            nearest place they expect to be free, fall back to the closest free
+            space, and walk the rest of the way. Streets and avenues sell
+            kerbside car spaces at a price banded by the movement actually
+            observed on that segment, capped at £1.20. Lanes never allow
+            kerbside parking.
+          </p>
           <h3>Current queues</h3>
           <div id="traffic-hotspots"></div>
           <p id="transport-message" role="status"></p>
@@ -945,6 +1004,7 @@
         <header><strong>STREETS &amp; LAND USE</strong><button id="planning-close" aria-label="Close planner">×</button></header>
         <div id="road-options">
           <label>Road shape <select id="road-shape"><option value="0">Straight</option><option value="1">Curved</option></select></label>
+          <label>Street type <select id="road-class"><option value="1">Street</option><option value="0">Lane</option><option value="2">Avenue</option></select></label>
           <p>Click start and end; curved roads add a bend control point. Junctions connect automatically. WASD pans, wheel zooms. Enter builds; Escape cancels.</p>
           <button id="road-build" disabled>Build road</button> <button id="road-discard">Discard draft</button>
         </div>

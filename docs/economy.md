@@ -20,4 +20,6 @@ Completion applies delivered condition points, pays the agreed amount, releases 
 
 All simulation state is local to the current tab. Save/load, regional markets, materials and multistage tenders remain future work.
 
+Slice 9 adds bounded housing: every home is one unit with explicit rent or ownership cost, occupancy, a property-owner reserve, arrears, an application target and a move state. Housing charges are paid from household balances after essentials, with any shortfall as explicit unit arrears. A bounded daily rollover moves or displaces households into vacant units with a lower charge and a shorter commute; residents travel to the new address rather than teleporting.
+
 Bus operators have independent authored accounts, separate from ordinary employers. Their opening capital, receipts, vehicle/clearance costs and driver labour reconcile in Transport Authority; see `service-agreements.md`. Driver cohorts do not alter resident employment. Municipal subsidies still spend only uncommitted cash.

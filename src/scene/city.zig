@@ -11,10 +11,10 @@ pub const max_roads = 1200;
 pub var node_count: usize = 0;
 pub var road_count: usize = 0;
 pub var revision: u32 = 0;
-pub const Kind = enum(u32) { home, shop, office, clinic, hall, park, depot, vacant };
-pub const Building = struct { x: f32, z: f32, width: f32, depth: f32, height: f32, ground: f32, kind: Kind, district: usize, node: usize, value: f64, capacity: usize, sun: f32 = 1, occupants: usize = 0, employer: i32 = -1, entry_x: f32 = 0, entry_z: f32 = 0, street: usize = 0, number: usize = 0 };
+pub const Kind = enum(u32) { home, shop, office, clinic, hall, park, depot, vacant, bike_park, car_park };
+pub const Building = struct { x: f32, z: f32, width: f32, depth: f32, height: f32, ground: f32, kind: Kind, district: usize, node: usize, value: f64, capacity: usize, slots: usize = 0, sun: f32 = 1, occupants: usize = 0, employer: i32 = -1, entry_x: f32 = 0, entry_z: f32 = 0, street: usize = 0, number: usize = 0 };
 pub const Node = struct { x: f32, z: f32, y: f32, street: usize = 0, number: usize = 0 };
-pub const Road = struct { a: usize, b: usize, length: f32, slope: f32, district: usize, condition: f32, street: usize = 0, pedestrians: bool = true, vehicles: bool = true, crosswalk: bool = false, works: bool = false };
+pub const Road = struct { a: usize, b: usize, length: f32, slope: f32, district: usize, condition: f32, street: usize = 0, class: u8 = 1, pedestrians: bool = true, vehicles: bool = true, crosswalk: bool = false, works: bool = false };
 pub const Vec = struct { x: f32, z: f32 };
 pub var buildings: [288]Building = undefined;
 var node_storage: [max_nodes]Node = undefined;
@@ -57,23 +57,36 @@ pub fn addNode(x: f32, z: f32, street: usize) usize {
     return id;
 }
 pub fn addRoad(a: usize, b: usize, street: usize) usize {
+    return addRoadClass(a, b, street, classForStreet(street));
+}
+
+pub fn addRoadClass(a: usize, b: usize, street: usize, class: u8) usize {
     const dx = nodes[b].x - nodes[a].x;
     const dz = nodes[b].z - nodes[a].z;
     const dy = nodes[b].y - nodes[a].y;
     const planar = @sqrt(dx * dx + dz * dz);
     const district = districtAt((nodes[a].x + nodes[b].x) / 2, (nodes[a].z + nodes[b].z) / 2);
     const id = road_count;
-    road_storage[id] = .{ .a = a, .b = b, .length = @sqrt(planar * planar + dy * dy), .slope = @abs(dy) / @max(0.01, planar), .district = district, .condition = 70, .street = street };
+    road_storage[id] = .{ .a = a, .b = b, .length = @sqrt(planar * planar + dy * dy), .slope = @abs(dy) / @max(0.01, planar), .district = district, .condition = 70, .street = street, .class = @min(class, 2) };
     road_count += 1;
     roads = road_storage[0..road_count];
     return id;
+}
+
+// Seeded street types: the two central axes are avenues, the outer ring is
+// lanes, and everything else is an ordinary street. Player-built roads carry
+// the class chosen in the road tool.
+pub fn classForStreet(street: usize) u8 {
+    if (street == 3 or street == 10) return 2;
+    if (street == 0 or street == 6 or street == 7 or street == 13) return 0;
+    return 1;
 }
 pub fn splitRoad(id: usize, x: f32, z: f32) usize {
     const old = roads[id];
     if (hypot(x - nodes[old.a].x, z - nodes[old.a].z) < 2.5) return old.a;
     if (hypot(x - nodes[old.b].x, z - nodes[old.b].z) < 2.5) return old.b;
     const n = addNode(x, z, old.street);
-    const added = addRoad(n, old.b, old.street);
+    const added = addRoadClass(n, old.b, old.street, old.class);
     const saved = roads[added];
     roads[added] = old;
     roads[added].a = n;
@@ -194,10 +207,10 @@ pub fn init() void {
             .clinic => 5,
             .hall => 9,
             .depot => 3.5,
-            .park, .vacant => 0.1,
+            .park, .vacant, .bike_park, .car_park => 0.1,
         };
         b.* = .{ .x = x, .z = z, .width = width, .depth = 7, .height = height, .ground = elevation(x + width, z + 7), .kind = kind, .district = districtAt(x, z), .node = 0, .street = if (north) row else row + 1, .number = col * 8 + (slot % 4) * 2 + (if (north) @as(usize, 1) else 2), .value = if (kind == .home) 1800000 else if (kind == .shop or kind == .office or kind == .depot) 2400000 else 0, .capacity = switch (kind) {
-            .home, .park, .vacant => 0,
+            .home, .park, .vacant, .bike_park, .car_park => 0,
             .office => 95,
             .shop => 40,
             .clinic => 80,
@@ -227,6 +240,7 @@ pub fn init() void {
         r.condition = if (r.district == 0 or r.district == 3) 30 + @as(f32, @floatFromInt(i % 15)) else 65 + @as(f32, @floatFromInt(i % 25));
         r.crosswalk = (degree(r.a) >= 3 or degree(r.b) >= 3) and i % 3 == 0;
     }
+    seedParking();
     for (&buildings) |*b| {
         for (&buildings) |other| {
             if (other.z > b.z and other.z - b.z < 35 and @abs(other.x - b.x) < 9) b.sun = @max(0.35, b.sun - @max(0, other.height - b.height * 0.5) / 45);
@@ -234,6 +248,67 @@ pub fn init() void {
         b.value *= 0.9 + @as(f64, b.sun) * 0.2;
     }
     rebuildRoutes();
+}
+
+// Slice 10: bike parks and car parks are seeded where the district already has
+// employers and homes, so dense and busy districts carry more parking supply
+// than quiet ones. Every facility has a maximum number of slots. Green space is
+// converted only up to a bounded global count.
+const max_bike_parks = 44;
+const max_car_parks = 16;
+
+fn alreadyOrdered(prefix: []const usize, candidate: usize) bool {
+    for (prefix) |value| if (value == candidate) return true;
+    return false;
+}
+
+fn seedParking() void {
+    var workplaces: [district_count]usize = @splat(0);
+    var homes: [district_count]usize = @splat(0);
+    for (&buildings) |*b| {
+        const district = @min(b.district, district_count - 1);
+        if (b.capacity > 0) workplaces[district] += 1;
+        if (b.kind == .home) homes[district] += 1;
+    }
+    var order: [district_count]usize = undefined;
+    // Busiest districts are served first so the bounded supply lands there.
+    for (0..district_count) |i| {
+        var best: usize = 0;
+        var placed = false;
+        for (0..district_count) |candidate| {
+            if (alreadyOrdered(order[0..i], candidate)) continue;
+            if (!placed or workplaces[candidate] > workplaces[best]) {
+                best = candidate;
+                placed = true;
+            }
+        }
+        order[i] = best;
+    }
+    var bike_placed: usize = 0;
+    var car_placed: usize = 0;
+    for (order) |district| {
+        const density: f32 = @as(f32, @floatFromInt(workplaces[district])) + @as(f32, @floatFromInt(homes[district])) / 8;
+        const bike_target: usize = @intFromFloat(std.math.clamp(@round(density / 3), 1, 6));
+        const car_target: usize = @intFromFloat(std.math.clamp(@round(@as(f32, @floatFromInt(workplaces[district])) / 4), 0, 3));
+        const bike_slots: usize = @intFromFloat(std.math.clamp(8 + density * 2, 8, 40));
+        const car_slots: usize = @intFromFloat(std.math.clamp(18 + @as(f32, @floatFromInt(workplaces[district])) * 6, 18, 70));
+        var placed_bike: usize = 0;
+        var placed_car: usize = 0;
+        for (&buildings) |*b| {
+            if (b.district != district) continue;
+            if (b.kind != .park and b.kind != .vacant) continue;
+            const kind: Kind = if (placed_bike < bike_target and bike_placed < max_bike_parks) .bike_park else if (placed_car < car_target and car_placed < max_car_parks) .car_park else continue;
+            if (kind == .bike_park) {
+                placed_bike += 1;
+                bike_placed += 1;
+            } else {
+                placed_car += 1;
+                car_placed += 1;
+            }
+            const slots: usize = if (kind == .bike_park) bike_slots else car_slots;
+            b.* = .{ .x = b.x, .z = b.z, .width = b.width, .depth = b.depth, .height = 0.3, .ground = b.ground, .kind = kind, .district = b.district, .node = b.node, .value = 0, .capacity = 0, .slots = slots, .sun = b.sun, .occupants = 0, .employer = -1, .entry_x = b.entry_x, .entry_z = b.entry_z, .street = b.street, .number = b.number };
+        }
+    }
 }
 fn streetBend(street: usize) f32 {
     return if (street == 0 or street == 6) 4 else if (street == 9) -4 else if (street == 3) 2.5 else 0;
@@ -288,6 +363,16 @@ pub fn rebuildRoutes() void {
         }
     };
 }
+// Slice 10: expose the walking route cost so simulation code can tell an
+// unreachable pair (1e9) from a genuinely short walk.
+pub fn walkCost(from: usize, to: usize) f32 {
+    return walk_distance[from][to];
+}
+
+pub fn driveCost(from: usize, to: usize) f32 {
+    return distance[from][to];
+}
+
 pub fn condition(district: usize) f32 {
     var total: f32 = 0;
     var count: f32 = 0;

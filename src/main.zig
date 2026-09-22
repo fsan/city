@@ -7,6 +7,8 @@ const residents = game.residents;
 const finance = game.finance;
 const contracts = game.contracts;
 const transport = game.transport;
+const parking = game.parking;
+const travel = game.travel;
 var speed: f32 = 1;
 var resume_speed: f32 = 1;
 var accumulator: f32 = 0;
@@ -175,6 +177,64 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             41 => @floatFromInt(game.employment.dismissals),
             42 => game.employment.wages_paid,
             43 => game.employment.wages_arrears,
+            // Slice 9 housing and occupancy.
+            44 => blk: {
+                var total: usize = 0;
+                for (&game.housing.units) |*unit| {
+                    if (unit.present) total += 1;
+                }
+                break :blk @floatFromInt(total);
+            },
+            45 => blk: {
+                var total: usize = 0;
+                for (&game.housing.units) |*unit| {
+                    if (unit.present and unit.occupants > 0) total += 1;
+                }
+                break :blk @floatFromInt(total);
+            },
+            46 => blk: {
+                var total: usize = 0;
+                for (&game.housing.units) |*unit| {
+                    if (unit.present and unit.occupants == 0) total += 1;
+                }
+                break :blk @floatFromInt(total);
+            },
+            47 => blk: {
+                var total: usize = 0;
+                for (&game.housing.units) |*unit| {
+                    if (unit.present and unit.tenure == .rented) total += 1;
+                }
+                break :blk @floatFromInt(total);
+            },
+            48 => blk: {
+                var total: usize = 0;
+                for (&game.housing.units) |*unit| {
+                    if (unit.present and unit.tenure == .owned) total += 1;
+                }
+                break :blk @floatFromInt(total);
+            },
+            49 => @floatFromInt(game.housing.moves_today),
+            50 => @floatFromInt(game.housing.displacements_today),
+            51 => @floatFromInt(game.housing.applications_today),
+            52 => game.housing.arrearsTotal(),
+            53 => game.housing.rent_collected_today,
+            54 => game.housing.ownership_collected_today,
+            // Slice 10 street types, parking and learned travel.
+            55 => @floatFromInt(game.parking.count),
+            56 => @floatFromInt(game.parking.slotsTotal()),
+            57 => @floatFromInt(game.parking.occupiedTotal()),
+            58 => @floatFromInt(game.parking.attempts),
+            59 => @floatFromInt(game.parking.successes),
+            60 => @floatFromInt(game.parking.fallbacks),
+            61 => @floatFromInt(game.parking.refusals),
+            62 => game.parking.revenue_total,
+            63 => @floatFromInt(game.parking.kindSlots(.bike)),
+            64 => @floatFromInt(game.parking.kindUsed(.bike)),
+            65 => @floatFromInt(game.parking.kindSlots(.car)),
+            66 => @floatFromInt(game.parking.kindUsed(.car)),
+            67 => @floatFromInt(game.parking.kerbside_used),
+            68 => @floatFromInt(game.residents.batches_applied),
+            69 => @floatFromInt(game.residents.batches_dropped),
             else => -1,
         },
         1 => {
@@ -254,6 +314,30 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 34 => @floatFromInt(p.home),
                 // Slice 8: deterministic skill 0 general, 1 clerical, 2 professional.
                 35 => @floatFromInt(p.skill),
+                // Slice 10 ownership, parking and the learned model.
+                36 => if (p.prefers_car) 1 else 0,
+                37 => @floatFromInt(p.park_facility),
+                38 => @floatFromInt(p.parked_vehicle),
+                39 => @floatFromInt(p.plan_mode),
+                40 => if (p.access) 1 else 0,
+                41 => @floatFromInt(p.cross_waits),
+                42 => @floatFromInt(p.crossings),
+                43 => p.cross_wait,
+                44 => @floatFromInt(p.park_tries),
+                45 => @floatFromInt(p.park_taken),
+                46 => @floatFromInt(p.park_searched),
+                47 => @floatFromInt(p.park_refused),
+                48 => @floatFromInt(p.depart_bucket),
+                49 => blk: {
+                    if (travel.observed(&p.model, p.mode, p.depart_bucket)) |known| break :blk known;
+                    break :blk -1;
+                },
+                50 => blk: {
+                    for (0..travel.memory_count) |slot| {
+                        if (p.model.facility[slot] != travel.no_facility) break :blk @floatFromInt(p.model.facility[slot]);
+                    }
+                    break :blk -1;
+                },
                 else => -1,
             };
         },
@@ -294,6 +378,11 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 14 => if (r.crosswalk) 1 else 0,
                 15 => @floatFromInt(r.street),
                 16 => @floatFromInt(residents.pedestrians[id]),
+                // Slice 10: street class, measured movement and banded price.
+                17 => @floatFromInt(r.class),
+                18 => transport.movement[id],
+                19 => @floatFromInt(parking.band(transport.movement[id])),
+                20 => parking.bandPrice(transport.movement[id]),
                 else => -1,
             };
         },
@@ -557,6 +646,27 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             return game.households.read(id, field);
         },
         27 => return game.employment.read(id, field),
+        28 => {
+            if (id >= parking.count) return -1;
+            const f = &parking.facilities[id];
+            return switch (field) {
+                0 => @floatFromInt(@intFromEnum(f.kind)),
+                1 => @floatFromInt(f.building),
+                2 => @floatFromInt(f.road),
+                3 => @floatFromInt(f.node),
+                4 => @floatFromInt(f.slots),
+                5 => @floatFromInt(f.occupied),
+                6 => @floatFromInt(f.slots -| f.occupied),
+                7 => f.price,
+                8 => @floatFromInt(f.observed[0]),
+                9 => @floatFromInt(f.observed[1]),
+                10 => @floatFromInt(f.observed[2]),
+                11 => @floatFromInt(f.observed[3]),
+                else => -1,
+            };
+        },
+        26 => return game.housing.read(id, field),
+
         22 => {
             if (id >= city.district_count) return -1;
             const d = &residents.district_outcomes[id];
@@ -590,6 +700,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             3 => @floatFromInt(game.parcels.count),
             4 => @floatFromInt(game.parcels.selected),
             5 => @floatFromInt(game.parcels.block_count),
+            6 => @floatFromInt(game.roadworks.class),
             else => -1,
         },
         16 => {
@@ -734,6 +845,16 @@ export fn road_begin(curved: u32) void {
     game.roadworks.reset();
     game.roadworks.active = true;
     game.roadworks.curved = curved == 1;
+    game.roadworks.class = @min(2, game.roadworks.class);
+}
+
+export fn road_class(value: u32) void {
+    if (value <= 2) game.roadworks.class = @intCast(value);
+}
+
+export fn parking_rebuild() void {
+    game.parking.rebuild();
+    game.parking.refreshPrices(&transport.movement);
 }
 export fn road_point(index: u32, x: f32, z: f32) void {
     if (index >= 3 or !std.math.isFinite(x) or !std.math.isFinite(z)) return;

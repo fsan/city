@@ -2,6 +2,8 @@ import {operatorNames} from "./agreements.js";
 import {
   createData,
   streetName,
+  streetClasses,
+  parkingBands,
   kinds,
   statusNames,
   reasons,
@@ -331,6 +333,31 @@ export function createReports(game, ui, transport) {
           ]),
       );
     }
+    if (visible("housing-report")) {
+      $("housing-summary").textContent =
+        `${m(44).toLocaleString()} housing units · ${m(45).toLocaleString()} occupied · ${m(46).toLocaleString()} vacant. Last day: ${m(49)} moves, ${m(50)} displacements, ${m(51)} applications, ${m(52).toFixed(2)} arrears.`;
+      $("housing-units").textContent = m(44).toLocaleString();
+      $("housing-occupied").textContent = m(45).toLocaleString();
+      $("housing-vacant").textContent = m(46).toLocaleString();
+      const unitIds = buildings
+        .map((b, id) => ({ b, id }))
+        .filter(({ b }) => inDistrict(b.district) && b.kind === 0);
+      rows(
+        "housing-rows",
+        unitIds.slice(0, 40).map(({ id }) => [
+          link(`Unit #${id + 1}`, () => inspect(1, id)),
+          districts[buildings[id].district],
+          r(26, id, 1) ? "Rented" : "Owned",
+          money(r(26, id, 1) ? r(26, id, 2) : r(26, id, 3)),
+          r(26, id, 6),
+          money(r(26, id, 5)),
+          r(26, id, 8) < 0
+            ? "—"
+            : link(`Unit #${r(26, id, 8) + 1}`, () => inspect(1, r(26, id, 8))),
+          ["Idle", "Pending", "Moved", "Displaced", "Refused"][r(26, id, 9)],
+        ]),
+      );
+    }
     if (visible("companies-report")) {
       const ids = Array.from({ length: m(9) }, (_, i) => i).filter(
         (id) =>
@@ -517,6 +544,11 @@ export function createReports(game, ui, transport) {
         ["Assessed value", money(r(1, id, 4))],
         ["Daily property bill", money(r(1, id, 7))],
         ["Arrears", money(r(1, id, 8))],
+        ["Tenure", r(26, id, 1) ? "Rented" : "Owned"],
+        ["Daily housing charge", money(r(26, id, 1) ? r(26, id, 2) : r(26, id, 3))],
+        ["Housing arrears", money(r(26, id, 5))],
+        ["Occupancy", r(26, id, 6)],
+        ["Move state", ["Idle", "Pending", "Moved", "Displaced", "Refused"][r(26, id, 9)]],
       ];
       actions = [
         link("Locate building", () => game.focus(1, id)),
@@ -671,12 +703,20 @@ export function createReports(game, ui, transport) {
           "Works disruption",
           r(5, id, 6) ? "Walking −35% / vehicles −55%" : "None",
         ],
+        ["Street type", streetClasses[r(5, id, 17)] ?? "Street"],
         ["Vehicles / queued", `${r(5, id, 10)} / ${r(5, id, 11)}`],
         ["Queue pressure", `${(r(5, id, 12) * 100).toFixed(0)}%`],
         [
           "Lane allocation",
           ["Mixed", "Bus lanes", "Cycle lanes"][r(5, id, 13)],
         ],
+        [
+          "Kerbside parking",
+          r(5, id, 17) === 0
+            ? "Not allowed on a lane"
+            : `${parkingBands[r(5, id, 19)]} · £${r(5, id, 20).toFixed(2)} per stay`,
+        ],
+        ["Observed movement", r(5, id, 18).toFixed(2)],
       ];
       actions = [
         link("Locate street", () => game.focus(5, id)),

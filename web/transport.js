@@ -227,6 +227,23 @@ export function createTransport(game, ui) {
   };
   $("road-locate").onclick = () =>
     game.focus(5, Number($("traffic-road").value));
+  function syncParking() {
+    const facilities = r(0, 0, 55);
+    const slots = r(0, 0, 56);
+    const used = r(0, 0, 57);
+    const bikeSlots = r(0, 0, 63);
+    const bikeUsed = r(0, 0, 64);
+    const carSlots = r(0, 0, 65);
+    const carUsed = r(0, 0, 66);
+    $("parking-summary").textContent = [
+      `${facilities} parking places · ${used}/${slots} spaces in use`,
+      `bicycles ${bikeUsed}/${bikeSlots} · cars and kerbside ${carUsed}/${carSlots}`,
+      `attempts ${r(0,0,58)} · parked ${r(0,0,59)} · searched on ${r(0,0,60)} · no space ${r(0,0,61)}`,
+      `kerbside spaces in use ${r(0,0,67)} · parking receipts £${r(0,0,62).toFixed(2)}`,
+      `learned arrivals folded in ${r(0,0,68)} (${r(0,0,69)} dropped)`,
+    ].join(" · ");
+  }
+
   function setOverlay(mode) {
     overlay = mode;
     game.set_overlay(mode);
@@ -527,6 +544,7 @@ export function createTransport(game, ui) {
   }
   syncLines();
   game.transport_select(-1);
+  syncParking();
   update();
   return {
     update,

@@ -14,6 +14,8 @@ pub var active = false;
 pub var curved = false;
 pub var knots: [3]city.Vec = @splat(.{ .x = 0, .z = 0 });
 pub var knot_count: usize = 0;
+// Slice 10: the road tool chooses a street class (0 lane, 1 street, 2 avenue).
+pub var class: u8 = 1;
 // 0 valid, 1 bounds/length, 2 occupied parcel, 3 grade, 4 funds,
 // 5 network capacity, 6 reserved works, 7 overlap/shallow junction, 8 disconnected.
 pub fn reset() void {
@@ -169,7 +171,8 @@ pub fn preview() void {
         error_code = 5;
         return;
     }
-    cost = finance.cents(@as(f64, length) * 25);
+    const per_metre = if (class == 2) @as(f64, 40) else if (class == 0) @as(f64, 18) else @as(f64, 25);
+    cost = finance.cents(@as(f64, length) * per_metre);
     if (cost > finance.available()) error_code = 4;
 }
 fn nodeAt(p: city.Vec, street: usize) usize {
@@ -246,7 +249,7 @@ pub fn build(time: f64) bool {
                 }
             }
             if (!exists) {
-                const rid = city.addRoad(previous, n, street);
+                const rid = city.addRoadClass(previous, n, street, class);
                 city.roads[rid].condition = 100;
             }
             previous = n;

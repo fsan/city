@@ -319,3 +319,40 @@ employer's explicit wage arrears, never municipal or hidden debt. Household
 group 25 field 8 adds the wages actually paid last rollover; field 3 remains the
 posted daily wage of employed members. Save schema is version 7, rules
 "bellwether-2027-02-v7"; version 6 and older are rejected with result 3.
+
+
+## Street types, parking and learned travel (slice 10)
+
+Group 0 adds: 55 parking facilities, 56 total spaces, 57 occupied spaces,
+58 parking attempts, 59 successful first choices, 60 fallbacks after a full
+first choice, 61 travellers who found no space, 62 lifetime parking revenue,
+63/64 bicycle spaces and their use, 65/66 car and kerbside spaces and their use,
+67 kerbside spaces currently occupied, 68/69 learned arrival batches applied and
+dropped.
+
+Group 3 adds: 36 car preference, 37 current parking facility (-1 at home),
+38 parked vehicle (0 none, 1 bicycle, 2 car), 39 planned mode, 40 walking to the
+vehicle, 41 crossing waits, 42 admitted crossings, 43 seconds waited at the
+current crossing, 44-47 parking attempts/taken/searched/refused, 48 departure
+bucket, 49 learned trip seconds for the current mode and bucket (-1 unknown),
+50 first remembered parking facility (-1 none).
+
+Group 5 adds: 17 street class (0 lane, 1 street, 2 avenue), 18 smoothed
+movement, 19 kerbside price band, 20 kerbside price per stay.
+
+Group 28 reads one parking facility by index: 0 kind (0 bicycle, 1 car),
+1 building (-1 for kerbside), 2 road (-1 for a lot), 3 node, 4 slots,
+5 occupied, 6 free, 7 price, 8-11 aggregate observed availability for the four
+daily buckets, each updated from the bucket a traveller arrived in. Field 49
+above is the departure-bucket trip average for the resident's current mode; the
+parking estimate is likewise per arrival bucket, so the two halves of the model
+key on different times of day.
+
+Commands: `road_class(value)` sets the class (0-2) used by the next
+`road_begin`; `parking_rebuild()` re-seeds facilities after a road is built and
+reposts kerbside prices.
+
+Save schema is version 9, rules `bellwether-2027-04-v9`; version 8 and older are
+rejected with result 3. Parking facilities, occupancy, prices, aggregate
+availability, movement, counters and every learned resident field are
+serialized and validated.

@@ -10,8 +10,9 @@ This is a proposed dependency order against the canonical scope, not authorizati
 6. **Civic calendar and realistic routines:** weekdays, shifts, weekends and longer budget periods.
 7. **Households and household budgets:** shared income, essential expenses and financial pressure.
 8. **Employment and hiring:** vacancies, unemployment, skills, wages and business staffing.
-9. **Housing and occupancy:** renting, ownership, affordability, moves and displacement.
-10. **Development proposals and permits:** private construction responding to zoning and demand.
+9. **Housing and occupancy — complete:** bounded home units, rent/ownership costs, explicit arrears, vacancy and daily moves/displacement.
+10. **Street types, parking and learned travel — complete:** lane/street/avenue classes in the road tool, bicycle and car parking with hard slot counts and banded kerbside prices, signal and crosswalk compliance for walkers and cyclists, a tiny learned trip-time and parking-availability model per resident, and tenure-driven assessment. See [street-types-parking-learning-slice.md](street-types-parking-learning-slice.md).
+11. **Development proposals and permits:** private construction responding to zoning and demand.
 11. **Physical building construction:** access, crews, materials, terrain and foundation costs.
 12. **Property valuation and sunlight:** obstruction assessment and development trade-offs.
 13. **Parks and public spaces:** access, maintenance and neighbourhood benefits.
