@@ -41,3 +41,12 @@ Docker Zig 0.14.1 ReleaseSafe build and static-server startup passed; JavaScript
 - Isolated browser: Save export status, real file-chooser import of a paused town, 4× Space resume, malformed-file rejection, clear control layout and no captured console warnings/errors. The user's town was not reset.
 
 Manual file management, bounded history and the current authored population/graph limits remain. Full backend persistence, browser autosave slots, compression, replay and version migrations are deferred. Agreement payment and simulation rules are unchanged. Slice 3 passenger service outcomes are complete; see `passenger-outcomes-slice.md`, the roadmap and root kickoff.
+
+## Slice 8 additions
+
+Version 7 preserves every employer wage, skill requirement, wage-arrears and
+staffing-pressure field, each resident skill and employment link, and each
+household's posted income and actually-paid wages. Validation rejects an
+employed resident whose posted wage disagrees with the employer, any jobseeker
+with a non-zero wage, wage arrears above the current wage bill, paid household
+wages above posted income, and every version-6-or-older file with result 3.

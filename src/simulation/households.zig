@@ -8,7 +8,10 @@ pub const Household = struct {
     present: bool = false,
     members: u32 = 0,
     balance: f64 = 0,
+    // Posted daily wage of every employed member, recomputed from live links.
     income: f64 = 0,
+    // Actually paid by employers on the last rollover; the only amount credited.
+    paid_wages: f64 = 0,
     essential: f64 = 0,
     arrears: f64 = 0,
     paid: f64 = 0,
@@ -60,11 +63,10 @@ pub fn credit(index: usize, amount: f64) void {
     homes[index].balance += amount;
 }
 
-// Daily household budget: credit employed income, then bill a bounded essential
-// amount. Unpaid essentials become explicit arrears, never hidden debt.
-// Recompute posted household income from current employment links. Actual
-// paid wages are assigned by employment.daily(); this keeps reports honest
-// between day rollovers.
+// Slice 8: household income has two figures. `income` is the posted daily wage
+// of every employed member, recomputed from live employment links. `paid_wages`
+// is what employers actually paid on the last rollover and the only amount
+// credited to the balance, so unpaid wage arrears never create money.
 pub fn recomputeIncome() void {
     for (&homes) |*h| h.income = 0;
     for (&residents.people) |*p| {
@@ -75,7 +77,7 @@ pub fn recomputeIncome() void {
 pub fn daily() void {
     for (&homes) |*h| {
         if (!h.present) continue;
-        h.balance += h.income;
+        h.balance += h.paid_wages;
         const due = h.essential + h.arrears;
         const payment = @min(due, h.balance);
         h.balance -= payment;
@@ -93,6 +95,7 @@ pub fn read(index: usize, field: u32) f64 {
         1 => @floatFromInt(h.members),
         2 => h.balance,
         3 => h.income,
+        8 => h.paid_wages,
         4 => h.essential,
         5 => h.arrears,
         6 => h.paid,

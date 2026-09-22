@@ -289,3 +289,33 @@ balance. Essential expenses are billed daily and any shortfall becomes explicit
 arrears, never hidden debt. Walking remains the safe fallback. Save schema is
 version 6, rules "bellwether-2027-01-v6"; version 5 and older are rejected with
 result 3.
+
+## Employment and hiring (slice 8)
+
+Group 0 adds: 38 jobseekers, 39 open posts (total vacancies), 40 hires on the
+last day rollover, 41 dismissals on the last rollover, 42 wages paid on the last
+rollover, 43 wage arrears left unpaid on the last rollover. Group 3 adds: 35
+resident skill (0 general, 1 clerical, 2 professional). Group 27 reads the
+employment view per employer (id = company index):
+
+| Field | Value |
+| --- | --- |
+| 0 | Open posts (capacity − employees) |
+| 1 | Posted daily wage per employee |
+| 2 | Minimum skill (0 general, 1 clerical, 2 professional) |
+| 3 | Wage arrears not yet paid |
+| 4 | Staffing pressure (unpaid share of the last wage bill, 0–1) |
+| 5 | Employees |
+| 6 | Capacity |
+| 7 | Operating cash |
+| 8 | 1 for street contractors, 0 otherwise |
+
+One bounded rollover per day: qualified jobseekers fill up to 64 posts
+preferring the closest home-to-work trip, an employer carrying wage arrears
+dismisses up to two lowest-skill ordinary employees (never crew members or
+workers bound to an active order), then each employer pays the wages its cash
+covers. Only paid wages reach household balances; unpaid amounts stay as that
+employer's explicit wage arrears, never municipal or hidden debt. Household
+group 25 field 8 adds the wages actually paid last rollover; field 3 remains the
+posted daily wage of employed members. Save schema is version 7, rules
+"bellwether-2027-02-v7"; version 6 and older are rejected with result 3.

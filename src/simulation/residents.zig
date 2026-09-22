@@ -43,25 +43,38 @@ pub fn init() void {
         } };
         company_count += 1;
     }
-    // Fill actual employer capacities round-robin; remaining residents are jobseekers.
+    // Slice 8: employment starts from an explicit inherited position. Post
+    // requirements are read across employers by post slot so the skill mix
+    // follows the city's real vacancy mix, one adult in eight starts out of
+    // work, and the daily hiring step fills open posts only from qualified
+    // jobseekers. A skill mismatch is therefore a real, inspectable refusal.
+    var post_plan: [city.population]u8 = undefined;
+    for (0..post_plan.len) |k| {
+        const company = k % company_count;
+        const slot = k / company_count;
+        post_plan[k] = if (slot < companies[company].capacity) companies[company].skill_required else 0;
+    }
     for (&people, 0..) |*p, i| {
         const home = homes[i % home_count];
+        const skill: u8 = post_plan[i];
         var employer: i32 = -1;
-        for (0..company_count) |offset| {
-            const c = (i + offset) % company_count;
-            if (companies[c].employees >= companies[c].capacity) continue;
-            employer = @intCast(c);
-            companies[c].employees += 1;
-            employed += 1;
-            if (companies[c].contractor and companies[c].crew_count < 4) {
-                companies[c].crew[companies[c].crew_count] = i;
-                companies[c].crew_count += 1;
+        if (i % 8 != 0) {
+            for (0..company_count) |offset| {
+                const c = (i + offset) % company_count;
+                if (companies[c].employees >= companies[c].capacity or companies[c].skill_required > skill) continue;
+                employer = @intCast(c);
+                companies[c].employees += 1;
+                employed += 1;
+                if (companies[c].contractor and companies[c].crew_count < 4) {
+                    companies[c].crew[companies[c].crew_count] = i;
+                    companies[c].crew_count += 1;
+                }
+                break;
             }
-            break;
         }
         const node = city.buildings[home].node;
         const b = city.buildings[home];
-        p.* = .{ .x = b.entry_x, .z = b.entry_z, .y = b.ground + 0.35, .wallet = @as(f64, @floatFromInt(100 + i % 9000)), .income = if (employer >= 0) companies[@intCast(employer)].wage else 0, .owns_bike = i % 3 != 0, .car_node = node, .bike_node = node, .shift = @intCast(@intFromEnum(calendar.shiftFor(i))), .routine = 0, .skill = @intCast(i % 3), .home = home, .current_building = home, .origin_building = home, .destination_building = if (employer >= 0) companies[@intCast(employer)].building else home, .origin = node, .employer = employer, .destination = if (employer >= 0) city.buildings[companies[@intCast(employer)].building].node else node, .node = node, .next = node, .wait = @as(f32, @floatFromInt(i % 100)) * 0.14 };
+        p.* = .{ .x = b.entry_x, .z = b.entry_z, .y = b.ground + 0.35, .wallet = @as(f64, @floatFromInt(100 + i % 9000)), .income = if (employer >= 0) companies[@intCast(employer)].wage else 0, .owns_bike = i % 3 != 0, .car_node = node, .bike_node = node, .shift = @intCast(@intFromEnum(calendar.shiftFor(i))), .routine = 0, .skill = skill, .home = home, .current_building = home, .origin_building = home, .destination_building = if (employer >= 0) companies[@intCast(employer)].building else home, .origin = node, .employer = employer, .destination = if (employer >= 0) city.buildings[companies[@intCast(employer)].building].node else node, .node = node, .next = node, .wait = @as(f32, @floatFromInt(i % 100)) * 0.14 };
         considerCar(p);
         city.buildings[home].occupants += 1;
     }
@@ -455,7 +468,11 @@ fn choose(p: *Person) void {
     p.scores = @splat(-1);
     if (p.crew or p.order >= 0) return;
     const distance = city.distance[p.node][p.destination];
-    const value: f32 = @floatCast(600 / p.income);
+    // Slice 8: an unemployed resident has no wage of their own, so the value of
+    // time falls back to the household's posted employment income, bounded below
+    // so out-of-pocket costs still dominate and walking stays the safe fallback.
+    const own: f64 = if (p.income > 0) p.income else households.homes[p.home].income;
+    const value: f32 = @floatCast(600 / @max(8, own));
     var best = distance;
     p.scores[0] = distance;
     if (p.owns_bike and p.bike_node == p.node) {

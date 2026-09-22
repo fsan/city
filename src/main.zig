@@ -168,6 +168,13 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             35 => @floatFromInt(game.households.inArrears()),
             36 => game.households.totalArrears(),
             37 => @floatFromInt(@as(u32, @intFromFloat(@min(@as(f64, @floatFromInt(city.buildings.len)), @as(f64, 1e9))))),
+            // Slice 8 employment: jobseekers, open posts, last-day hiring and pay.
+            38 => @floatFromInt(game.employment.unemployedCount()),
+            39 => @floatFromInt(game.employment.totalVacancies()),
+            40 => @floatFromInt(game.employment.hires),
+            41 => @floatFromInt(game.employment.dismissals),
+            42 => game.employment.wages_paid,
+            43 => game.employment.wages_arrears,
             else => -1,
         },
         1 => {
@@ -245,6 +252,8 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 32 => @floatFromInt(p.shift),
                 33 => @floatFromInt(p.routine),
                 34 => @floatFromInt(p.home),
+                // Slice 8: deterministic skill 0 general, 1 clerical, 2 professional.
+                35 => @floatFromInt(p.skill),
                 else => -1,
             };
         },
@@ -547,6 +556,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             if (id >= city.buildings.len) return -1;
             return game.households.read(id, field);
         },
+        27 => return game.employment.read(id, field),
         22 => {
             if (id >= city.district_count) return -1;
             const d = &residents.district_outcomes[id];

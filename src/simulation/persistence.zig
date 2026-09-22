@@ -112,8 +112,8 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 6,
-        .rules = "bellwether-2027-01-v6",
+        .version = 7,
+        .rules = "bellwether-2027-02-v7",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = &city.buildings, .parcels = parcels.storage[0..parcels.count], .next_node = next_rows[0..city.node_count], .walk_next = walk_rows[0..city.node_count], .distance = distance_rows[0..city.node_count] },
@@ -290,7 +290,7 @@ fn validate(s: *const State) bool {
     for (people) |*p| {
         if (p.phase > 3 or p.mode > 3 or p.bus_stage > 2 or p.shift > 2 or p.routine > 5 or p.skill > 2 or p.node >= n or p.next >= n or p.destination >= n or p.origin >= n or p.car_node >= n or p.bike_node >= n or p.boarding >= n or p.exit_node >= n or
             p.home >= town.buildings.len or p.current_building >= town.buildings.len or p.origin_building >= town.buildings.len or p.destination_building >= town.buildings.len or
-            !index(p.employer, companies.len) or !index(p.order, services.orders.len) or !index(p.bus_line, 8) or !index(p.bus, m.vehicles.len) or p.wallet < 0 or p.income <= 0 or p.bus_wait < 0 or p.travel < 0 or p.last_trip < 0 or
+            !index(p.employer, companies.len) or !index(p.order, services.orders.len) or !index(p.bus_line, 8) or !index(p.bus, m.vehicles.len) or p.wallet < 0 or p.income < 0 or p.bus_wait < 0 or p.travel < 0 or p.last_trip < 0 or
             !between(p.bus_wait_start, -1, c.elapsed) or p.bus_full_mask > 7) return false;
         const waiting = p.mode == 3 and p.phase == 1 and p.bus < 0 and p.bus_stage == 0 and p.node == p.next and p.node == p.boarding;
         // A resident can reach the stop one fixed step before beginWait records
@@ -300,7 +300,12 @@ fn validate(s: *const State) bool {
         if (p.node != p.next and edges[p.node][p.next] < 0) return false;
         if (p.bus_stage == 1 and p.bus < 0) return false;
         if (p.order >= 0 and (!p.crew or p.employer < 0 or companies[@intCast(p.employer)].order != p.order)) return false;
-        if (p.employer >= 0) employees[@intCast(p.employer)] += 1;
+        // Slice 8: an employed resident's posted wage is exactly their employer's
+        // posted wage; a jobseeker has no wage at all.
+        if (p.employer >= 0) {
+            employees[@intCast(p.employer)] += 1;
+            if (!near(p.income, companies[@intCast(p.employer)].wage)) return false;
+        } else if (p.income != 0) return false;
         occupants[p.home] += 1;
         if (p.bus >= 0) {
             const id: usize = @intCast(p.bus);
@@ -310,7 +315,7 @@ fn validate(s: *const State) bool {
     }
     var employed: usize = 0;
     for (companies, 0..) |*company, i| {
-        if (company.building >= town.buildings.len or company.cash < 0 or company.costs < 0 or company.margin < 1 or company.labour <= 0 or company.crew_count > 4 or company.employees != employees[i] or company.employees > company.capacity or !index(company.order, services.orders.len) or town.buildings[company.building].employer != @as(i32, @intCast(i)) or company.wage < 0 or company.wage > 1000 or company.skill_required > 2 or company.wage_arrears < 0 or !between(company.staffing_pressure, 0, 1)) return false;
+        if (company.building >= town.buildings.len or company.cash < 0 or company.costs < 0 or company.margin < 1 or company.labour <= 0 or company.crew_count > 4 or company.employees != employees[i] or company.employees > company.capacity or !index(company.order, services.orders.len) or town.buildings[company.building].employer != @as(i32, @intCast(i)) or company.wage <= 0 or company.wage > 1000 or company.skill_required > 2 or company.wage_arrears < 0 or company.wage_arrears > @as(f64, @floatFromInt(company.employees)) * company.wage + 0.001 or !between(company.staffing_pressure, 0, 1)) return false;
         if (company.capacity != town.buildings[company.building].capacity) return false;
         employed += employees[i];
         for (company.crew[0..company.crew_count], 0..) |id, k| {
@@ -330,7 +335,7 @@ fn validate(s: *const State) bool {
             if (h.members != 0 or h.balance != 0 or h.income != 0 or h.essential != 0 or h.arrears != 0 or h.paid != 0 or h.unpaid != 0) return false;
             continue;
         }
-        if (h.members == 0 or h.members > city.population or h.balance < 0 or h.income < 0 or h.essential < 0 or h.arrears < 0 or h.paid < 0 or h.unpaid < 0) return false;
+        if (h.members == 0 or h.members > city.population or h.balance < 0 or h.income < 0 or h.paid_wages < 0 or h.paid_wages > h.income + 0.011 or h.essential < 0 or h.arrears < 0 or h.paid < 0 or h.unpaid < 0) return false;
         if (!near(h.unpaid, h.arrears)) return false;
         if (occupants[i] != h.members) return false;
         var income: f64 = 0;
@@ -586,7 +591,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 6 and std.mem.eql(u8, rules, "bellwether-2027-01-v6");
+    return version == 7 and std.mem.eql(u8, rules, "bellwether-2027-02-v7");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

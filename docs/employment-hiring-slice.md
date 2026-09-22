@@ -6,7 +6,7 @@ while preserving household budgets, transport, routines, operators and
 municipal accounting. No regional trade, production inputs, business credit or
 national labour market is added.
 
-This note is written before the slice code, as the kickoff requires.
+This note was written before the slice code, as the kickoff requires.
 
 ## Jobs and employers
 
@@ -48,6 +48,34 @@ field, and every resident skill/employment field, is serialized and validated.
 The save schema becomes `version: 7`, `rules: "bellwether-2027-02-v7"`;
 version 6 and older files are rejected explicitly with result 3. No migration
 layer is added.
+
+## Verified behaviour (Docker ReleaseSafe probe, 24 checks, 0 failures)
+
+A temporary probe called `city.init()`, `game.init()`, then advanced real
+30 Hz simulation steps. It confirmed: no skill mismatch or wage inconsistency
+at init; jobseekers and open posts both exist; hiring on a day rollover fills
+qualified vacancies (unemployment fell, employer totals equal the live links);
+wage conservation (paid wages equal the sum credited to households); employer
+cash floors (never negative); household balances do not vanish; a skill-0
+resident is refused a skill-2 post; a drained employer with wage arrears sheds a
+bounded number of staff and never goes negative; crew members are never
+dismissed; paid wages never exceed posted income; the v7 snapshot declares
+`"version":7`, round-trips, and preserves employment links and skills; walking
+stays bounded and riders stay sane after further steps.
+
+Observed probe figures: `unemployed=859 vacancies=1436 hires=47 on the first
+rollover dismissals=2 wages=163715 arrears=0`.
+
+## Remaining limits
+
+One adult in eight starts out of work; posting wages are fixed authored values
+(£40/£55/£70). Employers trade in a single simplified daily surplus, so a firm
+survives unless taxes or cash actually exhaust it; there is no demand market,
+business credit, regional trade or national labour market. Crew members and
+workers on an active order can never be made redundant. Hiring is capped at 64
+posts per day. Reports are verified through the scalar ABI, served markup and
+the served-WASM identity rather than a rendered screenshot, because this
+environment has no WebGL browser.
 
 ## Verification required
 

@@ -319,8 +319,9 @@ export function createReports(game, ui, transport) {
             link(`Resident ${p.id + 1}`, () => inspect(3, p.id)),
             link(`#${p.home + 1}`, () => inspect(1, p.home)),
             p.employer < 0
-              ? "Jobseeker"
-              : link(companyName(p.employer), () => inspect(4, p.employer)),
+              ? `Jobseeker · ${["general", "clerical", "professional"][r(3, p.id, 35)]}`
+              : link(companyName(p.employer), () => inspect(4, p.employer)) +
+                ` · ${["general", "clerical", "professional"][r(3, p.id, 35)]}`,
             activity(p.id),
             r(3, p.id, 7) >= 0
               ? link(`Order ${r(3, p.id, 7) + 1}`, () =>
@@ -340,7 +341,7 @@ export function createReports(game, ui, transport) {
         "company-rows",
         ids.map((id) => [
           link(companyName(id), () => inspect(4, id)),
-          `${r(4, id, 1)} / ${r(4, id, 2)}`,
+          `${r(27, id, 5)} / ${r(27, id, 6)}`,
           money(r(4, id, 3)),
           r(4, id, 4) ? "Street repairs" : "Local employer",
           r(4, id, 5) < 0
@@ -424,6 +425,8 @@ export function createReports(game, ui, transport) {
       `Weekly summaries reconcile recorded ledger movements only.`;
     $("household-note").textContent =
       `${m(35)} households in arrears · ${money(m(36))} total household arrears · ${m(37)} households tracked. Arrears are private household state, not municipal debt.`;
+    $("employment-note").textContent =
+      `${m(38).toLocaleString()} jobseekers · ${m(39).toLocaleString()} open posts · last day ${m(40)} hires, ${m(41)} dismissals · ${money(m(42))} wages paid. Unpaid employer wages are wage arrears, not municipal debt.`;
     taxPreview();
     rows(
       "ledger-rows",
@@ -543,6 +546,7 @@ export function createReports(game, ui, transport) {
         ["Activity", activity(id)],
         ["Routine", ["sleep", "morning commute", "work", "evening", "leisure", "night"][r(3, id, 33)]],
         ["Shift", ["day 06-14", "evening 14-22", "night 22-06"][r(3, id, 32)]],
+        ["Skill", ["general", "clerical", "professional"][r(3, id, 35)] || "general"],
         ["Household", `#${r(3, id, 34) + 1} · balance ${money(r(25, r(3, id, 34), 2))} · income ${money(r(25, r(3, id, 34), 3))} · essentials ${money(r(25, r(3, id, 34), 4))} · arrears ${money(r(25, r(3, id, 34), 5))}`],
         [
           "Travel scores · walk / cycle / car / bus",
@@ -620,6 +624,11 @@ export function createReports(game, ui, transport) {
       fields = [
         ["Premises", buildingName(b)],
         ["Employees / capacity", `${r(4, id, 1)} / ${r(4, id, 2)}`],
+        ["Vacancies", r(27, id, 0)],
+        ["Posted daily wage", money(r(27, id, 1))],
+        ["Skill required", ["general", "clerical", "professional"][r(27, id, 2)]],
+        ["Wage arrears", money(r(27, id, 3))],
+        ["Staffing pressure", `${(r(27, id, 4) * 100).toFixed(0)}%`],
         ["Operating cash", money(r(4, id, 3))],
         ["Capability", r(4, id, 4) ? "Street repairs" : "Local employment"],
         [

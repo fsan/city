@@ -44,7 +44,10 @@ pub fn update(dt: f32) void {
         // Explicit simplified local trading: staffed businesses earn a daily operating surplus.
         // Contractors live on contracts; municipal institutions do not have taxable assessments.
         for (residents.companies[0..residents.company_count]) |*c| {
-            if (!c.contractor) c.cash += @as(f64, @floatFromInt(c.employees)) * 12;
+            // Explicit simplified local trading: a staffed non-contractor position
+            // earns its posted wage plus the documented GBP 12 daily surplus, so
+            // the firm can cover the wage bill and still accumulate working cash.
+            if (!c.contractor) c.cash += @as(f64, @floatFromInt(c.employees)) * (c.wage + 12);
         }
         finance.daily(elapsed);
         employment.daily();
