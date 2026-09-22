@@ -422,6 +422,8 @@ export function createReports(game, ui, transport) {
     $("period-note").textContent =
       `${weekNames[m(29)]} week ${m(32) + 1} · ${phaseNames[m(31)]} · next period boundary ${timeLabel(m(33))}; retained periods ${m(34)}. ` +
       `Weekly summaries reconcile recorded ledger movements only.`;
+    $("household-note").textContent =
+      `${m(35)} households in arrears · ${money(m(36))} total household arrears · ${m(37)} households tracked. Arrears are private household state, not municipal debt.`;
     taxPreview();
     rows(
       "ledger-rows",
@@ -541,6 +543,7 @@ export function createReports(game, ui, transport) {
         ["Activity", activity(id)],
         ["Routine", ["sleep", "morning commute", "work", "evening", "leisure", "night"][r(3, id, 33)]],
         ["Shift", ["day 06-14", "evening 14-22", "night 22-06"][r(3, id, 32)]],
+        ["Household", `#${r(3, id, 34) + 1} · balance ${money(r(25, r(3, id, 34), 2))} · income ${money(r(25, r(3, id, 34), 3))} · essentials ${money(r(25, r(3, id, 34), 4))} · arrears ${money(r(25, r(3, id, 34), 5))}`],
         [
           "Travel scores · walk / cycle / car / bus",
           [21, 22, 23, 24]

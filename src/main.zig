@@ -164,6 +164,10 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             32 => @floatFromInt(game.calendar.weekIndex(game.elapsed)),
             33 => game.next_week,
             34 => @floatFromInt(@min(finance.period_count, finance.periods.len)),
+            // Slice 7 household budgets.
+            35 => @floatFromInt(game.households.inArrears()),
+            36 => game.households.totalArrears(),
+            37 => @floatFromInt(@as(u32, @intFromFloat(@min(@as(f64, @floatFromInt(city.buildings.len)), @as(f64, 1e9))))),
             else => -1,
         },
         1 => {
@@ -240,6 +244,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 // Slice 6: shift and routine phase.
                 32 => @floatFromInt(p.shift),
                 33 => @floatFromInt(p.routine),
+                34 => @floatFromInt(p.home),
                 else => -1,
             };
         },
@@ -537,6 +542,10 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 22 => s.wait_total,
                 else => -1,
             };
+        },
+        25 => {
+            if (id >= city.buildings.len) return -1;
+            return game.households.read(id, field);
         },
         22 => {
             if (id >= city.district_count) return -1;

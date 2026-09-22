@@ -10,6 +10,7 @@ const agreements = game.agreements;
 const parcels = game.parcels;
 const scene = @import("../render/scene.zig");
 const calendar = game.calendar;
+const households = game.households;
 
 // JSON fields, not native struct bytes. Bump version/rules when changing this contract.
 pub const capacity = 16 * 1024 * 1024;
@@ -90,6 +91,7 @@ const State = struct {
     camera: Camera,
     town: Town,
     citizens: Citizens,
+    homes: []const households.Household,
     mobility: Mobility,
     treasury: Treasury,
     services: Services,
@@ -110,11 +112,12 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 5,
-        .rules = "bellwether-2026-11-v5",
+        .version = 6,
+        .rules = "bellwether-2027-01-v6",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = &city.buildings, .parcels = parcels.storage[0..parcels.count], .next_node = next_rows[0..city.node_count], .walk_next = walk_rows[0..city.node_count], .distance = distance_rows[0..city.node_count] },
+        .homes = &households.homes,
         .citizens = .{ .people = &residents.people, .companies = residents.companies[0..residents.company_count], .walking = residents.walking, .employed = residents.employed, .pedestrians = residents.pedestrians[0..city.road_count], .district_outcomes = &residents.district_outcomes },
         .mobility = .{ .vehicles = &transport.vehicles, .lines = &transport.lines, .accounts = &operators.accounts, .observations = &transport.observations, .previous_observations = &transport.previous_observations, .lanes = lane_values[0..city.road_count], .occupancy = transport.occupancy[0..city.road_count], .queues = transport.queues[0..city.road_count], .congestion = transport.congestion[0..city.road_count], .fare_cap = transport.fare_cap, .subsidy = transport.subsidy, .subsidy_total = transport.subsidy_total },
         .treasury = .{ .cash = finance.cash, .reserved = finance.reserved, .residential_rate = finance.residential_rate, .commercial_rate = finance.commercial_rate, .funding = finance.funding, .active_funding = finance.active_funding, .maintenance_paid = finance.maintenance_paid, .collected = finance.collected, .spent = finance.spent, .arrears = &finance.arrears, .entry_count = finance.entry_count, .entries = finance.entries[0..@min(finance.entry_count, finance.entries.len)], .periods = finance.periods[0..@min(finance.period_count, finance.periods.len)], .period_count = finance.period_count, .period_opening = finance.period_opening, .period_receipts = finance.period_receipts, .period_expenses = finance.period_expenses, .period_entries = finance.period_entries, .period_week = finance.period_week },
@@ -318,6 +321,26 @@ fn validate(s: *const State) bool {
     }
     if (s.citizens.employed != employed or s.citizens.walking > people.len) return false;
     for (town.buildings, 0..) |b, i| if (b.occupants != occupants[i]) return false;
+    // Slice 7 household conservation: members and income must match the live
+    // resident population, balances and arrears stay explicit and non-negative.
+    if (s.homes.len != town.buildings.len) return false;
+    var members_sum: usize = 0;
+    for (s.homes, 0..) |*h, i| {
+        if (!h.present) {
+            if (h.members != 0 or h.balance != 0 or h.income != 0 or h.essential != 0 or h.arrears != 0 or h.paid != 0 or h.unpaid != 0) return false;
+            continue;
+        }
+        if (h.members == 0 or h.members > city.population or h.balance < 0 or h.income < 0 or h.essential < 0 or h.arrears < 0 or h.paid < 0 or h.unpaid < 0) return false;
+        if (!near(h.unpaid, h.arrears)) return false;
+        if (occupants[i] != h.members) return false;
+        var income: f64 = 0;
+        for (people) |*p| if (p.home == i and p.employer >= 0) {
+            income += p.income;
+        };
+        if (!near(h.income, income)) return false;
+        members_sum += h.members;
+    }
+    if (members_sum != people.len) return false;
     for (m.vehicles, 0..) |v, i| {
         if (v.node >= n or v.next >= n or v.target >= n or v.company >= 3 or v.lane > 1 or !index(v.line, 8) or v.stop >= 16 or !between(v.dwell, 0, 5) or v.speed < 0 or v.progress < 0 or v.passengers != riders[i] or v.passengers > 24 or (!v.active and v.passengers != 0)) return false;
         if (i < city.population) {
@@ -479,6 +502,7 @@ fn commit(s: *const State) void {
     parcels.rebuildBlocks();
     parcels.selected = -1;
     parcels.visible = false;
+    @memcpy(&households.homes, s.homes);
     @memcpy(&residents.people, s.citizens.people);
     residents.company_count = s.citizens.companies.len;
     @memcpy(residents.companies[0..residents.company_count], s.citizens.companies);
@@ -562,7 +586,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 5 and std.mem.eql(u8, rules, "bellwether-2026-11-v5");
+    return version == 6 and std.mem.eql(u8, rules, "bellwether-2027-01-v6");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

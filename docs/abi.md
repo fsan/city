@@ -258,3 +258,34 @@ seconds. Daytime service remains 06:00-22:00 and all-day remains 00:00-24:00.
 
 Save schema is version 5, rules "bellwether-2026-11-v5"; version 4 and older are
 rejected with result 3.
+
+
+## Households and budgets (slice 7)
+
+Group 0 adds: 35 households in arrears, 36 total household arrears, 37
+household count. Group 3 adds: 34 home building / household ID. Group 25
+is household records by home building index: 0 present, 1 members, 2 shared
+balance, 3 daily employed income, 4 daily essential expense, 5 arrears,
+6 lifetime essentials paid, 7 unpaid (equal to arrears).
+
+One household exists per home building. Members share the balance and daily
+budget; fares, car running costs and car purchase spend from that balance.
+Essential expenses are billed daily; any shortfall becomes explicit arrears,
+never hidden debt. Walking remains the safe fallback. Save schema is version 6,
+rules "bellwether-2027-01-v6"; version 5 and older are rejected with result 3.
+
+
+## Households and budgets (slice 7)
+
+Group 0 adds: 35 households in arrears, 36 total household arrears, 37
+household count. Group 3 adds: 34 home-building household ID. Group 25 reads
+household records by home building index: 0 present, 1 members, 2 shared
+balance, 3 daily employed income, 4 daily essential expense, 5 arrears, 6
+lifetime essentials paid, 7 unpaid (equal to arrears).
+
+One bounded household exists per home building. Members share a balance and a
+daily budget; fares, car running costs and car purchase spend from that shared
+balance. Essential expenses are billed daily and any shortfall becomes explicit
+arrears, never hidden debt. Walking remains the safe fallback. Save schema is
+version 6, rules "bellwether-2027-01-v6"; version 5 and older are rejected with
+result 3.

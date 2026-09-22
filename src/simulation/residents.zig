@@ -1,6 +1,7 @@
 const transport = @import("transport.zig");
 const city = @import("../scene/city.zig");
 const calendar = @import("calendar.zig");
+const households = @import("households.zig");
 pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0, wallet: f64 = 0, income: f64 = 0, owns_car: bool = false, owns_bike: bool = false, car_node: usize = 0, bike_node: usize = 0, scores: [4]f32 = @splat(-1), crew: bool = false, chosen: bool = false, bus_line: i32 = -1, bus: i32 = -1, boarding: usize = 0, exit_node: usize = 0, bus_version: u32 = 0, bus_wait: f32 = 0, bus_wait_start: f64 = -1, bus_full_mask: u8 = 0, bus_stage: u8 = 0, walk_side: f32 = 1, shift: u8 = 0, routine: u8 = 0, home: usize, current_building: usize = 0, destination_building: usize = 0, origin_building: usize = 0, employer: i32 = -1, origin: usize = 0, destination: usize, node: usize, next: usize, wait: f32, trips: u32 = 0, travel: f32 = 0, last_trip: f32 = 0, order: i32 = -1, arrived: bool = false };
 pub const Company = struct { building: usize, employees: usize = 0, capacity: usize, cash: f64 = 45000, contractor: bool, crew: [4]usize = .{ 0, 0, 0, 0 }, crew_count: usize = 0, order: i32 = -1, margin: f64, labour: f64, costs: f64 = 0 };
 pub const DistrictOutcome = struct {
@@ -60,6 +61,7 @@ pub fn init() void {
         considerCar(p);
         city.buildings[home].occupants += 1;
     }
+    households.init();
     for (companies[0..company_count]) |c| {
         for (c.crew[0..c.crew_count]) |id| people[id].crew = true;
     }
@@ -298,7 +300,7 @@ pub fn update(dt: f32, elapsed: f64) void {
                 if (p.bus_wait_start < 0) beginWait(p, elapsed);
                 p.bus_wait += dt;
                 p.travel += dt;
-                if (p.wallet >= transport.fare()) {
+                if (households.canAfford(p.home, transport.fare())) {
                     var mask: u8 = 0;
                     for (0..transport.buses_per_line) |slot| {
                         const bus = transport.car_count + @as(usize, @intCast(p.bus_line)) * transport.buses_per_line + slot;
@@ -314,8 +316,8 @@ pub fn update(dt: f32, elapsed: f64) void {
                 for (0..transport.buses_per_line) |slot| {
                     const bus = transport.car_count + @as(usize, @intCast(p.bus_line)) * transport.buses_per_line + slot;
                     const v = transport.vehicles[bus];
-                    if (v.active and v.node == p.node and v.node == v.next and p.wallet >= transport.fare() and transport.board(bus)) {
-                        p.wallet -= transport.fare();
+                    if (v.active and v.node == p.node and v.node == v.next and households.canAfford(p.home, transport.fare()) and transport.board(bus)) {
+                        _ = households.spend(p.home, transport.fare());
                         p.bus = @intCast(bus);
                         p.bus_stage = 1;
                         boarded = true;
@@ -324,7 +326,7 @@ pub fn update(dt: f32, elapsed: f64) void {
                     }
                 }
                 if (!boarded) {
-                    if (p.wallet < transport.fare()) {
+                    if (!households.canAfford(p.home, transport.fare())) {
                         abandonWait(p, elapsed, .fare);
                         p.mode = 0;
                         p.bus_stage = 2;
@@ -483,33 +485,35 @@ fn choose(p: *Person) void {
             node = next;
         }
         const score = distance / 5 + delay + 8 + @as(f32, @floatCast(cost)) * value;
-        if (p.wallet >= cost) p.scores[2] = score;
-        if (p.wallet >= cost and score < best) {
+        if (households.canAfford(p.home, cost)) p.scores[2] = score;
+        if (households.canAfford(p.home, cost) and score < best) {
             best = score;
             p.mode = 2;
         }
     }
     const trip = transport.journey(p.node, p.destination);
-    if (trip.line >= 0 and p.wallet >= transport.fare()) p.scores[3] = trip.time + @as(f32, @floatCast(transport.fare())) * value;
-    if (trip.line >= 0 and p.wallet >= transport.fare() and trip.time + @as(f32, @floatCast(transport.fare())) * value < best) {
+    if (trip.line >= 0 and households.canAfford(p.home, transport.fare())) p.scores[3] = trip.time + @as(f32, @floatCast(transport.fare())) * value;
+    if (trip.line >= 0 and households.canAfford(p.home, transport.fare()) and trip.time + @as(f32, @floatCast(transport.fare())) * value < best) {
         p.mode = 3;
         p.bus_line = trip.line;
         p.boarding = trip.board_node;
         p.exit_node = trip.exit_node;
         p.bus_version = transport.lines[@intCast(trip.line)].version;
     }
-    if (p.mode == 2) p.wallet -= @as(f64, distance) * 0.014 + 0.3;
+    if (p.mode == 2) _ = households.spend(p.home, @as(f64, distance) * 0.014 + 0.3);
 }
 pub fn daily() void {
+    // Income and essentials are handled once per household; this loop only
+    // updates bounded car decisions and keeps the per-person wallet mirror for
+    // the existing inspector/ABI.
     for (&people) |*p| {
-        p.wallet += p.income * 0.25; // Income remaining after simplified living expenses.
-        if (p.owns_car) p.wallet = @max(0, p.wallet - 8);
         if (p.phase == 3 and p.node == city.buildings[p.home].node) considerCar(p);
+        p.wallet = households.balance(p.home);
     }
 }
 
 fn considerCar(p: *Person) void {
-    if (p.owns_car or p.wallet < 2400 or p.employer < 0 or p.crew) return;
+    if (p.owns_car or !households.canAfford(p.home, 2400) or p.employer < 0 or p.crew) return;
     const home = city.buildings[p.home].node;
     const work = city.buildings[companies[@intCast(p.employer)].building].node;
     const distance = city.distance[home][work];
@@ -517,7 +521,7 @@ fn considerCar(p: *Person) void {
     const saved = distance * (if (p.owns_bike) @as(f32, 0.15) else 0.55);
     const benefit = @as(f64, saved) * p.income / 600;
     if (benefit <= 8 + @as(f64, distance) * 0.028) return;
-    p.wallet -= 1800;
+    _ = households.spend(p.home, 1800);
     p.owns_car = true;
     p.car_node = home;
 }

@@ -96,3 +96,14 @@ windows are unchanged (daytime 06:00-22:00, all-day 00:00-24:00). Weekly
 budget summaries reconcile recorded ledger movements only and cannot create or
 destroy money. Manual save files use schema version 5,
 bellwether-2026-11-v5; older files are rejected.
+
+
+## Households and shared budgets
+
+Residents now belong to one bounded household per home. Members share a
+balance and a daily budget: employed income is credited to the household, a
+bounded essential expense is billed, and any unpaid essentials become visible
+arrears rather than hidden debt. Fares, car running costs and car purchase
+spend from the shared balance; the walking fallback is never blocked. Household
+state is saved with schema version 6, bellwether-2027-01-v6; older files are
+rejected.

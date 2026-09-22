@@ -1,8 +1,8 @@
-# Next agent kickoff — slice 6 complete; authorized goal: slices 7–9
+# Next agent kickoff — slice 7 complete; authorized goal: slices 8–9
 
-Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 is complete and committed at `60a000a`; slice 5 is complete and committed at `4e29f2f`; slice 6 is complete in the current worktree. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, explicit bus fleet and staffing commitments, and cure-first transport contract enforcement.
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 is complete and committed at `60a000a`; slice 5 is complete and committed at `4e29f2f`; slice 6 is complete and committed at `cfa432d`; slice 7 is complete in the current worktree. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, explicit bus fleet and staffing commitments, and cure-first transport contract enforcement.
 
-**Authorized goal:** implement slices 7, 8 and 9 of the numbered development sequence, in order, as bounded batches; slices 5 and 6 are complete. Each slice must have its own short slice note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation, and a refreshed kickoff before the next slice starts. This authorizes slices 6–9; it does not authorize slices 10–39 or a single unbounded rewrite.
+**Authorized goal:** implement slices 8 and 9 of the numbered development sequence, in order, as bounded batches; slices 5, 6 and 7 are complete. Each slice must have its own short slice note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation, and a refreshed kickoff before the next slice starts. This authorizes slices 6–9; it does not authorize slices 10–39 or a single unbounded rewrite.
 
 Inspect current code, git status and recent commits before editing. The `.tmp_degrees.zig` cleanup item is done: the temporary file was removed in `60a000a`. Do not reset, rewrite history or push without a request.
 
@@ -27,7 +27,7 @@ Use Zig for rules and measurements, JavaScript for WebGL/input/reports. Compile 
 - Each vehicle retains its operator while clearing. No money transfers on handover and no cash resets on reuse. Clearing is paid by the already-expensed flat fee, occupies physical resources and earns no delivery. Low cash retires safely without negative balances. All-day driver relief occurs at a junction.
 - Off-hours add no delivery target. Contracts retain window and target. Private service continues with the last operator/fleet/window after closure. Refresh/Restart clears the live session; manual import restores an exported town.
 - Passenger outcomes are measured from real transitions, not report polling: wait starts, completed waits with mean/min/max, per-dwell full-bus denials, abandonment causes, and home-district comparison. Existing data stays tied to stable route versions.
-- Manual save/load is local and browser-owned. The current schema is `version: 5`, `rules: "bellwether-2026-11-v5"` after slice 6. Version 4 and older files are rejected explicitly; there is no migration layer.
+- Manual save/load is local and browser-owned. The current schema is `version: 6`, `rules: "bellwether-2027-01-v6"` after slice 7. Version 5 and older files are rejected explicitly; there is no migration layer.
 
 ## Completed work relevant to the authorized goal
 
@@ -72,6 +72,8 @@ Do not add a full court/legal system, discretionary adjudication, or later polic
 
 ## Completed slice 6 — civic calendar and realistic routines
 
+Complete. See `docs/civic-calendar-slice.md`.
+
 Complete. `docs/civic-calendar-slice.md` records the implemented rules, verification and limits. The shared calendar keeps the 480-second day and 06:00–22:00 / all-day transport windows, adds bounded weekday/weekend routines and shifts, and closes a weekly budget period from recorded ledger movements only.
 
 - Define weekdays, weekends, shifts, holidays or longer budget periods only as far as they affect existing simulation systems. Do not create a full national calendar or political system.
@@ -84,9 +86,9 @@ Complete. `docs/civic-calendar-slice.md` records the implemented rules, verifica
 
 Do not add elections, national holidays, seasonal weather or demographic life stages here.
 
-## Authorized slice 7 — households and household budgets (current batch)
+## Completed slice 7 — households and household budgets
 
-This slice follows slice 6. It replaces individual placeholder wallets with bounded household budgets while preserving transport, employment and accounting behavior.
+Complete. `docs/households-budgets-slice.md` records the implemented rules, verification and limits. One bounded household per home shares a daily budget: employed income is credited, a bounded essential expense is billed, and unpaid essentials become visible arrears. Fares, car costs and car purchase spend from the shared balance; walking remains safe. Schema v6.
 
 - Define households, shared income, essential expenses, discretionary spending, savings or arrears, and how household members share resources.
 - Existing resident income/employment placeholders must map into household income. Do not create a complete macroeconomy or banking system.
@@ -98,9 +100,9 @@ This slice follows slice 6. It replaces individual placeholder wallets with boun
 
 Do not add retail purchasing, banking/credit or housing markets in this slice; those belong to later batches.
 
-## Authorized slice 8 — employment and hiring
+## Authorized slice 8 — employment and hiring (current batch)
 
-This slice follows slice 7. It turns the current fixed employer assignment into bounded vacancies, unemployment, skills, wages and business staffing.
+This slice follows slice 7 and is the current batch. It turns the current fixed employer assignment into bounded vacancies, unemployment, skills, wages and business staffing.
 
 - Employers have vacancies/capacity, wage offers, skill requirements and staffing pressure. Residents have skills or qualifications and job-search/commuting decisions.
 - Hiring, firing, vacancies and unemployment must reconcile with existing employer counts, household income, routines and transport demand.
@@ -147,7 +149,7 @@ Manual save/load, bounded history, fixed clearance fees, authored population and
 
 ## Numbered development sequence
 
-The original numbering is retained so requests such as “work on slice 5” or “slices 5–9” are unambiguous. Slices 1–6 are complete. **Slices 7–9 are the authorized goal. Slices 10–39 remain proposed work, not authorization to implement them.**
+The original numbering is retained so requests such as “work on slice 5” or “slices 5–9” are unambiguous. Slices 1–7 are complete. **Slices 8–9 are the authorized goal. Slices 10–39 remain proposed work, not authorization to implement them.**
 
 1. **Agreement regularity targets — complete:** optional targets, overdue diagnostics and retained agreement results; no financial penalties.
 2. **Save/load — complete:** versioned manual local files preserve towns, accounts, agreements, routes, observations and live journeys.
@@ -155,8 +157,8 @@ The original numbering is retained so requests such as “work on slice 5” or 
 4. **Bus staffing and fleet investment — complete:** recruited day and night driver rosters, purchased and maintained owned buses, depot capacity, and shared dispatch and acceptance commitments. See `docs/operator-workforce-slice.md`.
 5. **Transport contract enforcement — complete:** cure-first capped service credit, cash-floor waiver, route-change suspension, ledger kind 10, schema v4.
 6. **Civic calendar and realistic routines — complete:** weekdays, shifts, weekends and a weekly budget period. See `docs/civic-calendar-slice.md`.
-7. **Households and household budgets — authorized, current batch:** shared income, essential expenses and financial pressure.
-8. **Employment and hiring — authorized:** vacancies, unemployment, skills, wages and business staffing.
+7. **Households and household budgets — complete:** shared income, essential expenses and financial pressure.
+8. **Employment and hiring — authorized, current batch:** vacancies, unemployment, skills, wages and business staffing.
 9. **Housing and occupancy — authorized:** renting, ownership, affordability, moves and displacement.
 10. **Development proposals and permits:** private construction responding to zoning and demand.
 11. **Physical building construction:** access, crews, materials, terrain and foundation costs.
@@ -193,4 +195,4 @@ Timetables, transfers and automatic route optimisation need separate transport s
 
 ## Continuation instruction
 
-If the next user asks to continue from this kickoff, carry slices 7–9 through implementation in order; slices 5 and 6 are complete. For each slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the next slice. Preserve existing work and do not stop at a plan. Do not add a permanent test suite or expand into slices 10–39 without authorization. Finish each slice with what changed, what was verified and remaining limitations.
+If the next user asks to continue from this kickoff, carry slices 8–9 through implementation in order; slices 5, 6 and 7 are complete. For each slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the next slice. Preserve existing work and do not stop at a plan. Do not add a permanent test suite or expand into slices 10–39 without authorization. Finish each slice with what changed, what was verified and remaining limitations.
