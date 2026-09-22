@@ -39,7 +39,25 @@ pub const Agreement = struct {
     route_version: u32 = 0,
     stop_count: usize = 0,
     stops: [transport.max_stops]usize = @splat(0),
+    // Slice 5: cure-first service credit. Only delivered bus-seconds against the
+    // windowed target integral are enforceable; regularity stays review-only.
+    breach_start: f64 = 0, // 0 while no breach is observed
+    cure_until: f64 = 0,
+    breach_days: u32 = 0,
+    credit_accrued: f64 = 0,
+    credit_paid: f64 = 0,
+    credit_waived: f64 = 0,
+    settled_expected: f64 = 0, // expected integral already charged or excused
+    settled_delivered: f64 = 0,
 };
+// One whole simulation day of grace before a remedy can accrue.
+pub const cure_seconds: f64 = 480;
+// A breach needs a full day of expected service before it can be declared.
+pub const breach_floor: f64 = 0.85;
+// Public refund of unrun service, at the operator's own vehicle + labour rate.
+pub const credit_rate: f64 = 0.18;
+// A remedy may never approach the contract value.
+pub const credit_cap_fraction: f64 = 0.25;
 pub var agreements: [transport.max_lines]Agreement = @splat(.{});
 pub var history: [64]Agreement = undefined;
 pub var history_count: usize = 0;
@@ -186,6 +204,68 @@ fn regularityTotal(a: *const Agreement, field: u32) usize {
     }
     return total;
 }
+pub fn creditCap(a: *const Agreement) f64 {
+    return finance.cents(a.price * credit_cap_fraction);
+}
+// 0 none, 1 curing, 2 breached, 3 capped, 4 closed while breached.
+pub fn enforcementState(a: *const Agreement, time: f64) u32 {
+    if (a.status >= 3) return if (a.breach_days > 0) 4 else 0;
+    if (a.status != 2 or a.breach_start == 0) return 0;
+    if (a.credit_accrued >= creditCap(a) - 0.0001) return 3;
+    return if (time < a.cure_until) 1 else 2;
+}
+fn breach_now(a: *const Agreement) bool {
+    return a.expected >= 480 and a.delivered < a.expected * breach_floor;
+}
+// Cure first, then accrue the refund of unrun service up to the cap. Accrual is
+// computed from the same measured integrals that earn payment, prorated on the
+// final step exactly as measure() does, so no other evidence can charge money.
+fn enforce(a: *Agreement, time: f64) void {
+    if (!breach_now(a)) {
+        a.breach_start = 0;
+        a.cure_until = 0;
+        a.settled_expected = a.expected;
+        a.settled_delivered = a.delivered;
+        return;
+    }
+    if (a.breach_start == 0) {
+        a.breach_start = time;
+        a.cure_until = time + cure_seconds;
+        a.breach_days = 1;
+        a.settled_expected = a.expected;
+        a.settled_delivered = a.delivered;
+        return;
+    }
+    if (time < a.cure_until) {
+        a.settled_expected = a.expected;
+        a.settled_delivered = a.delivered;
+        return;
+    }
+    const expected_delta = @max(0, a.expected - a.settled_expected);
+    const delivered_delta = @max(0, a.delivered - a.settled_delivered);
+    a.settled_expected = a.expected;
+    a.settled_delivered = a.delivered;
+    const missing = expected_delta - @min(expected_delta, delivered_delta);
+    if (missing <= 0) return;
+    a.breach_days +|= 1;
+    a.credit_accrued = @min(creditCap(a), finance.cents(a.credit_accrued + missing * credit_rate));
+}
+// Pay from the operator's own cash above the dispatch floor, in whole pennies,
+// in one transaction. Anything unpaid is waived, never debt.
+fn collectCredit(a: *Agreement, time: f64) void {
+    const due = finance.cents(@max(0, a.credit_accrued - a.credit_paid - a.credit_waived));
+    if (due <= 0) return;
+    const account = &operators.accounts[a.company];
+    const payable = finance.cents(@max(0, @min(due, account.cash - 2.18)));
+    const waived = finance.cents(due - payable);
+    if (payable > 0) {
+        account.cash = finance.cents(account.cash - payable);
+        account.credits = finance.cents(account.credits + payable);
+        a.credit_paid = finance.cents(a.credit_paid + payable);
+        finance.record(time, payable, 10, @intCast(a.company), @intCast(a.number));
+    }
+    if (waived > 0) a.credit_waived = finance.cents(a.credit_waived + waived);
+}
 fn measure(a: *Agreement, time: f64) void {
     measureRegularity(a, time);
     const end = @min(time, a.start + a.duration);
@@ -198,6 +278,7 @@ fn measure(a: *Agreement, time: f64) void {
     a.delivered = @min(a.expected, a.delivered + delta);
     a.baseline = current;
     a.updated = time;
+    enforce(a, end);
 }
 fn settle(a: *Agreement, time: f64) void {
     const payment = finance.cents(@max(0, earned(a) - a.paid));
@@ -214,6 +295,7 @@ fn finish(a: *Agreement, time: f64, status: u32) void {
     if (a.status == 2) {
         measure(a, time);
         settle(a, time);
+        collectCredit(a, time);
     }
     a.released = a.reserved;
     finance.reserved = finance.cents(finance.reserved - a.reserved);
@@ -255,6 +337,7 @@ pub fn update(time: f64) void {
         } else {
             measure(a, time);
             if (earned(a) - a.paid >= 1) settle(a, time);
+            collectCredit(a, time);
         }
     }
 }
@@ -287,6 +370,15 @@ pub fn read(a: *const Agreement, field: u32) f64 {
         24...26 => @floatFromInt(regularityTotal(a, field)),
         27 => if (a.regularity_suspended) 1 else 0,
         28 => a.regularity_time,
+        29 => @floatFromInt(enforcementState(a, a.updated)),
+        30 => a.credit_accrued,
+        31 => a.credit_paid,
+        48 => a.credit_waived,
+        49 => creditCap(a),
+        50 => a.breach_start,
+        51 => a.regularity_time.max(a.cure_until),
+        52 => @floatFromInt(a.breach_days),
+        53 => if (breach_now(a)) 1 else 0,
         32...47 => if (field - 32 < a.stop_count) @floatFromInt(a.stops[field - 32]) else -1,
         else => -1,
     };

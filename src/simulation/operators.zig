@@ -37,6 +37,8 @@ pub const Account = struct {
     recruitment: f64 = 0,
     severance: f64 = 0,
     maintenance: f64 = 0,
+    // Slice 5: service credits paid to the municipality for chronic under-delivery.
+    credits: f64 = 0,
     units: [max_units]Unit = @splat(.{}),
 };
 
