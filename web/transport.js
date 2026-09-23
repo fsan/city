@@ -28,8 +28,57 @@ export function createTransport(game, ui) {
   let selected = -1,
     draft = null,
     gesture = null,
-    overlay = 0;
+    overlay = 0,
+    tool = null,
+    signal = -1;
   const message = (text) => ($("transport-message").textContent = text);
+  // Slice 11: traffic-signal placement tools and the selected-light inspector.
+  const signalButton = $("signal-place"), crosswalkButton = $("crosswalk-place"), crosswalkRemoveButton = $("crosswalk-remove");
+  const inspector = $("signal-inspector"), greenInput = $("signal-green"), yellowInput = $("signal-yellow");
+  const arm = (next) => {
+    tool = tool === next ? null : next;
+    signalButton.setAttribute("aria-pressed", tool === "signal" ? "true" : "false");
+    crosswalkButton.setAttribute("aria-pressed", tool === "crosswalk" ? "true" : "false");
+    crosswalkRemoveButton.setAttribute("aria-pressed", tool === "crosswalk-remove" ? "true" : "false");
+    message(tool === "signal" ? "Click a junction arm to place a traffic light."
+      : tool === "crosswalk" ? "Click a street to add a crosswalk."
+      : tool === "crosswalk-remove" ? "Click a street to remove its crosswalk."
+      : "");
+    return tool;
+  };
+  signalButton.onclick = () => arm("signal");
+  crosswalkButton.onclick = () => arm("crosswalk");
+  crosswalkRemoveButton.onclick = () => arm("crosswalk-remove");
+  function showSignal(head) {
+    signal = head;
+    if (head < 0) { inspector.hidden = true; return; }
+    inspector.hidden = false;
+    const node = r(29, head, 1), road = r(29, head, 2), state = r(29, head, 5);
+    const names = ["red", "amber", "green"];
+    const simSeconds = (value) => `${value.toFixed(1)} s (${(value * 3).toFixed(0)} sim min)`;
+    $("signal-summary").textContent =
+      `Junction at node ${node + 1} · arm on street #${road + 1} · phase ${r(29,head,3) + 1} of ${r(29,head,4)} · currently ${names[state] ?? "?"}. ` +
+      `One branch runs at a time; the others wait. ${r(29,head,12)} junctions are signalised.`;
+    greenInput.min = r(29, head, 13); greenInput.max = r(29, head, 14);
+    if (document.activeElement !== greenInput) greenInput.value = r(29, head, 6).toFixed(1);
+    if (document.activeElement !== yellowInput) yellowInput.value = r(29, head, 7).toFixed(1);
+    const left = r(29, head, 9);
+    $("signal-clock").textContent =
+      `Green ${simSeconds(r(29,head,6))} · amber ${simSeconds(r(29,head,7))} · full cycle ${simSeconds(r(29,head,8))}. ` +
+      `This branch changes in ${simSeconds(left)}. Timings are simulation time, not real time.`;
+  }
+  $("signal-apply").onclick = () => {
+    if (signal < 0) return;
+    const node = r(29, signal, 1);
+    const green = game.signal_set_green(node, Number(greenInput.value));
+    const yellow = game.signal_set_yellow(node, Number(yellowInput.value));
+    message(green < 0 || yellow < 0 ? "That junction has no signal." : `Timing set: green ${green.toFixed(1)} s, amber ${yellow.toFixed(1)} s (simulation time).`);
+    showSignal(signal);
+  };
+  $("signal-remove").onclick = () => {
+    if (signal < 0) return;
+    if (game.signal_remove(r(29, signal, 1))) { message("Signal removed."); showSignal(-1); }
+  };
   const option = (value, text) => {
     const o = document.createElement("option");
     o.value = value;
@@ -302,6 +351,25 @@ export function createTransport(game, ui) {
     const p = { x: event.clientX, y: event.clientY },
       pts = points(),
       stopPts = stopPoints();
+    if (tool === "signal") {
+      const head = game.signal_place_screen(p.x, p.y);
+      message(head < 0 ? "No junction there. Click nearer an arm of the street network." : "Traffic light placed. Click it to set its timing.");
+      if (head >= 0) { arm(null); showSignal(head); }
+      return true;
+    }
+    if (tool === "crosswalk") {
+      const road = game.crosswalk_place_screen(p.x, p.y);
+      message(road < 0 ? "No street there." : "Crosswalk added; its junction is signalised.");
+      if (road >= 0) { arm(null); chooseRoad(road); $("traffic-road").value = String(road); }
+      return true;
+    }
+    if (tool === "crosswalk-remove") {
+      const road = game.crosswalk_remove_screen(p.x, p.y);
+      if (road >= 0) arm(null);
+      return true;
+    }
+    const picked = game.signal_pick(p.x, p.y);
+    if (picked >= 0) { showSignal(picked); return true; }
     if (draft) {
       let index = draft.findIndex(
         (n) => Math.hypot(stopPts[n].x - p.x, stopPts[n].y - p.y) < 15,
@@ -515,6 +583,7 @@ export function createTransport(game, ui) {
       button.disabled = !active;
       button.textContent = `Bus ${slot + 1} · ${active ? `${r(12, id, 4)}/24 aboard · ${r(12, id, 3).toFixed(1)} m/s · locate` : "Out of service"}`;
     });
+    if (signal >= 0) showSignal(signal);
     const road = Number($("traffic-road").value);
     crossing.textContent = r(5,road,14) ? "Remove crosswalk" : "Add crosswalk";
     $("traffic-road-stats").textContent =
@@ -569,6 +638,11 @@ export function createTransport(game, ui) {
     toggleTraffic: () => setOverlay(overlay === 2 ? 0 : 2),
     toggleCondition: () => setOverlay(overlay === 1 ? 0 : 1),
     reset() {
+      tool = null;
+      showSignal(-1);
+      signalButton.setAttribute("aria-pressed", "false");
+      crosswalkButton.setAttribute("aria-pressed", "false");
+      crosswalkRemoveButton.setAttribute("aria-pressed", "false");
       networkRevision = -1;
       syncNetwork();
       $("stop-record").value = "18";

@@ -861,7 +861,10 @@ fn crossingWait(p: *Person, elapsed: f64, dt: f32) bool {
     const dot = ((here.x - came.x) * (next.x - here.x) + (here.z - came.z) * (next.z - here.z)) / (in_len * out_len);
     if (dot >= 0.7) return false; // straight through the junction: no crossing
     const marked = city.markedCrossing(p.node, city.horizontal(p.back, p.node));
-    const parallel = transport.green(p.node, city.horizontal(p.node, p.next), elapsed);
+    // Slice 11: the parallel movement holds green while this crossing's own
+    // traffic arm is stopped, so a signalised corner releases walkers with it.
+    const movement = city.Vec{ .x = next.x - here.x, .z = next.z - here.z };
+    const parallel = transport.signals.crossingAllowed(p.node, movement, elapsed);
     const gap = transport.junction_traffic[p.node] == 0;
     if (travel.crossingAdmitted(marked, parallel, gap, p.cross_wait)) {
         p.cross_wait = 0;

@@ -2,6 +2,7 @@ const std = @import("std");
 const city = @import("../scene/city.zig");
 const travel = @import("travel.zig");
 pub const operators = @import("operators.zig");
+pub const signals = @import("signals.zig");
 pub var clock: f64 = 160;
 pub const max_lines = 8;
 pub const max_stops = 16;
@@ -134,9 +135,10 @@ pub var selected: i32 = -1;
 pub var draft: [max_stops]usize = @splat(0);
 pub var draft_count: usize = 0;
 pub var editing: bool = false;
-pub fn green(node: usize, horizontal: bool, elapsed: f64) bool {
-    const phase = @mod(elapsed + @as(f64, @floatFromInt(node % 3)), 12);
-    return if (horizontal) phase < 5 else phase >= 6 and phase < 11;
+// Slice 11: cars obey the junction's own signal, which greens one branch at a
+// time. An unsignalised junction stays uncontrolled.
+pub fn green(node: usize, road: usize, elapsed: f64) bool {
+    return signals.green(node, road, elapsed);
 }
 pub fn init() void {
     operators.init();
@@ -152,6 +154,7 @@ pub fn init() void {
     congestion = @splat(0);
     junction_traffic = @splat(0);
     crossing_active = @splat(0);
+    signals.seed();
     seedMovement();
     fare_cap = 2;
     subsidy = 1;
@@ -499,8 +502,7 @@ pub fn journey(from: usize, to: usize) Journey {
 fn entryAllowed(v: Vehicle, next: usize, elapsed: f64) bool {
     const road_id = city.road_between[v.node][next];
     if (road_id < 0 or !city.roads[@intCast(road_id)].vehicles) return false;
-    const horizontal = city.horizontal(v.node, next);
-    if (city.degree(v.node) >= 3 and !green(v.node, horizontal, elapsed)) return false;
+    if (city.degree(v.node) >= 3 and !green(v.node, @intCast(road_id), elapsed)) return false;
     if (!room(v, next)) return false;
     var candidate = v;
     candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] == 1) 1 else 0;

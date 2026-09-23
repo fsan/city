@@ -989,6 +989,31 @@
             observed on that segment, capped at £1.20. Lanes never allow
             kerbside parking.
           </p>
+          <h3>Traffic signals and crosswalks</h3>
+          <div class="transport-controls">
+            <button id="signal-place" aria-pressed="false">Place traffic light</button>
+            <button id="crosswalk-place" aria-pressed="false">Add crosswalk</button>
+            <button id="crosswalk-remove" aria-pressed="false">Remove crosswalk</button>
+          </div>
+          <p class="note">
+            Arm a tool, then click the map. Placement snaps to the nearest
+            junction arm. A light is set back from the corner and gives one
+            branch green at a time, as real life does.
+          </p>
+          <div id="signal-inspector" hidden>
+            <div id="signal-summary" class="note"></div>
+            <label>Green time (simulation seconds)
+              <input id="signal-green" type="number" min="2" max="60" step="0.5">
+            </label>
+            <label>Yellow time (simulation seconds)
+              <input id="signal-yellow" type="number" min="1" max="10" step="0.5">
+            </label>
+            <div class="transport-controls">
+              <button id="signal-apply">Apply timing</button>
+              <button id="signal-remove">Remove this signal</button>
+            </div>
+            <p class="note" id="signal-clock"></p>
+          </div>
           <h3>Current queues</h3>
           <div id="traffic-hotspots"></div>
           <p id="transport-message" role="status"></p>

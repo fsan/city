@@ -11,6 +11,7 @@ pub var width: f32 = 1200;
 pub var height: f32 = 800;
 pub var selected: i32 = -1;
 pub var selected_person: i32 = -1;
+pub var selected_signal: i32 = -1;
 pub var overlay: u32 = 0;
 const transport = game.transport;
 const Color = [3]f32;
@@ -217,7 +218,7 @@ pub fn draw(w: f32, h: f32) void {
         if (r.crosswalk and length > 5) for (0..2) |end| {
             const n = if (end == 0) r.a else r.b;
             if (city.degree(n) < 3) continue;
-            const t: f32 = if (end == 0) 2.5 else length - 2.5;
+            const t: f32 = if (end == 0) 3.6 else length - 3.6;
             const c = city.Vec{ .x = a.x + ux * t, .z = a.z + uz * t };
             for (0..7) |stripe| {
                 const off = -1.5 + @as(f32, @floatFromInt(stripe)) * 0.5;
@@ -225,16 +226,30 @@ pub fn draw(w: f32, h: f32) void {
             }
         };
     }
-    for (city.nodes, 0..) |n, id| {
-        if (city.degree(id) < 3) continue;
-        for (0..2) |axis| {
-            const x = n.x + (if (axis == 0) @as(f32, -2.3) else 2.3);
-            const z = n.z - 2.3;
-            const y = city.elevation(x, z);
-            box(x - 0.07, z - 0.07, 0.14, 0.14, 1.7, y + 0.1, .{ 0.25, 0.27, 0.25 });
-            box(x - 0.18, z - 0.18, 0.36, 0.36, 0.6, y + 1.7, .{ 0.12, 0.14, 0.13 });
-            const green = transport.green(id, axis == 0, game.elapsed);
-            box(x - 0.2, z - 0.2, 0.4, 0.4, 0.18, y + (if (green) @as(f32, 1.75) else 2.08), if (green) .{ 0.26, 0.9, 0.4 } else .{ 1, 0.24, 0.12 });
+    // Slice 11: signal heads stand back from the corner on their own arm, one
+    // per branch, and only the branch holding green shows a green lamp.
+    for (transport.signals.junctions[0..transport.signals.count], 0..) |junction, junction_index| {
+        if (!junction.active) continue;
+        for (junction.arms[0..junction.arm_count], 0..) |arm, slot| {
+            if (arm < 0) continue;
+            const road_id: usize = @intCast(arm);
+            const p = transport.signals.headPosition(junction.node, road_id) orelse continue;
+            const y = city.elevation(p.x, p.z);
+            const state = transport.signals.armState(&junction, slot, game.elapsed);
+            const selected_head = selected_signal == @as(i32, @intCast(signal_index(junction_index, slot)));
+            box(p.x - 0.08, p.z - 0.08, 0.16, 0.16, 1.7, y + 0.1, .{ 0.25, 0.27, 0.25 });
+            box(p.x - 0.19, p.z - 0.19, 0.38, 0.38, 0.66, y + 1.7, if (selected_head) .{ 0.95, 0.8, 0.35 } else .{ 0.12, 0.14, 0.13 });
+            const lamp = switch (state) {
+                .green => Color{ 0.26, 0.9, 0.4 },
+                .yellow => Color{ 0.95, 0.78, 0.2 },
+                .red => Color{ 1, 0.24, 0.12 },
+            };
+            const lit = switch (state) {
+                .green => @as(f32, 1.78),
+                .yellow => @as(f32, 1.94),
+                .red => @as(f32, 2.10),
+            };
+            box(p.x - 0.21, p.z - 0.21, 0.42, 0.42, 0.16, y + lit, lamp);
         }
     }
     // Ground-only projected shadows, clipped into small terrain-following cells.
@@ -385,6 +400,40 @@ pub fn draw(w: f32, h: f32) void {
         quad(.{ p.x - dx, y, p.z - dz }, .{ p.x + dx, y, p.z + dz }, .{ p.x + dx, y + 0.9, p.z + dz }, .{ p.x - dx, y + 0.9, p.z - dz }, color);
     }
 }
+// Heads are addressed by a flat index: junctions in order, then their arms.
+pub fn signal_index(junction_index: usize, slot: usize) usize {
+    var index: usize = 0;
+    var j: usize = 0;
+    while (j < junction_index and j < transport.signals.count) : (j += 1) index += transport.signals.junctions[j].arm_count;
+    return index + slot;
+}
+
+// Slice 11: nearest signal head under the cursor, in screen pixels. Sets the
+// renderer's own selection so the inspector and the highlight agree.
+pub fn pickSignal(sx: f32, sy: f32, radius: f32) i32 {
+    var best: i32 = -1;
+    var best_distance: f32 = radius * radius;
+    for (transport.signals.junctions[0..transport.signals.count], 0..) |junction, junction_index| {
+        if (!junction.active) continue;
+        for (junction.arms[0..junction.arm_count], 0..) |arm, slot| {
+            if (arm < 0) continue;
+            const p = transport.signals.headPosition(junction.node, @intCast(arm)) orelse continue;
+            const py = city.elevation(p.x, p.z) + 2.0;
+            const px = p.x - camera_x;
+            const pz = p.z - camera_z;
+            const screen_x = width / 2 + (px * @cos(angle) - pz * @sin(angle)) * scale();
+            const screen_y = height / 2 - (py * 0.8164966 - (px * @sin(angle) + pz * @cos(angle)) * 0.5773503) * scale();
+            const d = (screen_x - sx) * (screen_x - sx) + (screen_y - sy) * (screen_y - sy);
+            if (d < best_distance) {
+                best_distance = d;
+                best = @intCast(signal_index(junction_index, slot));
+            }
+        }
+    }
+    selected_signal = best;
+    return best;
+}
+
 pub fn pick(sx: f32, sy: f32) void {
     const across = (sx - width / 2) / scale();
     const back = (sy - height / 2) / scale() / 0.5773503;

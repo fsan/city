@@ -14,6 +14,7 @@ const households = game.households;
 const housing = game.housing;
 const parking = game.parking;
 const travel = game.travel;
+const signals = game.transport.signals;
 
 // JSON fields, not native struct bytes. Bump version/rules when changing this contract.
 pub const capacity = 16 * 1024 * 1024;
@@ -69,6 +70,10 @@ const Mobility = struct {
     fare_cap: f64,
     subsidy: f64,
     subsidy_total: f64,
+    // Slice 11: signalised junctions, their per-arm phases and timings.
+    junctions: []const signals.Junction,
+    placed_total: u32,
+    removed_total: u32,
 };
 const Parked = struct {
     facilities: []const parking.Facility,
@@ -150,8 +155,8 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 9,
-        .rules = "bellwether-2027-04-v9",
+        .version = 10,
+        .rules = "bellwether-2027-05-v10",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = &city.buildings, .parcels = parcels.storage[0..parcels.count], .next_node = next_rows[0..city.node_count], .walk_next = walk_rows[0..city.node_count], .distance = distance_rows[0..city.node_count] },
@@ -167,7 +172,7 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
         .housing_rent_collected_total = housing.rent_collected_total,
         .housing_ownership_collected_total = housing.ownership_collected_total,
         .citizens = .{ .people = &residents.people, .companies = residents.companies[0..residents.company_count], .walking = residents.walking, .employed = residents.employed, .pedestrians = residents.pedestrians[0..city.road_count], .district_outcomes = &residents.district_outcomes },
-        .mobility = .{ .vehicles = &transport.vehicles, .lines = &transport.lines, .accounts = &operators.accounts, .observations = &transport.observations, .previous_observations = &transport.previous_observations, .lanes = lane_values[0..city.road_count], .occupancy = transport.occupancy[0..city.road_count], .queues = transport.queues[0..city.road_count], .congestion = transport.congestion[0..city.road_count], .movement = transport.movement[0..city.road_count], .fare_cap = transport.fare_cap, .subsidy = transport.subsidy, .subsidy_total = transport.subsidy_total },
+        .mobility = .{ .vehicles = &transport.vehicles, .lines = &transport.lines, .accounts = &operators.accounts, .observations = &transport.observations, .previous_observations = &transport.previous_observations, .lanes = lane_values[0..city.road_count], .occupancy = transport.occupancy[0..city.road_count], .queues = transport.queues[0..city.road_count], .congestion = transport.congestion[0..city.road_count], .movement = transport.movement[0..city.road_count], .fare_cap = transport.fare_cap, .subsidy = transport.subsidy, .subsidy_total = transport.subsidy_total, .junctions = signals.junctions[0..signals.count], .placed_total = signals.placed_total, .removed_total = signals.removed_total },
         .treasury = .{ .cash = finance.cash, .reserved = finance.reserved, .residential_rate = finance.residential_rate, .commercial_rate = finance.commercial_rate, .funding = finance.funding, .active_funding = finance.active_funding, .maintenance_paid = finance.maintenance_paid, .collected = finance.collected, .spent = finance.spent, .arrears = &finance.arrears, .entry_count = finance.entry_count, .entries = finance.entries[0..@min(finance.entry_count, finance.entries.len)], .periods = finance.periods[0..@min(finance.period_count, finance.periods.len)], .period_count = finance.period_count, .period_opening = finance.period_opening, .period_receipts = finance.period_receipts, .period_expenses = finance.period_expenses, .period_entries = finance.period_entries, .period_week = finance.period_week },
         .services = .{ .orders = contracts.orders[0..contracts.count], .next_review = contracts.next_review, .current = &agreements.agreements, .history = agreements.history[0..@min(agreements.history_count, agreements.history.len)], .history_count = agreements.history_count, .next_number = agreements.next_number },
         .trust = &game.trust,
@@ -448,6 +453,20 @@ fn validate(s: *const State) bool {
         if (facility.node >= n) return false;
     }
     for (m.movement) |value| if (!between(value, 0, 1e6)) return false;
+    // Slice 11 signals: bounded junction count, valid node and arm roads, and
+    // green/yellow inside the editor's own limits.
+    if (m.junctions.len > signals.max_junctions or m.placed_total > 1000000 or m.removed_total > 1000000) return false;
+    for (m.junctions) |junction| {
+        if (junction.node >= n or junction.arm_count == 0 or junction.arm_count > signals.max_arms) return false;
+        if (!between(junction.green, signals.min_green, signals.max_green) or
+            !between(junction.yellow, signals.min_yellow, signals.max_yellow) or
+            !between(junction.offset, 0, 60)) return false;
+        for (junction.arms[0..junction.arm_count]) |arm| {
+            if (arm < 0 or arm >= roads.len) return false;
+            const road = roads[@intCast(arm)];
+            if (road.a != junction.node and road.b != junction.node) return false;
+        }
+    }
     for (m.vehicles, 0..) |v, i| {
         if (v.node >= n or v.next >= n or v.target >= n or v.company >= 3 or v.lane > 1 or !index(v.line, 8) or v.stop >= 16 or !between(v.dwell, 0, 5) or v.speed < 0 or v.progress < 0 or v.passengers != riders[i] or v.passengers > 24 or (!v.active and v.passengers != 0)) return false;
         if (i < city.population) {
@@ -658,6 +677,11 @@ fn commit(s: *const State) void {
     transport.fare_cap = m.fare_cap;
     transport.subsidy = m.subsidy;
     transport.subsidy_total = m.subsidy_total;
+    signals.count = m.junctions.len;
+    @memcpy(signals.junctions[0..signals.count], m.junctions);
+    signals.placed_total = m.placed_total;
+    signals.removed_total = m.removed_total;
+    scene.selected_signal = -1;
     transport.subsidy_due = 0;
     transport.subsidy_available = 0;
     transport.arrival_count = 0;
@@ -716,7 +740,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 9 and std.mem.eql(u8, rules, "bellwether-2027-04-v9");
+    return version == 10 and std.mem.eql(u8, rules, "bellwether-2027-05-v10");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

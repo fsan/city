@@ -7,6 +7,7 @@ const residents = game.residents;
 const finance = game.finance;
 const contracts = game.contracts;
 const transport = game.transport;
+const signals = transport.signals;
 const parking = game.parking;
 const travel = game.travel;
 var speed: f32 = 1;
@@ -18,6 +19,7 @@ export fn init() void {
     scene.reset();
     scene.selected = -1;
     scene.selected_person = -1;
+    scene.selected_signal = -1;
     speed = 1;
     resume_speed = 1;
     accumulator = 0;
@@ -717,8 +719,115 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 else => -1,
             };
         },
+        29 => {
+            // Slice 11 signal heads, addressed by a flat index over junctions
+            // and their arms. Green and yellow are simulation seconds.
+            const head = signalHead(id);
+            if (head < 0) return -1;
+            const junction = &signals.junctions[headJunction(@intCast(head))];
+            const arm = headArm(@intCast(head));
+            const road_id: usize = @intCast(junction.arms[arm]);
+            const state = signals.armState(junction, arm, game.elapsed);
+            return switch (field) {
+                0 => @floatFromInt(headJunction(@intCast(head))),
+                1 => @floatFromInt(junction.node),
+                2 => @floatFromInt(road_id),
+                3 => @floatFromInt(arm),
+                4 => @floatFromInt(junction.arm_count),
+                5 => @floatFromInt(@intFromEnum(state)),
+                6 => junction.green,
+                7 => junction.yellow,
+                8 => signals.cycleSeconds(junction),
+                9 => signals.secondsLeft(junction, arm, game.elapsed),
+                10 => blk: {
+                    const p2 = signals.headPosition(junction.node, road_id) orelse break :blk -1;
+                    break :blk p2.x;
+                },
+                11 => blk: {
+                    const p2 = signals.headPosition(junction.node, road_id) orelse break :blk -1;
+                    break :blk p2.z;
+                },
+                12 => @floatFromInt(signals.count),
+                13 => signals.min_green,
+                14 => signals.max_green,
+                else => -1,
+            };
+        },
         else => return -1,
     }
+}
+
+
+// Signal heads are numbered junction by junction, then arm by arm, matching
+// the renderer's own flat numbering.
+fn headJunction(head: usize) usize {
+    var index: usize = 0;
+    var j: usize = 0;
+    while (j < signals.count) : (j += 1) {
+        const next = index + signals.junctions[j].arm_count;
+        if (head < next) return j;
+        index = next;
+    }
+    return if (signals.count > 0) signals.count - 1 else 0;
+}
+
+fn headArm(head: usize) usize {
+    var index: usize = 0;
+    var j: usize = 0;
+    while (j < signals.count) : (j += 1) {
+        const next = index + signals.junctions[j].arm_count;
+        if (head < next) return head - index;
+        index = next;
+    }
+    return 0;
+}
+
+fn headCount() usize {
+    var total: usize = 0;
+    for (signals.junctions[0..signals.count]) |j| total += j.arm_count;
+    return total;
+}
+
+// The ABI passes an unsigned id; any id beyond the head count is "no head".
+fn signalHead(index: u32) i64 {
+    const head: usize = index;
+    return if (head < headCount()) @intCast(head) else -1;
+}
+
+// Slice 11: flat index of one signal head inside a junction's own arm list.
+fn signalFlat(junction_index: usize, arm: usize) i32 {
+    if (junction_index >= signals.count) return -1;
+    var index: usize = 0;
+    var j: usize = 0;
+    while (j < junction_index) : (j += 1) index += signals.junctions[j].arm_count;
+    if (arm >= signals.junctions[junction_index].arm_count) return -1;
+    return @intCast(index + arm);
+}
+
+// Snapping for the placement tools: the nearest junction node to a ground
+// point, preferring whichever end of the nearest segment is a real junction.
+fn nearJunctionNode(p: city.Vec) ?usize {
+    var best: f32 = 9;
+    var result: ?usize = null;
+    for (city.roads) |r| {
+        const a = city.nodes[r.a];
+        const b = city.nodes[r.b];
+        const length_sq = @max(0.0001, (b.x - a.x) * (b.x - a.x) + (b.z - a.z) * (b.z - a.z));
+        const t = std.math.clamp(((p.x - a.x) * (b.x - a.x) + (p.z - a.z) * (b.z - a.z)) / length_sq, 0, 1);
+        const qx = a.x + (b.x - a.x) * t;
+        const qz = a.z + (b.z - a.z) * t;
+        const d = city.hypot(p.x - qx, p.z - qz);
+        if (d >= best) continue;
+        const da = city.hypot(p.x - a.x, p.z - a.z);
+        const db = city.hypot(p.x - b.x, p.z - b.z);
+        const first = if (da <= db) r.a else r.b;
+        const second = if (da <= db) r.b else r.a;
+        const node = if (city.degree(first) >= 3) first else second;
+        if (city.degree(node) < 3) continue;
+        best = d;
+        result = node;
+    }
+    return result;
 }
 
 fn linePassengerTotal(line: usize, field: u32) f64 {
@@ -882,4 +991,88 @@ export fn zoning_pick(x: f32, y: f32) i32 {
 }
 export fn zoning_apply(id: u32, zone: u32, block: u32) bool {
     return game.parcels.paint(id, zone, block == 1);
+}
+
+// Slice 11: the traffic submenu places crosswalks and signals by clicking the
+// map. The ground point snaps to the nearest junction arm.
+export fn signal_place(road: u32, node: u32) i32 {
+    if (road >= city.roads.len or node >= city.node_count) return -1;
+    const r = city.roads[road];
+    if (r.a != node and r.b != node) return -1;
+    const junction = signals.signalise(node) orelse return -1;
+    const arm = signals.armIndex(node, road) orelse return -1;
+    return signalFlat(junction, arm);
+}
+
+export fn signal_remove(node: u32) bool {
+    if (node >= city.node_count) return false;
+    if (!signals.remove(node)) return false;
+    scene.selected_signal = -1;
+    return true;
+}
+
+// Set the green duration in simulation seconds. Returns the applied value, or
+// -1 when there is no signal at that junction.
+export fn signal_set_green(node: u32, seconds: f64) f64 {
+    if (node >= city.node_count or !std.math.isFinite(seconds)) return -1;
+    if (!signals.setGreen(node, @floatCast(seconds))) return -1;
+    const index = signals.find(node) orelse return -1;
+    return signals.junctions[index].green;
+}
+
+export fn signal_set_yellow(node: u32, seconds: f64) f64 {
+    if (node >= city.node_count or !std.math.isFinite(seconds)) return -1;
+    if (!signals.setYellow(node, @floatCast(seconds))) return -1;
+    const index = signals.find(node) orelse return -1;
+    return signals.junctions[index].yellow;
+}
+
+// Click a head: screen pixels in, flat head index out.
+export fn signal_pick(x: f32, y: f32) i32 {
+    return scene.pickSignal(x, y, 20);
+}
+
+export fn signal_selected() i32 {
+    return scene.selected_signal;
+}
+
+// Place a signal at the nearest junction to a screen point. Returns the head.
+export fn signal_place_screen(x: f32, y: f32) i32 {
+    const p = scene.groundPoint(x, y);
+    const node = nearJunctionNode(p) orelse return -1;
+    const junction = signals.signalise(node) orelse return -1;
+    const j = &signals.junctions[junction];
+    if (j.arm_count == 0 or j.arms[0] < 0) return -1;
+    return signalFlat(junction, 0);
+}
+
+// Add a crosswalk to the nearest segment and signalise its junction.
+export fn crosswalk_place_screen(x: f32, y: f32) i32 {
+    const p = scene.groundPoint(x, y);
+    var best: f32 = 9;
+    var road: i32 = -1;
+    for (city.roads, 0..) |r, id| {
+        const a = city.nodes[r.a];
+        const b = city.nodes[r.b];
+        const length_sq = @max(0.0001, (b.x - a.x) * (b.x - a.x) + (b.z - a.z) * (b.z - a.z));
+        const t = std.math.clamp(((p.x - a.x) * (b.x - a.x) + (p.z - a.z) * (b.z - a.z)) / length_sq, 0, 1);
+        const d = city.hypot(p.x - (a.x + (b.x - a.x) * t), p.z - (a.z + (b.z - a.z) * t));
+        if (d < best) {
+            best = d;
+            road = @intCast(id);
+        }
+    }
+    if (road < 0) return -1;
+    city.roads[@intCast(road)].crosswalk = true;
+    const r = city.roads[@intCast(road)];
+    if (city.degree(r.a) >= 3) _ = signals.signalise(r.a);
+    if (city.degree(r.b) >= 3) _ = signals.signalise(r.b);
+    return road;
+}
+
+export fn crosswalk_remove_screen(x: f32, y: f32) i32 {
+    const road = crosswalk_place_screen(x, y);
+    if (road < 0) return -1;
+    city.roads[@intCast(road)].crosswalk = false;
+    return road;
 }
