@@ -1,6 +1,6 @@
 # Proposed development slices
 
-This is a proposed dependency order against the canonical scope, not authorization to implement all slices. Slices 1–3 are complete; slice 4 is the recommended next batch. Later entries need bounded specifications and may split further; reports, alerts, accessibility and balancing belong in each slice. Existing authored town size and population remain until growth is justified.
+This is a proposed dependency order against the canonical scope, not authorization to implement all slices. Slices 1–4 are complete, and slices 5–8 are complete too (see the kickoff). Two batches completed outside this order are recorded at the end: street types, parking and learned travel, and the two traffic-signal batches that note labels slices 11 and 12. Later entries need bounded specifications and may split further; reports, alerts, accessibility and balancing belong in each slice. Existing authored town size and population remain until growth is justified.
 
 1. **Agreement regularity targets — complete:** optional targets, overdue diagnostics and retained agreement results; no financial penalties in this slice.
 2. **Save/load — complete:** versioned manual local files preserve towns, accounts, agreements, routes, observations and live journeys across sessions; no backend or autosave.
@@ -11,8 +11,7 @@ This is a proposed dependency order against the canonical scope, not authorizati
 7. **Households and household budgets:** shared income, essential expenses and financial pressure.
 8. **Employment and hiring:** vacancies, unemployment, skills, wages and business staffing.
 9. **Housing and occupancy — complete:** bounded home units, rent/ownership costs, explicit arrears, vacancy and daily moves/displacement.
-10. **Street types, parking and learned travel — complete:** lane/street/avenue classes in the road tool, bicycle and car parking with hard slot counts and banded kerbside prices, signal and crosswalk compliance for walkers and cyclists, a tiny learned trip-time and parking-availability model per resident, and tenure-driven assessment. See [street-types-parking-learning-slice.md](street-types-parking-learning-slice.md).
-11. **Development proposals and permits:** private construction responding to zoning and demand.
+10. **Development proposals and permits:** private construction responding to zoning and demand.
 11. **Physical building construction:** access, crews, materials, terrain and foundation costs.
 12. **Property valuation and sunlight:** obstruction assessment and development trade-offs.
 13. **Parks and public spaces:** access, maintenance and neighbourhood benefits.
@@ -42,5 +41,7 @@ This is a proposed dependency order against the canonical scope, not authorizati
 37. **Emergencies and resilience:** infrastructure failures, economic shocks and recovery.
 38. **Generated starting towns and scenarios:** varied populations, economies and inherited problems.
 39. **Larger-city scaling:** population growth, performance and tools for governing greater complexity.
+
+Completed outside this numbering: **street types, parking and learned travel** (lane/street/avenue classes in the road tool, bicycle and car parking with hard slot counts and banded kerbside prices, signal and crosswalk compliance for walkers and cyclists, a tiny learned trip-time and parking-availability model per resident, tenure-driven assessment; see [street-types-parking-learning-slice.md](street-types-parking-learning-slice.md)); and **traffic signals and crosswalks**, in two batches labelled slices 11 and 12 in their own note (player-placed per-junction signals, per-light timing, flashing yellow with a daily window, coordination links, bulk edits and a dispatcher preemption hook; see [traffic-signals-slice.md](traffic-signals-slice.md)). Their labels collide with items 11 and 12 above, so confirm which list a “slice” request means.
 
 The scope document describes feature domains, not a complete implementation backlog. Timetables, transfers and automatic route optimisation remain optional transport specifications, not implied additions to these batches. National politics, military conflict and empire systems remain outside the canonical municipal scope.

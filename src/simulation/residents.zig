@@ -238,19 +238,32 @@ fn moveTo(p: *Person, x: f32, y: f32, z: f32, speed: f32, dt: f32) bool {
     p.z += dz / distance * step;
     return false;
 }
-// Slice 6: bounded routine destination from the shared civic calendar.
+// Slice 13: working hours belong to the place people work.
+fn facilityOf(kind: city.Kind) calendar.Facility {
+    return switch (kind) {
+        .office => .office,
+        .shop => .shop,
+        .clinic => .clinic,
+        .hall => .hall,
+        .depot => .depot,
+        else => .other,
+    };
+}
+
+// Slice 6: bounded routine destination from the shared civic calendar. Slice 13
+// reads the employer's own working window instead of a global shift rotation, so
+// offices run 9-5 while shops, clinics and depots cover their own patterns.
 fn routineDestination(p: *const Person, index: usize, routine: calendar.Phase, time: f64) usize {
-    const weekend = calendar.isWeekend(time);
     if (p.crew or p.order >= 0 or p.employer < 0) return p.home;
     const work = companies[@intCast(p.employer)].building;
-    if (!weekend) {
-        const shift: calendar.Shift = @enumFromInt(p.shift);
-        if (calendar.onShift(shift, time)) return work;
-        // A short errand window keeps weekday demand on the network outside work.
-        if (routine == .evening and index % 7 == 0) return errandTarget(p);
+    const facility = facilityOf(city.buildings[work].kind);
+    if (calendar.onFacilityShift(facility, p.shift, time)) return work;
+    if (calendar.isWeekend(time)) {
+        if ((routine == .morning or routine == .leisure) and index % 8 == 0) return errandTarget(p);
         return p.home;
     }
-    if ((routine == .morning or routine == .leisure) and index % 8 == 0) return errandTarget(p);
+    // A short errand window keeps weekday demand on the network outside work.
+    if (routine == .evening and index % 7 == 0) return errandTarget(p);
     return p.home;
 }
 
@@ -651,10 +664,17 @@ fn predictedSeconds(p: *const Person, mode: u8, slot: usize) f32 {
 fn departureLead(p: *const Person, elapsed: f64) f32 {
     const work: usize = if (p.employer >= 0) companies[@intCast(p.employer)].building else p.destination_building;
     if (p.destination_building != work) return 0;
-    const shift: calendar.Shift = @enumFromInt(@min(p.shift, 2));
+    const facility = facilityOf(city.buildings[work].kind);
+    const window = calendar.facilityWindow(facility, p.shift);
     const day = @floor(elapsed / calendar.seconds_per_day);
-    var target = day * calendar.seconds_per_day + calendar.shiftStart(shift);
-    while (target <= elapsed + 2) target += calendar.seconds_per_day;
+    // Slice 13: aim for the window that is running now, or the next one when the
+    // resident is still early. The old code always stepped to tomorrow, so
+    // anybody at home during their own shift waited a whole day and never went
+    // back to work; that is what emptied the streets after the first day.
+    var target = day * calendar.seconds_per_day + @as(f64, window.start) * calendar.seconds_per_hour;
+    if (!calendar.inSchedule(window, @floatCast(calendar.hour(elapsed)))) {
+        while (target <= elapsed + 2) target += calendar.seconds_per_day;
+    }
     // The lead uses the fastest mode this resident could actually take, so the
     // departure reflects the commute they are about to make rather than a
     // single assumed mode. Walking is always available.

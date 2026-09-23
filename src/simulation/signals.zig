@@ -332,6 +332,20 @@ pub fn green(node: usize, road: usize, elapsed: f64) bool {
     return armState(j, arm, elapsed) == .green;
 }
 
+// The lamp that governs a driver is the one over the arm the driver is standing
+// on, exactly like a real head. `approach` is the road the vehicle is arriving
+// along; pass -1 when it is already inside the junction and has no approach, in
+// which case the outgoing arm is used.
+pub fn greenForApproach(node: usize, approach: i32, exit: usize, elapsed: f64) bool {
+    const index = find(node) orelse return true; // Unsignalised junctions stay uncontrolled.
+    const j = &junctions[index];
+    if (j.preempt == .closed) return false;
+    if (flashing(j, elapsed)) return true;
+    const road: usize = if (approach >= 0) @intCast(approach) else exit;
+    const arm = armIndex(node, road) orelse return true;
+    return armState(j, arm, elapsed) == .green;
+}
+
 // True when this junction is on flashing amber, so drivers proceed with care.
 pub fn flashingAt(node: usize, elapsed: f64) bool {
     const index = find(node) orelse return false;

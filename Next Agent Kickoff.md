@@ -1,8 +1,8 @@
-# Next agent kickoff — slices 8, 9 and 10 complete in the worktree
+# Next agent kickoff — slices 9–12 complete and committed; awaiting the next slice
 
-Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 at `60a000a`; slice 5 at `4e29f2f`; slice 6 at `cfa432d`; slice 7 at `dcc2577`; slice 8 at `e71fa0b`. Slices 9 (housing and occupancy) and 10 (street types, parking and learned travel) are complete in the worktree and are **not yet committed**; commit them before starting slice 11. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, explicit bus fleet and staffing commitments, and cure-first transport contract enforcement.
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 at `60a000a`; slice 5 at `4e29f2f`; slice 6 at `cfa432d`; slice 7 at `dcc2577`; slice 8 at `e71fa0b`. Slices 9 (housing and occupancy) and 10 (street types, parking and learned travel) are complete and committed at `fd1a3a4`. Two further batches are also committed: player-placed traffic signals and crosswalks at `935cfb6`, and per-light timing, flashing yellow, coordination and bulk editing at `92d1846`; their own note labels those two batches slices 11 and 12. The worktree is clean, so nothing is left to commit before the next slice. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, explicit bus fleet and staffing commitments, and cure-first transport contract enforcement.
 
-**Authorized goal:** implement slice 9 of the numbered development sequence as a bounded batch; slices 5, 6, 7 and 8 are complete. Each slice must have its own short slice note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation, and a refreshed kickoff before the next slice starts. This authorizes slice 9 only; it does not authorize slices 10–39 or a single unbounded rewrite.
+**Authorized goal:** none is outstanding. Slices 1–12 are complete and committed, and the previously authorized slice 9 was carried through implementation, verification and documentation. No further slice is authorized until the user names one; the next candidate and the numbering conflict are recorded under the numbered development sequence below. Each new slice must have its own short slice note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation, and this kickoff refreshed before the following slice starts.
 
 Inspect current code, git status and recent commits before editing. The `.tmp_degrees.zig` cleanup item is done: the temporary file was removed in `60a000a`. Do not reset, rewrite history or push without a request.
 
@@ -28,9 +28,9 @@ Use Zig for rules and measurements, JavaScript for WebGL/input/reports. Compile 
 - Employment (slice 8): one adult in eight starts out of work; employers post £40/£55/£70 per day and a minimum skill (0 general, 1 clerical, 2 professional); a daily rollover hires up to 64 qualified jobseekers (closest home-to-work first), dismisses up to two lowest-skill ordinary staff at any employer carrying arrears (never crew members or workers on an active order), then pays the wages its cash covers. Unpaid amounts stay as explicit employer wage arrears. Household `income` is the posted wage of employed members; `paid_wages` is what was actually credited. Schema v7 (`bellwether-2027-02-v7`); v6 and older are rejected with result 3.
 - Off-hours add no delivery target. Contracts retain window and target. Private service continues with the last operator/fleet/window after closure. Refresh/Restart clears the live session; manual import restores an exported town.
 - Passenger outcomes are measured from real transitions, not report polling: wait starts, completed waits with mean/min/max, per-dwell full-bus denials, abandonment causes, and home-district comparison. Existing data stays tied to stable route versions.
-- Manual save/load is local and browser-owned. The current schema is `version: 6`, `rules: "bellwether-2027-01-v6"` after slice 7. Version 5 and older files are rejected explicitly; there is no migration layer.
+- Manual save/load is local and browser-owned. The current schema is `version: 11`, `rules: "bellwether-2027-09-v11"` after slice 12. Version 10 and older files are rejected explicitly with result 3; there is no migration layer.
 
-## Completed work relevant to the authorized goal
+## Completed work relevant to the recent slices
 
 - **Regularity targets:** offers accept 0 or a whole 30–600 simulation seconds. Review is advisory and agreement-specific; no payment penalty. Retired/current stop records are bounded.
 - **Save/load:** typed JSON snapshots preserve clock, speed, graph, routing tables, zoning, residents, journeys, riders, operators, vehicles, shifts, taxes, ledger, reserves, orders, crews, routes, observations, agreements, targets, history, next IDs, and every slice-4 fleet unit, roster count and lifetime flow. Parsing is bounded and staged; invalid imports leave the live town unchanged.
@@ -38,6 +38,10 @@ Use Zig for rules and measurements, JavaScript for WebGL/input/reports. Compile 
 - **Transport polish:** stop validity and kerbside markers are in `city.zig`, `render/scene.zig`, `main.zig` and `web/transport.js`. Movement smoothing is in `transport.zig`; the measured old/new comparison showed per-step skips falling from 79 to 4 and mean moving speed rising from 1.54 to 2.73 m/s.
 - **Civic calendar and realistic routines (slice 6):** bounded weekday/weekend calendar, day/evening/night resident shifts, routine phases and local errands, weekly municipal budget periods from ledger movements only, schema version 5. See `docs/civic-calendar-slice.md`.
 - **Transport contract enforcement (slice 5):** cure-first service credit on delivered bus-seconds only; 480-second cure, GBP 0.18 per missing bus-second, 25% price cap, GBP 2.18 cash floor with waiver instead of debt, route/service-change suspension, ledger kind 10. See `docs/transport-enforcement-slice.md`.
+- **Housing and occupancy (slice 9):** one housing unit per authored home with tenure, rent or ownership cost, a property-owner reserve, explicit arrears, occupancy, a move state and an application target; a bounded daily rollover moves or displaces households into a cheaper, shorter-commute vacant unit and residents walk to the new address. Schema v8. See `docs/housing-occupancy-slice.md`.
+- **Street types, parking and learned travel (slice 10):** per-segment street class, proportional free-flow speeds, signal and crosswalk compliance for walkers and cyclists, seeded bicycle and car parking with hard slot counts and banded kerbside prices (municipal ledger kind 11), expectation-based parking choice, and a tiny per-resident learned trip-time and parking-availability model. Schema v9. See `docs/street-types-parking-learning-slice.md`.
+- **Traffic signals and crosswalks:** player-placed per-junction signals with one branch green at a time, set-back heads, click-to-edit green and amber in simulation seconds, and placement snapping from the traffic panel. Schema v10. See `docs/traffic-signals-slice.md`.
+- **Traffic signals, part two:** per-light off time, a three-position flashing-yellow switch with a daily window, a coordination map with per-link delays, bulk edits scoped to every light / one street / one junction, and a dispatcher hook for police and fire preemption. Schema v11. See `docs/traffic-signals-slice.md`.
 - **Bus staffing and fleet investment (slice 4):** `operators.zig` holds a depot capacity, a recruited day and night roster and eight tracked units per operator. Units carry condition, a maintenance state and the physical bus occupying them. Recruiting a day driver costs £150, a night endorsement £260 and requires a day-qualified driver already on the roster; dismissal pays £60. A bus costs £520, sells for 55% of its condition-scaled value, wears only while a service bus is moving, dwelling or held in traffic, and enters a £160/240-second repair when exhausted. Clearing buses hold their unit until every rider has left, so they physically block replacement dispatch. Quotes and acceptance read the same live owned/serviceable/committed split and the recruited cohorts. Save schema is version 3. See `docs/operator-workforce-slice.md` for rules, verification and limits. Browser verification of the new Fleet & staff panel was limited to served-markup, module parse, scalar-ABI contract and served-WASM identity checks because no headless browser was available.
 
 ## Completed slice 4 — bus staffing and fleet investment
@@ -116,7 +120,7 @@ Do not add regional trade, production inputs, business credit or national labour
 
 ## Completed slice 9 — housing and occupancy
 
-Complete in the worktree (not yet committed). `docs/housing-occupancy-slice.md`
+Complete and committed at `fd1a3a4`. `docs/housing-occupancy-slice.md`
 records the rules, verification and limits. Every authored home is one housing
 unit with tenure, rent or ownership cost, a property-owner reserve, explicit
 arrears, occupancy, a move state and an application target. A bounded daily
@@ -124,9 +128,9 @@ rollover can move or displace households into a cheaper, shorter-commute vacant
 unit; residents walk to the new address. Save schema is version 8,
 `bellwether-2027-03-v8`.
 
-## Completed slice 10 — street types, parking and learned travel (current batch)
+## Completed slice 10 — street types, parking and learned travel
 
-Complete in the worktree (not yet committed). `docs/street-types-parking-learning-slice.md`
+Complete and committed at `fd1a3a4`. `docs/street-types-parking-learning-slice.md`
 records the implemented rules, verification and limits.
 
 - Street segments carry a class (0 lane, 1 street, 2 avenue) chosen in the road
@@ -148,14 +152,121 @@ records the implemented rules, verification and limits.
   time read it. Car-owning households with the car preference drive.
 - Tenure drives the municipal assessment: owners pay from the household, rented
   homes pay from the owner's collected rent; unpaid assessment stays arrears.
-- Save schema is version 11, `bellwether-2027-09-v11` (slice 12); version 10 and
-  older are
-  rejected with result 3. A 22-road expanded graph still fits the 16 MiB cap.
-  Slice 11 serialises player-placed traffic signals alongside it.
+- Save schema is version 11, `bellwether-2027-09-v11` after the second
+  traffic-signal batch; version 10 and older are rejected with result 3. A
+  22-road expanded graph still fits the 16 MiB cap. The traffic-signal batches
+  serialise player-placed signals, their per-light timing, flash windows and
+  coordination links alongside it.
+
+## Completed slice 11 — traffic signals and crosswalks
+
+Complete and committed at `935cfb6`. `docs/traffic-signals-slice.md` records
+the implemented rules, verification and limits. This batch replaced the old
+global horizontal/vertical light model:
+
+- Each signalised junction holds one record: its node, its incident arms, a
+  green duration, an amber duration, a phase offset and whether it is active.
+  Every incident arm is its own phase, so exactly one branch is green at a time;
+  a junction with no record is uncontrolled and never gated.
+- Signal heads are drawn 3.4 m along their own arm and 2.6 m across it, and
+  crosswalk stripes are set back 3.6 m from the junction, so nothing sits on the
+  corner.
+- The traffic panel arms a placement tool; a click snaps to the nearest junction
+  arm within 9 m (signal) or street segment within 9 m (crosswalk). A crosswalk
+  also signalises a junction end whose degree is 3 or more.
+- Clicking a placed light selects it and shows its junction, arm, current phase,
+  arm count, green, amber, full cycle and time until that branch changes;
+  `signal_set_green` and `signal_set_yellow` clamp to 0.5–60 s and 0.5–10 s and
+  write back through the ABI.
+- Walkers and cyclists wait at a marked crossing unless a parallel arm holds
+  green; unmarked crossings keep the existing gap-based rule.
+- Placed signals are serialised and validated (junction count, node bounds, arm
+  count, green and amber bounds, phase offset and each arm's road identity).
+  Schema moved to v10 / `bellwether-2027-05-v10`; loading clears any selected
+  head.
+
+## Completed slice 12 — traffic signals, part two
+
+Complete and committed at `92d1846`. `docs/traffic-signals-slice.md` records the
+implemented rules, verification and limits.
+
+- A junction now holds an all-red "off" time as well as green and amber, so a
+  phase is green, amber, then a short clearance. Off time clamps to 0–6 s, amber
+  to 0.5–10 s and green to 0.5–60 s; `signal_set_red` returns the applied value
+  or -1 when the junction has no signal.
+- A junction can blink yellow instead of cycling. The manual switch has three
+  positions (forced on, follow the daily window, forced onto the normal cycle).
+  `signal_flash_manual(node, mode)` sets one light and
+  `signal_flash_bulk(scope, key, mode)` sets a whole street, one junction or
+  every light. A forced setting beats the window; an emergency preemption beats
+  both. While blinking, every approach may go slowly and yielding, and
+  pedestrians and cyclists keep priority.
+- The daily window is a start and end hour of the simulation day; a start later
+  than the end runs overnight. `signal_set_flash_schedule(node, start, end,
+  enabled)` stores it and turns it on.
+- `signal_link(from, to, delay)` makes the follower run its leader's cycle held
+  back by that many simulation seconds and joins them into one coordination
+  group; `signal_unlink` reverses it. Group 30 exposes each link and the
+  traffic-lights tab draws them with the delay labelled.
+- The traffic-lights tab lists every signalised junction and applies one property
+  across a scope through `signal_apply_bulk(scope, key, field, value)` (green,
+  amber, off time, the two window hours, the window switch and the manual flash
+  mode).
+- `signal_alert(node, kind, seconds)` is the dispatcher hook: kind 1 holds the
+  cross traffic, 2 opens on flashing yellow, 3 releases back to the normal
+  cycle. Police and firefighters are not simulated, so today the player's own
+  controls raise the alerts.
+- Clicking a light on the map opens the traffic drawer before showing the
+  inspector, and the drawer and works panel scroll only their own window body so
+  a light click no longer drags the map. Schema moved to v11 /
+  `bellwether-2027-09-v11`; version 10 and older are rejected with result 3.
+
+## Completed slice 13 - work routines and signal control
+
+Complete in the worktree (not yet committed). `docs/routines-signals-slice.md`
+records the rules, verification and limits. Two reported faults were fixed:
+
+- **The four lamps were unreadable and jams were constant.** The gate tested the
+  arm a driver was *turning into* instead of the arm they were standing on, so a
+  green lamp held the queue beside it while traffic from elsewhere was admitted.
+  `signals.greenForApproach` now tests the approach road, and `entryAllowed` /
+  `enter` carry that road through from the movement loop. One arm is still green
+  at a time.
+- **Cars appeared to stop past the light.** The brake point was 1.0 m short of
+  the node while the head is drawn `signals.head_setback` (3.4 m) down the arm.
+  The stop point is now the head setback, so queues stand before their light.
+- **The streets emptied after the first day.** `departureLead` stepped its target
+  forward until it was strictly later than now, so a resident at home during
+  their own shift waited for *tomorrow's* shift start and never left. It now
+  returns zero when the governing window is already running.
+- **Working hours belong to the workplace.** `calendar.zig` gained a bounded
+  `Facility` schedule table (`inSchedule`, `facilityWindow`, `onFacilityShift`):
+  office 09:00-17:00, hall 08:30-17:30, shop 09:00-17:00 or 12:00-20:00, clinic
+  07:00-15:00 / 09:00-17:00 / 14:00-22:00, depot 06:00-14:00 / 14:00-22:00 /
+  22:00-06:00. A resident's existing `shift` byte picks the slot, so no new
+  persistent field and no schema bump; the save contract stays version 11.
+
+Measured with a headless probe stepping 1/30 s and sampling hourly for eight
+simulated days. Peak people moving / active cars per day, before and after:
+
+| day | before | after |
+|-----|--------|-------|
+| 0 | 2864 / 363 | 2864 / 363 |
+| 1 | 1528 / 235 | 2218 / 144 |
+| 2 | 283 / 68 | 2193 / 100 |
+| 3 | 228 / 17 | 2214 / 84 |
+| 4 | 227 / 3 | 2258 / 57 |
+| 5 | 124 / 2 | 2264 / 46 |
+| 6 | 41 / 0 | 2303 / 51 |
+| 7 | 245 / 4 | 2346 / 48 |
+
+Before, active cars hit zero on day 3 and stayed there; after, cars run every day
+and roughly 2,200 people move at the peak. Traces are kept outside the repository
+at `/tmp/city_probe/BASELINE-trace.txt` and `/tmp/city_probe/after.txt`.
 
 ## Superseded slice 9 plan text (historical)
 
-This slice follows slice 8 and is the current batch. It adds renting, ownership, affordability, moves and displacement on top of the household and employment models.
+This slice follows slice 8. It adds renting, ownership, affordability, moves and displacement on top of the household and employment models.
 
 - Define housing units, occupancy, rent/ownership costs, affordability thresholds, moves, vacancies and displacement.
 - Households may move or be displaced based on affordability, employment/commute changes or housing availability. Moves must use actual resident transitions, not teleportation.
@@ -168,11 +279,11 @@ Do not add physical building construction, property development permits, valuati
 
 ## Code map and cautions
 
-- `src/simulation/operators.zig`: independent accounts, day/night cohorts, service-window integrals. Slice 4 will likely replace or extend the fixed cohort/asset numbers here.
+- `src/simulation/operators.zig`: independent accounts, day/night cohorts, service-window integrals. Slice 4 replaced the fixed cohort/asset numbers here with recruited rosters and owned units; see `docs/operator-workforce-slice.md`.
 - `src/simulation/transport.zig`: physical fleet, original bus ownership, clearance, drivers, fares/costs, delivered seconds, dispatch blockers and service-state counts. Keep it independent of finance/residents except through explicit interfaces. Movement smoothing lives here; do not reintroduce per-segment hard brakes.
-- `src/simulation/agreements.zig`: quote/acceptance, settlement, window-aware targets, history. Slice 5 must define enforcement without silently changing slices 1–4 payment semantics.
-- `src/simulation/residents.zig`: actual boarding/alighting, walking fallback, passenger wait transitions and district outcomes. Slices 6–9 will extend routines, households and employment here or in adjacent modules. Do not change boarding order without an explicit request.
-- `src/simulation/persistence.zig`: explicit typed JSON snapshot, bounded validation/commit. Every new persistent field in slices 4–9 must be represented and validated; bump compatibility identifiers when the schema changes.
+- `src/simulation/agreements.zig`: quote/acceptance, settlement, window-aware targets, history. Slice 5 defined enforcement without silently changing slices 1–4 payment semantics; see `docs/transport-enforcement-slice.md`.
+- `src/simulation/residents.zig`: actual boarding/alighting, walking fallback, passenger wait transitions and district outcomes. Slices 6–12 extended routines, households, employment, housing, parking and learned travel here or in adjacent modules (`calendar.zig`, `households.zig`, `employment.zig`, `housing.zig`, `parking.zig`, `travel.zig`, `signals.zig`). Do not change boarding order without an explicit request.
+- `src/simulation/persistence.zig`: explicit typed JSON snapshot, bounded validation/commit. Every persistent field added since slice 4 is represented and validated, and the identifier is bumped and older files rejected at each change; the current contract is v11.
 - `src/main.zig`: validated exports and scalar ABI. Preserve field numbers. Existing groups include 10 fields 32–40, 13/17 agreement fields, 14 operator accounts/drivers, 18/19 stop/passenger observations, 20/21 agreement stop results and group 22 district passenger outcomes.
 - `src/scene/city.zig`: `validStop`, `stopPoint`, `sidewalk`, graph/routing data.
 - `src/render/scene.zig`: kerbside stop markers drawn for all active lines; selected lines add a larger highlight. Keep finite vertex output.
@@ -185,13 +296,15 @@ Never iterate the large resident array by value; it previously exhausted the WAS
 
 Slice 8's probe (24 checks, 0 failures) covered init skill/wage consistency, jobseekers and vacancies, hiring on a rollover, unemployment transition, employer totals against live links, wage conservation, employer cash floors, household balance conservation, skill-mismatch refusal, arrears and firing with crew preservation, paid-vs-posted income, v7 save/load of every new field, walking bounds and rider sanity; the served `/build/city.wasm` matched the fresh Docker build (`d03289a4…`).
 
+Slices 9–12 each passed a Docker Compose Zig 0.14.1 ReleaseSafe build and startup with a JavaScript syntax check and a focused simulation probe run outside the repository: slice 9 covered housing moves, displacement, affordability and rent/arrears conservation; slice 10 street classes, parking slots, banded fees and learned mode choice; slice 11 one-branch-green-at-a-time across 29 junctions, head setback and pedestrians waiting at marked crossings; slice 12 manual flashing, the daily window, emergency alerts, bulk edits, coordination links and the v11 save round trip. Where a slice changed the browser panel, verification used served markup, a module parse, a scalar-ABI contract and served-WASM identity instead of a rendered screenshot, because this environment has no browser and lacks WebGL.
+
 Current completed checks include Docker ReleaseSafe builds, passenger wait/capacity/abandonment accounting, save/load of in-progress waits, route-edit attribution, passenger/rider conservation, operator account identities, off-hours/timeout abandonment, kerbside stop validity, old/new movement comparisons, the slice-4 fleet and staffing batch (94 focused checks, 0 failures, plus a scalar-ABI panel contract and a served-asset identity check), and the slice-5 enforcement probe (0 failures: cure/cap/waiver/suspension/expiry/cancel/schema-v4 save-load/tamper rejection/passenger conservation, plus a served-WASM hash match). This environment has no browser and lacks WebGL, so report population is verified through the scalar ABI, served markup and served-asset hashes rather than a rendered screenshot.
 
 Manual save/load, bounded history, fixed clearance fees, authored population and graph limits remain until their authorized slice changes them. Review-only regularity targets remain review-only by design; slice 5 added a separate delivered-bus-second remedy. Aggregate driver cohorts and fixed owned-fleet numbers were replaced in slice 4; `docs/operator-workforce-slice.md` lists what that model still abstracts. Each remaining slice must add its own verification evidence and limitations; do not claim later slices work merely because earlier hooks exist. Keep save/load compatible or bump and reject explicitly at each schema change.
 
 ## Numbered development sequence
 
-The original numbering is retained so requests such as “work on slice 5” or “slices 5–9” are unambiguous. Slices 1–8 are complete. **Slice 9 is the authorized goal. Slices 10–39 remain proposed work, not authorization to implement them.**
+The numbers below keep the original order so requests such as “work on slice 5” stay unambiguous, but later batches were inserted outside that order. The most recent batch, work routines and signal control, is labelled slice 13 in its own note and is not part of this list either. **Slices 1–9 of this list are complete and committed.** Two further batches are also complete and committed but are not part of this numbering: street types, parking and learned travel (committed at `fd1a3a4` alongside slice 9) and the two traffic-signal batches, which `docs/traffic-signals-slice.md` labels slices 11 and 12. Because of those insertions the roadmap and this list disagree: `docs/development-roadmap.md` numbers street types as 10 and then prints “11” twice, while this list keeps 10 as development proposals. Treat a “slice” request as ambiguous until the user says whether they mean this list's number or a label from a slice note. **Items 10–39 remain proposed work, not authorization to implement them. Nothing is authorized right now, so the next slice is the user's to name.**
 
 1. **Agreement regularity targets — complete:** optional targets, overdue diagnostics and retained agreement results; no financial penalties.
 2. **Save/load — complete:** versioned manual local files preserve towns, accounts, agreements, routes, observations and live journeys.
@@ -201,8 +314,8 @@ The original numbering is retained so requests such as “work on slice 5” or 
 6. **Civic calendar and realistic routines — complete:** weekdays, shifts, weekends and a weekly budget period. See `docs/civic-calendar-slice.md`.
 7. **Households and household budgets — complete:** shared income, essential expenses and financial pressure.
 8. **Employment and hiring — complete:** vacancies, unemployment, skills, wages and business staffing. See `docs/employment-hiring-slice.md`.
-9. **Housing and occupancy — authorized:** renting, ownership, affordability, moves and displacement.
-10. **Development proposals and permits:** private construction responding to zoning and demand.
+9. **Housing and occupancy — complete:** renting, ownership, affordability, moves and displacement. See `docs/housing-occupancy-slice.md`.
+10. **Development proposals and permits — next candidate:** private construction responding to zoning and demand. This is the next entry in this list, but the user names the next slice.
 11. **Physical building construction:** access, crews, materials, terrain and foundation costs.
 12. **Property valuation and sunlight:** obstruction assessment and development trade-offs.
 13. **Parks and public spaces:** access, maintenance and neighbourhood benefits.
@@ -237,4 +350,4 @@ Timetables, transfers and automatic route optimisation need separate transport s
 
 ## Continuation instruction
 
-If the next user asks to continue from this kickoff, carry slice 9 through implementation; slices 5, 6, 7 and 8 are complete. For each slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the next slice. Preserve existing work and do not stop at a plan. Do not add a permanent test suite or expand into slices 10–39 without authorization. Finish each slice with what changed, what was verified and remaining limitations.
+Slices 1–12 are committed and slice 13 is complete in the worktree but not yet committed, so this kickoff authorizes no new slice by itself. If the user names the next slice, confirm which numbering they mean when the request is ambiguous, then for that slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the following slice. Preserve existing work and do not stop at a plan. Do not add a permanent test suite or expand into the proposed sequence without authorization. Finish each slice with what changed, what was verified and remaining limitations.

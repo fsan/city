@@ -362,7 +362,7 @@ pub fn update(dt: f32, elapsed: f64) void {
             }
             const next = city.next_node[v.node][v.target];
             if (next == v.node or city.road_between[v.node][next] < 0) continue;
-            if (!enter(v.*, next, elapsed)) continue;
+            if (!enter(v.*, next, elapsed, -1)) continue;
             v.next = next;
             v.lane = if (v.line >= 0 and lanes[@intCast(city.road_between[v.node][next])] == 1) 1 else 0;
             v.progress = 0;
@@ -376,13 +376,17 @@ pub fn update(dt: f32, elapsed: f64) void {
         // not jump from a pre-stop clearance point onto the next segment.
         // Cars yield at a crosswalk while somebody is actually crossing it.
         const cross_yield = !bus and !at_target and !leaving and crossing_active[@min(v.next, city.max_nodes - 1)] > 0;
-        const stop_point = if (at_target or leaving) road.length else if (cross_yield) @max(road.length * 0.35, road.length - 2.6) else @max(road.length * 0.6, road.length - (if (bus) @as(f32, 1.6) else 1.0));
+        // Slice 13: hold a car at its own stop line, which is the signal head, so
+        // the queue stands *before* the light instead of creeping past it.
+        const head_setback = signals.head_setback + if (bus) @as(f32, 0.8) else 0.6;
+        const stop_point = if (at_target or leaving) road.length else if (cross_yield) @max(road.length * 0.35, road.length - 2.6) else @max(road.length * 0.6, road.length - head_setback);
         const next_after = city.next_node[v.next][v.target];
         var lookahead = v.*;
         lookahead.node = v.next;
         lookahead.next = if (next_after == v.next) v.next else next_after;
         lookahead.lane = if (bus and next_after != v.next and lanes[@intCast(city.road_between[v.next][next_after])] == 1) 1 else 0;
-        const blocked = next_after == v.next or !entryAllowed(lookahead, next_after, elapsed);
+        const approach: i32 = @intCast(city.road_between[v.node][v.next]);
+        const blocked = next_after == v.next or !entryAllowed(lookahead, next_after, elapsed, approach);
         // Only segment ends that actually stop the vehicle receive braking. Ordinary
         // short street segments keep their speed and hand momentum to the next one.
         const must_stop = v.retiring or leaving or at_target or cross_yield or (v.next != v.target and blocked);
@@ -431,7 +435,7 @@ pub fn update(dt: f32, elapsed: f64) void {
                 candidate.node = v.next;
                 const next = city.next_node[candidate.node][v.target];
                 const carried = v.speed;
-                if (next != candidate.node and enter(candidate, next, elapsed)) {
+                if (next != candidate.node and enter(candidate, next, elapsed, approach)) {
                     v.node = candidate.node;
                     v.next = next;
                     v.lane = if (bus and lanes[@intCast(city.road_between[v.node][next])] == 1) 1 else 0;
@@ -512,7 +516,10 @@ pub fn journey(from: usize, to: usize) Journey {
     return best;
 }
 
-fn entryAllowed(v: Vehicle, next: usize, elapsed: f64) bool {
+// Slice 13: the head over an approach governs the cars on that approach, so the
+// gate reads the arm the driver is arriving along rather than the one they are
+// turning into. `approach` is that road, or -1 for a driver already at the node.
+fn entryAllowed(v: Vehicle, next: usize, elapsed: f64, approach: i32) bool {
     const road_id = city.road_between[v.node][next];
     if (road_id < 0 or !city.roads[@intCast(road_id)].vehicles) return false;
     if (city.degree(v.node) >= 3) {
@@ -524,7 +531,7 @@ fn entryAllowed(v: Vehicle, next: usize, elapsed: f64) bool {
             // Cross slowly, and only once the box is clear of whoever went in
             // ahead of this driver.
             if (junction_entered[v.node] > 0) return false;
-        } else if (!green(v.node, @intCast(road_id), elapsed)) return false;
+        } else if (!signals.greenForApproach(v.node, approach, @intCast(road_id), elapsed)) return false;
     }
     if (!room(v, next)) return false;
     var candidate = v;
@@ -532,8 +539,8 @@ fn entryAllowed(v: Vehicle, next: usize, elapsed: f64) bool {
     return !entries[laneKey(candidate, @intCast(road_id))];
 }
 
-fn enter(v: Vehicle, next: usize, elapsed: f64) bool {
-    if (!entryAllowed(v, next, elapsed)) return false;
+fn enter(v: Vehicle, next: usize, elapsed: f64, approach: i32) bool {
+    if (!entryAllowed(v, next, elapsed, approach)) return false;
     const road_id = city.road_between[v.node][next];
     var candidate = v;
     candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] == 1) 1 else 0;

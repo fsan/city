@@ -70,3 +70,42 @@ pub fn onShift(shift: Shift, time: f64) bool {
         .night => t >= 440 or t < 120,
     };
 }
+
+// Slice 13: working hours belong to the place people work, not to a global
+// three-shift rotation. Each facility kind keeps its own bounded window (or a
+// small set of overlapping windows where the place genuinely runs shifts), so
+// offices are 9-5 while a depot or a clinic covers its own day.
+pub const Facility = enum(u8) { office, shop, clinic, hall, depot, other };
+
+pub const Schedule = struct { start: f32, end: f32 };
+
+// A window whose start is later than its end runs overnight.
+pub fn inSchedule(s: Schedule, at_hour: f32) bool {
+    if (@abs(s.start - s.end) < 0.001) return false;
+    if (s.start < s.end) return at_hour >= s.start and at_hour < s.end;
+    return at_hour >= s.start or at_hour < s.end;
+}
+
+// The bounded set of windows a facility kind runs, by slot. `slot` is the
+// resident's own shift index, reduced modulo the number of windows, so the
+// authored town keeps a stable mix without inventing a roster system here.
+pub fn facilityWindows(facility: Facility) []const Schedule {
+    return switch (facility) {
+        .office => &[_]Schedule{.{ .start = 9, .end = 17 }},
+        .hall => &[_]Schedule{.{ .start = 8.5, .end = 17.5 }},
+        .shop => &[_]Schedule{ .{ .start = 9, .end = 17 }, .{ .start = 12, .end = 20 } },
+        .clinic => &[_]Schedule{ .{ .start = 7, .end = 15 }, .{ .start = 9, .end = 17 }, .{ .start = 14, .end = 22 } },
+        .depot => &[_]Schedule{ .{ .start = 6, .end = 14 }, .{ .start = 14, .end = 22 }, .{ .start = 22, .end = 6 } },
+        .other => &[_]Schedule{.{ .start = 9, .end = 17 }},
+    };
+}
+
+pub fn facilityWindow(facility: Facility, slot: u8) Schedule {
+    const windows = facilityWindows(facility);
+    return windows[@as(usize, slot) % windows.len];
+}
+
+// True while this slot of this facility is on duty, including overnight windows.
+pub fn onFacilityShift(facility: Facility, slot: u8, time: f64) bool {
+    return inSchedule(facilityWindow(facility, slot), @floatCast(hour(time)));
+}
