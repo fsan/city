@@ -169,18 +169,72 @@ pub fn init() void {
     selected = -1;
     editing = false;
     draft_count = 0;
-    const first = [_]usize{ 8, 10, 12, 26, 40, 38, 36, 22 };
-    const second = [_]usize{ 0, 3, 6, 27, 48, 45, 42, 21 };
-    draft_count = first.len;
-    @memcpy(draft[0..first.len], &first);
-    _ = apply(0);
-    draft_count = second.len;
-    @memcpy(draft[0..second.len], &second);
-    _ = apply(1);
+    // Slice 13: both seeded services are laid on the new plan by world
+    // position and snapped to the nearest valid kerbside stop, so a change of
+    // layout cannot silently disable them. Line 0 loops through the historic
+    // centre and crosses the river twice; line 1 runs out to the suburbs.
+    const first = [_]city.Vec{
+        .{ .x = 470, .z = 300 }, .{ .x = 505, .z = 245 }, .{ .x = 540, .z = 200 },
+        .{ .x = 595, .z = 168 }, .{ .x = 650, .z = 140 }, .{ .x = 725, .z = 152 },
+        .{ .x = 800, .z = 180 }, .{ .x = 890, .z = 240 }, .{ .x = 980, .z = 320 },
+        .{ .x = 955, .z = 420 }, .{ .x = 900, .z = 520 }, .{ .x = 770, .z = 585 },
+        .{ .x = 640, .z = 620 }, .{ .x = 560, .z = 570 }, .{ .x = 500, .z = 520 },
+        .{ .x = 470, .z = 410 },
+    };
+    const second = [_]city.Vec{
+        .{ .x = 300, .z = 700 }, .{ .x = 430, .z = 780 }, .{ .x = 560, .z = 640 },
+        .{ .x = 700, .z = 700 }, .{ .x = 830, .z = 760 }, .{ .x = 960, .z = 800 },
+        .{ .x = 1120, .z = 860 }, .{ .x = 1170, .z = 700 }, .{ .x = 1180, .z = 560 },
+        .{ .x = 1080, .z = 460 }, .{ .x = 1000, .z = 380 }, .{ .x = 860, .z = 330 },
+        .{ .x = 760, .z = 300 }, .{ .x = 600, .z = 180 }, .{ .x = 430, .z = 300 },
+        .{ .x = 300, .z = 480 },
+    };
+    seedLine(0, &first);
+    seedLine(1, &second);
     lines[0].company = 0;
     lines[1].company = 1;
     draft_count = 0;
 }
+
+// Snap an authored loop to real kerbside stops, drop a repeat that snapped to
+// the same node, then apply. A rejected line stays inactive, so every seeded
+// service must survive a layout change with a valid route.
+fn seedLine(id: usize, loop: []const city.Vec) void {
+    const previous = lines[id].count;
+    draft_count = 0;
+    for (loop) |p| {
+        if (draft_count >= max_stops) break;
+        const n = stopAt(p.x, p.z);
+        var duplicate = false;
+        for (draft[0..draft_count]) |old| {
+            if (old == n) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (duplicate) continue;
+        draft[draft_count] = n;
+        draft_count += 1;
+    }
+    if (!apply(id)) lines[id].count = previous;
+}
+
+// The nearest node that can actually carry a kerbside stop, so a seeded
+// service is valid on any layout.
+fn stopAt(x: f32, z: f32) usize {
+    var best: usize = 0;
+    var best_distance: f32 = 1e9;
+    for (city.nodes, 0..) |n, i| {
+        if (!city.validStop(i)) continue;
+        const d = city.hypot(n.x - x, n.z - z);
+        if (d < best_distance) {
+            best_distance = d;
+            best = i;
+        }
+    }
+    return best;
+}
+
 pub fn fare() f64 {
     return @min(fare_cap, 3);
 }
@@ -496,19 +550,20 @@ pub fn journey(from: usize, to: usize) Journey {
     for (&lines, 0..) |l, id| {
         if (!l.active) continue;
         var loop: f32 = 0;
-        for (l.stops[0..l.count], 0..) |n, s| loop += city.distance[n][l.stops[(s + 1) % l.count]] / 3 + 5;
+        for (l.stops[0..l.count], 0..) |n, s| loop += city.distance[n][l.stops[(s + 1) % l.count]] / travel.bus_limit + 5;
+        const headway = loop / @as(f32, @floatFromInt(@max(1, l.fleet)));
         for (l.stops[0..l.count], 0..) |board_node, s| {
             const access = city.distance[from][board_node];
-            if (access > 45) continue;
+            if (access > 120) continue;
             var ride: f32 = 0;
             var prev = board_node;
             for (1..l.count) |offset| {
                 const exit_node = l.stops[(s + offset) % l.count];
-                ride += city.distance[prev][exit_node] / 3 + 5;
+                ride += city.distance[prev][exit_node] / travel.bus_limit + 5;
                 prev = exit_node;
                 const egress = city.distance[exit_node][to];
-                if (egress > 45) continue;
-                const estimate = access + egress + ride + loop / @as(f32, @floatFromInt(l.fleet)) / 2;
+                if (egress > 120) continue;
+                const estimate = access + egress + ride + headway * 0.5;
                 if (estimate < best.time) best = .{ .line = @intCast(id), .board_node = board_node, .exit_node = exit_node, .time = estimate };
             }
         }

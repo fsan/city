@@ -264,6 +264,62 @@ Before, active cars hit zero on day 3 and stayed there; after, cars run every da
 and roughly 2,200 people move at the peak. Traces are kept outside the repository
 at `/tmp/city_probe/BASELINE-trace.txt` and `/tmp/city_probe/after.txt`.
 
+## Completed slice 13 - river and the Rome-inspired seeded town
+
+Complete in the worktree (not yet committed). `docs/river-rome-layout-slice.md`
+records the rules, verification and limits.
+
+The first attempt at this slice made the car share *smaller*, not larger. The
+fault was in the plan, not the travel constants: `chain()` connected only
+consecutive samples of the same street run, so cross streets passed over the
+arterials without forming junctions and the river trim cut every run in two.
+The inherited tree measured 492 nodes in 18 disconnected components with
+213,806 of 241,572 node pairs unreachable, and 2,899 of 3,240 commuters had no
+home-to-work route at all. Residents could not drive or ride anywhere, so they
+walked locally and the buses carried nobody.
+
+- `resolveJunctions()` turns every true segment crossing into one shared
+  junction node and `linkFragments()` gives any leftover fragment one bounded
+  link, so the seeded plan is a single component. `crossing` and `splitAtNode`
+  are the new helpers.
+- The town is 1,320 x 1,040 m with 288 buildings and the same 3,840 adults, so
+  outer districts sit 600-1,000 m from the centre.
+- `src/scene/river.zig` owns the authored centreline, half-width, bed depth and
+  per-point level and discharge, with `flow_factor` reserved for the future
+  weather-driven water model. Nothing reads the flow yet; the only effect today
+  is impassability and the four seeded bridges.
+- The renderer draws the water surface as its own geometry and samples the
+  channel inside the ground grid and road ribbons near the river, so the carve
+  is not aliased away between tile corners.
+- Motoring costs `0.002 x distance + 0.20` per trip, ownership charges a daily
+  cost of 12 so only a genuinely distant commute pays for a car, the
+  car-owning tie-break falls from 18% to 6%, and bicycle and car park supply is
+  scaled to the new area (44 -> 132 and 16 -> 40).
+- Schema moves to v12 / `bellwether-2027-10-v12`; v11 and older are rejected.
+
+Measured with a headless probe stepping 1/30 s over eight simulated days
+(`/tmp/cityprobe4`). Morning-peak car trips per day, before this slice and
+after:
+
+| day | baseline car | after car | after walk | after bike | after bus |
+|-----|--------------|-----------|------------|------------|-----------|
+| 0 | 363 | 1379 | 69 | 1261 | 0 |
+| 1 | 144 | 965 | 585 | 878 | 7 |
+| 3 | 84 | 746 | 1040 | 694 | 6 |
+| 5 | 46 | 502 | 1189 | 693 | 5 |
+| 7 | 48 | 377 | 1354 | 586 | 5 |
+
+Peak car 1,463. Car ownership settles at 1,572 of 3,812 adults and is stable
+from day 1 with no household below the cash reserve. The graph has one
+component, zero unreachable pairs, zero water nodes and zero water buildings,
+and both seeded bus lines stay active with 16 valid stops.
+
+Known limit: the bus still carries only single figures. The seeded town is
+about 1.3 km across and a bicycle is honestly competitive at that distance, so
+making buses matter needs a larger city (`max_nodes` is at 569 of 640) or a
+bus-priority measure; the model is left honest rather than tuned to a target
+share.
+
 ## Superseded slice 9 plan text (historical)
 
 This slice follows slice 8. It adds renting, ownership, affordability, moves and displacement on top of the household and employment models.

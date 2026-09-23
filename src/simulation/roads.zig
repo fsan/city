@@ -1,5 +1,6 @@
 const std = @import("std");
 const city = @import("../scene/city.zig");
+const River = city.River;
 const parcels = @import("../scene/parcels.zig");
 const transport = @import("transport.zig");
 const residents = @import("residents.zig");
@@ -114,6 +115,12 @@ pub fn preview() void {
         length += len;
         if (a.x < 3 or a.z < 3 or a.x > city.size_x - 3 or a.z > city.size_z - 3 or b.x < 3 or b.z < 3 or b.x > city.size_x - 3 or b.z > city.size_z - 3) {
             error_code = 1;
+            return;
+        }
+        // Slice 13: the river is an obstacle. Only the seeded bridges cross it;
+        // the road tool refuses a span that would run over the water.
+        if (River.crosses(a.x, a.z, b.x, b.z)) {
+            error_code = 9;
             return;
         }
         for (&city.buildings) |building| {

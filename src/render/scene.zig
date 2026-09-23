@@ -70,28 +70,58 @@ fn streetColor(condition: f32) Color {
     const amount = condition / 100;
     return .{ 0.8 - amount * 0.6, 0.25 + amount * 0.4, 0.2 + amount * 0.25 };
 }
+// Slice 13: the ground is sampled finely wherever the river could carve it, so
+// the channel and its banks are drawn instead of being averaged away between
+// two tile corners. Away from the water one quad per tile is enough.
 fn groundQuad(x: f32, z: f32, w: f32, d: f32, offset: f32, color: Color) void {
+    const step: f32 = if (nearRiver(x, z, w, d)) 8 else 40;
     var xx = x;
     while (xx < x + w - 0.0001) {
-        var nx = x + w;
-        for ([_]f32{ 70, 98, 154, 182 }) |cut| if (cut > xx + 0.0001 and cut < nx) {
-            nx = cut;
-        };
+        const nx = @min(x + w, xx + step);
         var zz = z;
         while (zz < z + d - 0.0001) {
-            var nz = z + d;
-            for ([_]f32{ 98, 126 }) |cut| if (cut > zz + 0.0001 and cut < nz) {
-                nz = cut;
-            };
+            const nz = @min(z + d, zz + step);
             quad(.{ xx, city.elevation(xx, zz) + offset, zz }, .{ nx, city.elevation(nx, zz) + offset, zz }, .{ nx, city.elevation(nx, nz) + offset, nz }, .{ xx, city.elevation(xx, nz) + offset, nz }, color);
             zz = nz;
         }
         xx = nx;
     }
 }
+
+// True when a tile could contain or touch the water, tested through the river's
+// own centreline distance so the renderer never duplicates its shape.
+fn nearRiver(x: f32, z: f32, w: f32, d: f32) bool {
+    const c = city.River.nearest(x + w * 0.5, z + d * 0.5);
+    return c.distance < c.half_width + city.River.bank_width + @max(w, d) * 0.75;
+}
+
+// The water surface: one quad per centreline span, drawn at the authored level,
+// so a future flow model that raises the levels moves the surface with them.
+fn riverSurface() void {
+    const r = city.River;
+    if (r.count < 2) return;
+    var i: usize = 0;
+    while (i + 1 < r.count) : (i += 1) {
+        const a = r.points[i];
+        const b = r.points[i + 1];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const len = city.hypot(dx, dz);
+        if (len < 0.001) continue;
+        const nx = -dz / len;
+        const nz = dx / len;
+        const wa = r.half_width[i];
+        const wb = r.half_width[i + 1];
+        const ya = r.levelAt(i) + 0.35;
+        const yb = r.levelAt(i + 1) + 0.35;
+        quad(.{ a.x + nx * wa, ya, a.z + nz * wa }, .{ b.x + nx * wb, yb, b.z + nz * wb }, .{ b.x - nx * wb, yb, b.z - nz * wb }, .{ a.x - nx * wa, ya, a.z - nz * wa }, .{ 0.17, 0.33, 0.44 });
+    }
+}
 // Clip ribbons at each analytical terrain crease before triangulating.
 fn terrainFace(points: []const city.Vec, offset: f32, color: Color) void {
-    const cuts = [_]f32{ 70, 98, 154, 182, 98, 126 };
+    // Clip ribbons at the terrain's own ramps (west hill, east rise, southern
+    // rise, northern shelf) before triangulating.
+    const cuts = [_]f32{ 30, 210, 1140, 1300, 130, 830 };
     for (cuts, 0..) |cut, axis| {
         var lo: f32 = 1e9;
         var hi: f32 = -1e9;
@@ -142,8 +172,18 @@ pub fn ribbon(a: city.Vec, b: city.Vec, half: f32, lateral: f32, offset: f32, co
     if (length < 0.001) return;
     const nx = -(b.z - a.z) / length;
     const nz = (b.x - a.x) / length;
-    const points = [_]city.Vec{ .{ .x = a.x + nx * (lateral - half), .z = a.z + nz * (lateral - half) }, .{ .x = b.x + nx * (lateral - half), .z = b.z + nz * (lateral - half) }, .{ .x = b.x + nx * (lateral + half), .z = b.z + nz * (lateral + half) }, .{ .x = a.x + nx * (lateral + half), .z = a.z + nz * (lateral + half) } };
-    terrainFace(&points, offset, color);
+    // A strip that runs beside the river is cut into short pieces so it follows
+    // the carved bank rather than spanning the dip in one flat quad.
+    const strips: usize = if (nearRiver(@min(a.x, b.x), @min(a.z, b.z), @abs(b.x - a.x), @abs(b.z - a.z))) @max(1, @as(usize, @intFromFloat(@ceil(length / 8)))) else 1;
+    var i: usize = 0;
+    while (i < strips) : (i += 1) {
+        const t0 = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(strips));
+        const t1 = @as(f32, @floatFromInt(i + 1)) / @as(f32, @floatFromInt(strips));
+        const p = city.Vec{ .x = a.x + (b.x - a.x) * t0, .z = a.z + (b.z - a.z) * t0 };
+        const q = city.Vec{ .x = a.x + (b.x - a.x) * t1, .z = a.z + (b.z - a.z) * t1 };
+        const points = [_]city.Vec{ .{ .x = p.x + nx * (lateral - half), .z = p.z + nz * (lateral - half) }, .{ .x = q.x + nx * (lateral - half), .z = q.z + nz * (lateral - half) }, .{ .x = q.x + nx * (lateral + half), .z = q.z + nz * (lateral + half) }, .{ .x = p.x + nx * (lateral + half), .z = p.z + nz * (lateral + half) } };
+        terrainFace(&points, offset, color);
+    }
 }
 fn vehicleBox(x: f32, z: f32, length: f32, wide: f32, h: f32, base: f32, ux: f32, uz: f32, color: Color) void {
     var p: [8]Point = undefined;
@@ -188,6 +228,7 @@ pub fn draw(w: f32, h: f32) void {
         const z = @as(f32, @floatFromInt(row)) * city.spacing;
         groundQuad(x, z, city.spacing, city.spacing, 0, .{ 0.36, 0.40, 0.32 });
     };
+    riverSurface();
     // Visible edges communicate the plateau heights without a terrain art dependency.
     for (0..city.cols) |i| {
         const x = @as(f32, @floatFromInt(i)) * city.spacing;

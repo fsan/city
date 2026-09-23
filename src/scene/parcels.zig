@@ -114,6 +114,8 @@ pub fn addFrontages(first_road: usize) void {
                 const x = a.x + dx * at - dz * side * 8.5 - 3.5;
                 const z = a.z + dz * at + dx * side * 8.5 - 4;
                 if (x < 3 or z < 3 or x + 7 > city.size_x - 3 or z + 8 > city.size_z - 3) continue;
+                // Slice 13: nothing is parcelled on the water or its bank.
+                if (city.inWater(x, z) or city.inWater(x + 7, z + 8)) continue;
                 var clear = true;
                 for (storage[0..count]) |p| {
                     if (x < p.x + p.width + 1 and x + 8 > p.x and z < p.z + p.depth + 1 and z + 9 > p.z) {

@@ -3,7 +3,7 @@ import {streetName} from './data.js';
 export function createPlanning(game, transport) {
   const $=id=>document.getElementById(id), r=(g,id,f)=>game.read(g,id,f);
   let mode=null, fixed=0, ready=false, parcel=-1;
-  const errors=['Ready to build.','Keep the road inside the map, between 6 and 500 metres.','Road would overlap a building or park.','Grade is too steep.','Insufficient uncommitted funds.','Network capacity reached. Try a shorter road.','A street here has a reserved work order.','Road overlaps another road or makes a very shallow junction.','Connect the road to the existing street network.'];
+  const errors=['Ready to build.','Keep the road inside the map, between 6 and 500 metres.','Road would overlap a building or park.','Grade is too steep.','Insufficient uncommitted funds.','Network capacity reached. Try a shorter road.','A street here has a reserved work order.','Road overlaps another road or makes a very shallow junction.','Connect the road to the existing street network.','The river is in the way. Only the seeded bridges cross it.'];
   const names=['Unzoned','Residential','Commercial','Industrial','Mixed use','Civic / park reserve'];
   const classes=['lane (£18/m, kerbside parking not allowed)','street (£25/m, kerbside parking banded by movement)','avenue (£40/m, wide and fastest, kerbside parking banded by movement)'];
   function close(){mode=null;fixed=0;ready=false;game.road_cancel();game.zoning_show(0);$('planning-panel').hidden=true;$('road-tool').setAttribute('aria-pressed','false');$('zone-tool').setAttribute('aria-pressed','false');}

@@ -13,6 +13,13 @@ pub const Person = struct { x: f32, z: f32, y: f32, phase: u8 = 0, mode: u8 = 0,
 // and a running cost, so the mode choice compares real money against time.
 pub const car_price: f64 = 1800;
 pub const car_reserve: f64 = 2400;
+// Slice 13: the per-trip motoring cost and the daily ownership charge. The old
+// per-metre rate (0.014) grew faster than the time a car could save, so no
+// distance could ever pay for a car; the town is now large enough that the
+// rate has to be the realistic one for the comparison to mean anything.
+pub const fuel_per_metre: f64 = 0.002;
+pub const fuel_base: f64 = 0.20;
+pub const car_daily_cost: f64 = 12;
 pub const Company = struct { building: usize, employees: usize = 0, capacity: usize, cash: f64 = 45000, contractor: bool, crew: [4]usize = .{ 0, 0, 0, 0 }, crew_count: usize = 0, order: i32 = -1, margin: f64, labour: f64, costs: f64 = 0, wage: f64 = 40, skill_required: u8 = 0, wage_arrears: f64 = 0, staffing_pressure: f64 = 0 };
 pub const DistrictOutcome = struct {
     wait_starts: u32 = 0,
@@ -583,12 +590,18 @@ fn choose(p: *Person, elapsed: f64) void {
             const park_node = parking.facilities[@intCast(plan.facility)].node;
             const access = walkSeconds(p.node, p.car_node);
             const drive = driveSeconds(p.car_node, park_node);
-            const fuel = @as(f64, city.distance[p.car_node][park_node]) * 0.014 + 0.3;
+            const fuel = @as(f64, city.distance[p.car_node][park_node]) * fuel_per_metre + fuel_base;
             const cost = fuel + plan.price;
             if (households.canAfford(p.home, cost)) {
                 const time = access + drive + plan.walk + 8;
                 var score = learnedOr(p, 2, slot, time) + @as(f32, @floatCast(cost)) * value;
-                if (p.prefers_car) score *= 0.82;
+                // A car-owning household keeps a small tie-break rather than a
+                // blanket discount: with a town this large, an 18% bonus made
+                // every owner drive even the shortest errand. 0.94 is inside
+                // the noise of the learned times, so a genuinely faster
+                // bicycle or bus still wins its trip.
+                const bias: f32 = if (p.prefers_car) 0.94 else 1;
+                score *= bias;
                 p.scores[2] = score;
                 if (score < best) {
                     best = score;
@@ -636,7 +649,7 @@ fn choose(p: *Person, elapsed: f64) void {
             p.destination = best_target;
         }
         if (best_mode == 2) {
-            const fuel = @as(f64, city.distance[best_access][best_target]) * 0.014 + 0.3;
+            const fuel = @as(f64, city.distance[best_access][best_target]) * fuel_per_metre + fuel_base;
             _ = households.spend(p.home, fuel);
         }
     }
@@ -951,14 +964,18 @@ fn considerCar(p: *Person) void {
     const home = city.buildings[p.home].node;
     const work = city.buildings[companies[@intCast(p.employer)].building].node;
     const distance = city.distance[home][work];
-    // Buy only when estimated daily time savings justify running cost; retain a cash buffer.
-    // Time saved is measured against the resident's realistic alternative for this
-    // trip: cycling where they have a bicycle, walking where they do not.
-    const alt_speed: f64 = if (p.owns_bike) 3.0 else 1.1;
-    const drive_speed: f64 = 5.0;
-    const saved_seconds = @as(f64, distance) * (1 / alt_speed - 1 / drive_speed);
-    const daily_running = 8 + @as(f64, distance) * 0.014 + 0.3;
-    const value_of_time = p.income / 480; // daily wage expressed per simulated second
+    // Slice 13: buy only when the time a car saves on this resident's own
+    // commute is worth more than the money it costs to run. The alternative is
+    // the resident's real one: cycling where they own a bicycle, walking where
+    // they do not. Because the fuel rate is now realistic, distance decides:
+    // a household on the edge of the plan can reach the point where a car pays,
+    // and a household beside its work cannot.
+    const alt_speed: f64 = if (p.owns_bike) travel.bike_speed * 0.8 else travel.walk_speed * 0.85;
+    const drive_speed: f64 = travel.car_limit * 0.65; // junctions and parking included
+    const saved_seconds = @as(f64, distance) * (1 / alt_speed - 1 / drive_speed) * 2; // both legs
+    const daily_running = car_daily_cost + @as(f64, distance) * fuel_per_metre * 2 + fuel_base * 2;
+    const wage = if (p.income > 0) p.income else households.homes[p.home].income;
+    const value_of_time = wage / 480; // daily wage expressed per simulated second
     if (saved_seconds * value_of_time <= daily_running) return;
     _ = households.spend(p.home, car_price);
     p.owns_car = true;
