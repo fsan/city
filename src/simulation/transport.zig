@@ -122,6 +122,11 @@ pub var movement: [city.max_roads]f32 = @splat(0);
 var flow: [city.max_roads]f32 = @splat(0);
 var baseline: [city.max_roads]f32 = @splat(0);
 pub var junction_traffic: [city.max_nodes]u16 = @splat(0);
+// Slice 12: vehicles whose *node* is the junction, which is to say the ones that
+// have already committed and are on their way out of the box. Flashing amber
+// admits a driver only when this is zero, so a queue on the approach can never
+// block itself.
+pub var junction_entered: [city.max_nodes]u16 = @splat(0);
 pub var crossing_active: [city.max_nodes]u16 = @splat(0);
 var heads: [city.max_roads * 4]i32 = @splat(-1);
 var entries: [city.max_roads * 4]bool = @splat(false);
@@ -153,6 +158,7 @@ pub fn init() void {
     queues = @splat(0);
     congestion = @splat(0);
     junction_traffic = @splat(0);
+    junction_entered = @splat(0);
     crossing_active = @splat(0);
     signals.seed();
     seedMovement();
@@ -276,13 +282,17 @@ pub fn update(dt: f32, elapsed: f64) void {
     // Junction pressure for pedestrian gap acceptance, and the measured movement
     // that bands kerbside parking prices.
     junction_traffic = @splat(0);
+    junction_entered = @splat(0);
     for (vehicles[0..]) |v| {
         if (!v.active or v.node == v.next) continue;
         const a = city.nodes[v.node];
         const b = city.nodes[v.next];
         const da = (v.x - a.x) * (v.x - a.x) + (v.z - a.z) * (v.z - a.z);
         const db = (v.x - b.x) * (v.x - b.x) + (v.z - b.z) * (v.z - b.z);
-        if (da < 196) junction_traffic[v.node] +|= 1;
+        if (da < 196) {
+            junction_traffic[v.node] +|= 1;
+            junction_entered[v.node] +|= 1;
+        }
         if (db < 196) junction_traffic[v.next] +|= 1;
     }
     for (0..city.road_count) |r| {
@@ -391,7 +401,10 @@ pub fn update(dt: f32, elapsed: f64) void {
             }
             link = links[@intCast(link)];
         }
-        const limit: f32 = (if (bus) travel.bus_limit else travel.classSpeed(road.class, road.condition, road.slope, road.works)) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1);
+        // Slice 12: a flashing-amber junction is a caution, not a green, so
+        // approaching drivers slow to about half speed and yield.
+        const caution: f32 = if (city.degree(v.next) >= 3 and signals.flashingAt(v.next, elapsed)) 0.5 else 1;
+        const limit: f32 = (if (bus) travel.bus_limit else travel.classSpeed(road.class, road.condition, road.slope, road.works)) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1) * caution;
         var target = limit;
         if (must_stop or following) target = @min(target, @sqrt(6 * free));
         if (v.speed < target) v.speed = @min(target, v.speed + dt * 2) else v.speed = @max(target, v.speed - dt * 3);
@@ -502,7 +515,17 @@ pub fn journey(from: usize, to: usize) Journey {
 fn entryAllowed(v: Vehicle, next: usize, elapsed: f64) bool {
     const road_id = city.road_between[v.node][next];
     if (road_id < 0 or !city.roads[@intCast(road_id)].vehicles) return false;
-    if (city.degree(v.node) >= 3 and !green(v.node, @intCast(road_id), elapsed)) return false;
+    if (city.degree(v.node) >= 3) {
+        // Slice 12: an emergency hold stops cross traffic outright, and a
+        // flashing-amber junction lets drivers cross slowly when it is safe, so
+        // they only commit when nothing is already inside the junction box.
+        if (signals.heldForEmergency(v.node)) return false;
+        if (signals.flashingAt(v.node, elapsed)) {
+            // Cross slowly, and only once the box is clear of whoever went in
+            // ahead of this driver.
+            if (junction_entered[v.node] > 0) return false;
+        } else if (!green(v.node, @intCast(road_id), elapsed)) return false;
+    }
     if (!room(v, next)) return false;
     var candidate = v;
     candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] == 1) 1 else 0;

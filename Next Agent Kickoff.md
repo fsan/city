@@ -148,8 +148,10 @@ records the implemented rules, verification and limits.
   time read it. Car-owning households with the car preference drive.
 - Tenure drives the municipal assessment: owners pay from the household, rented
   homes pay from the owner's collected rent; unpaid assessment stays arrears.
-- Save schema is version 9, `bellwether-2027-04-v9`; version 8 and older are
+- Save schema is version 11, `bellwether-2027-09-v11` (slice 12); version 10 and
+  older are
   rejected with result 3. A 22-road expanded graph still fits the 16 MiB cap.
+  Slice 11 serialises player-placed traffic signals alongside it.
 
 ## Superseded slice 9 plan text (historical)
 

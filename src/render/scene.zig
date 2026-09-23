@@ -241,15 +241,22 @@ pub fn draw(w: f32, h: f32) void {
             box(p.x - 0.19, p.z - 0.19, 0.38, 0.38, 0.66, y + 1.7, if (selected_head) .{ 0.95, 0.8, 0.35 } else .{ 0.12, 0.14, 0.13 });
             const lamp = switch (state) {
                 .green => Color{ 0.26, 0.9, 0.4 },
-                .yellow => Color{ 0.95, 0.78, 0.2 },
+                .yellow, .flash => Color{ 0.95, 0.78, 0.2 },
                 .red => Color{ 1, 0.24, 0.12 },
             };
             const lit = switch (state) {
                 .green => @as(f32, 1.78),
-                .yellow => @as(f32, 1.94),
+                .yellow, .flash => @as(f32, 1.94),
                 .red => @as(f32, 2.10),
             };
-            box(p.x - 0.21, p.z - 0.21, 0.42, 0.42, 0.16, y + lit, lamp);
+            // Slice 12: a flashing head is lit for half of every blink, which is
+            // what tells the player at a glance that the junction is on caution
+            // rather than on a green.
+            const shown = if (state == .flash and !transport.signals.flashLit(&junction, game.elapsed))
+                Color{ 0.30, 0.26, 0.11 }
+            else
+                lamp;
+            box(p.x - 0.21, p.z - 0.21, 0.42, 0.42, 0.16, y + lit, shown);
         }
     }
     // Ground-only projected shadows, clipped into small terrain-following cells.

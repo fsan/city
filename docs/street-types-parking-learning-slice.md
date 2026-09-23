@@ -91,7 +91,10 @@ Street classes, parking facilities, slot occupancy, kerbside prices, per-residen
 learned times and parking estimates, and tenure-driven tax state are serialized
 and validated. Save schema becomes `version: 9`,
 `rules: "bellwether-2027-04-v9"`; version 8 and older files are rejected
-explicitly with result 3. No migration layer is added.
+explicitly with result 3. No migration layer is added. (Slice 11 later moved the
+schema to version 10 / `bellwether-2027-05-v10` in that slice; slice 12 moves
+it to version 11 / `bellwether-2027-09-v11`; see
+[traffic signals](traffic-signals-slice.md).)
 
 ## Verification required
 
@@ -199,7 +202,8 @@ Measured on the served build:
 - Tenure tax: after one day £9,886.47 of residential assessment was recorded,
   a rented home's owner reserve paid its assessment and municipal cash
   reconciled; rent collected that day was £3,496.20.
-- Save schema v9 round-tripped byte-identically at 12.35 MB after 200 simulated
+- Save schema v9 (history; the current schema is v10) round-tripped
+  byte-identically at 12.35 MB after 200 simulated
   seconds, and a 22-road expanded graph still fitted the 16 MiB cap at
   13.48 MB.
 

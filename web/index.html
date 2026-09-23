@@ -995,6 +995,12 @@
             <button id="crosswalk-place" aria-pressed="false">Add crosswalk</button>
             <button id="crosswalk-remove" aria-pressed="false">Remove crosswalk</button>
           </div>
+          <div class="transport-tabs" role="tablist" aria-label="Traffic light views">
+            <button id="signal-tab-one" role="tab" aria-selected="true">Selected light</button>
+            <button id="signal-tab-all" role="tab" aria-selected="false">All lights</button>
+            <button id="signal-tab-map" role="tab" aria-selected="false">Coordination map</button>
+          </div>
+          <div id="signal-view-one" role="tabpanel">
           <p class="note">
             Arm a tool, then click the map. Placement snaps to the nearest
             junction arm. A light is set back from the corner and gives one
@@ -1003,16 +1009,122 @@
           <div id="signal-inspector" hidden>
             <div id="signal-summary" class="note"></div>
             <label>Green time (simulation seconds)
-              <input id="signal-green" type="number" min="2" max="60" step="0.5">
+              <input id="signal-green" type="number" min="0.5" max="60" step="0.5">
             </label>
             <label>Yellow time (simulation seconds)
-              <input id="signal-yellow" type="number" min="1" max="10" step="0.5">
+              <input id="signal-yellow" type="number" min="0.5" max="10" step="0.5">
+            </label>
+            <label>Off time (simulation seconds)
+              <input id="signal-red" type="number" min="0" max="6" step="0.5">
             </label>
             <div class="transport-controls">
               <button id="signal-apply">Apply timing</button>
               <button id="signal-remove">Remove this signal</button>
             </div>
             <p class="note" id="signal-clock"></p>
+            <div class="note" id="signal-arms"></div>
+            <h4>Blinking yellow</h4>
+            <p class="note">
+              In the window below this light blinks yellow instead of cycling,
+              which means cars may cross slowly as long as it is safe. The switch
+              puts one light on flashing yellow by hand, or hands it back to the
+              window and the normal cycle.
+            </p>
+            <label>Flash window starts at hour
+              <input id="signal-flash-start" type="number" min="0" max="24" step="0.5">
+            </label>
+            <label>Flash window ends at hour
+              <input id="signal-flash-end" type="number" min="0" max="24" step="0.5">
+            </label>
+            <label class="note"><input id="signal-flash-enabled" type="checkbox"> Use the daily flash window</label>
+            <div class="transport-controls">
+              <button id="signal-flash-save">Save window</button>
+              <button id="signal-flash-on" aria-pressed="false">Flash yellow now</button>
+              <button id="signal-flash-auto" aria-pressed="true">Follow window</button>
+              <button id="signal-flash-off" aria-pressed="false">Normal cycle</button>
+            </div>
+            <p class="note" id="signal-flash-state"></p>
+            <h4>Emergency hold</h4>
+            <p class="note">
+              Police and firefighters are not simulated yet. These raise the
+              alert a dispatcher will one day send: hold stops the cross traffic
+              so an emergency vehicle can pass, open puts the junction on
+              flashing yellow, release hands it back.
+            </p>
+            <div class="transport-controls">
+              <button id="signal-hold" aria-pressed="false">Hold cross traffic</button>
+              <button id="signal-open" aria-pressed="false">Open</button>
+              <button id="signal-release" aria-pressed="false">Release</button>
+            </div>
+          </div>
+          </div>
+          <div id="signal-view-all" role="tabpanel" hidden>
+            <div id="signal-list" class="signal-list"></div>
+            <h4>Apply to many lights</h4>
+            <p class="note">
+              Choose what to change, then whether it lands on every light, on
+              every light along one street, or on one junction. The count after
+              Apply says how many lights took the new value.
+            </p>
+            <div class="transport-controls">
+              <select id="signal-bulk-scope" aria-label="Bulk scope">
+                <option value="0">Every light</option>
+                <option value="1">A street</option>
+                <option value="2">A junction</option>
+              </select>
+              <select id="signal-bulk-street" aria-label="Street to apply to"></select>
+              <select id="signal-bulk-node" aria-label="Junction to apply to"></select>
+              <select id="signal-bulk-field" aria-label="Property to apply">
+                <option value="0">Green time</option>
+                <option value="1">Yellow time</option>
+                <option value="2">Off time (all-red)</option>
+                <option value="3">Flash window start (hour)</option>
+                <option value="4">Flash window end (hour)</option>
+                <option value="5">Flash window on/off</option>
+                <option value="6">Manual flash mode</option>
+              </select>
+              <input id="signal-bulk-value" type="number" step="0.5" value="8" aria-label="Value to apply">
+              <button id="signal-bulk-apply">Apply</button>
+            </div>
+            <div class="transport-controls">
+              <button id="signal-flash-all-on">Flash every light</button>
+              <button id="signal-flash-all-off">Restore every light</button>
+            </div>
+            <p class="note" id="signal-bulk-note"></p>
+          </div>
+          <div id="signal-view-map" role="tabpanel" hidden>
+            <p class="note">
+              Linked lights run the same cycle, with the follower held back by
+              the delay shown on the link. Pick a leader and a follower, set the
+              delay in simulation seconds, then Link them.
+            </p>
+            <svg id="signal-map" viewBox="0 0 320 320" role="img" aria-label="Traffic light coordination map"></svg>
+            <div class="transport-controls">
+              <select id="signal-link-from" aria-label="Leader light"></select>
+              <select id="signal-link-to" aria-label="Follower light"></select>
+              <input id="signal-link-delay" type="number" min="0" max="60" step="1" value="4" aria-label="Delay in simulation seconds">
+            </div>
+            <div class="transport-controls">
+              <button id="signal-link-add">Link lights</button>
+              <button id="signal-link-remove">Unlink</button>
+            </div>
+            <h4>Emergency alerts</h4>
+            <p class="note">
+              A police or firefighter dispatcher will one day raise these. Hold
+              stops the cross traffic so an emergency vehicle can pass; Open puts
+              the junction on flashing amber; Release hands it back to its normal
+              cycle.
+            </p>
+            <div class="transport-controls">
+              <select id="signal-alert-kind" aria-label="Alert">
+                <option value="1">Hold cross traffic</option>
+                <option value="2">Open (flashing amber)</option>
+                <option value="3">Release</option>
+              </select>
+              <input id="signal-alert-seconds" type="number" min="0" max="600" step="10" value="60" aria-label="Seconds to hold">
+              <button id="signal-alert-send">Raise alert</button>
+            </div>
+            <p class="note" id="signal-map-note"></p>
           </div>
           <h3>Current queues</h3>
           <div id="traffic-hotspots"></div>

@@ -34,6 +34,82 @@ Avoid copying large global arrays into read paths: iterate by reference. This sl
 - Building kind 7 is vacant land. Existing IDs and enum values are retained.
 
 
+## Traffic signals and crosswalks
+
+Group 29 exposes traffic-signal heads as one flat index over junctions and their
+arms. Fields: 0 junction index, 1 node, 2 street, 3 arm slot, 4 arms on that
+junction, 5 state (0 red, 1 amber, 2 green), 6 green seconds, 7 amber seconds,
+8 full cycle seconds, 9 seconds until this arm changes, 10/11 head world x/z,
+12 signalised junction count, 13 minimum green, 14 maximum green. Exactly one
+arm of a junction is green at a time; a junction with no signal is uncontrolled
+and its vehicles are never gated.
+
+Green and amber are simulation seconds, and one simulation second is three
+simulation minutes. `signal_set_green(node, seconds)` and
+`signal_set_yellow(node, seconds)` clamp to the group-29 minimum and maximum and
+return the applied value, or -1 when that junction has no signal. The floors are
+half a simulation second for green and amber (fields 13/14 and 26/27) and zero
+for the off time (fields 24/25), so small values such as 1.0 or 0.5 are stored
+exactly as typed rather than replaced by a larger default.
+
+Commands: `signal_place(road, node)` signalises an existing road end and returns
+its flat head, refusing a road that does not touch the node. `signal_remove(node)`
+turns a junction's signal off. `signal_place_screen(x, y)` and
+`crosswalk_place_screen(x, y)`/`crosswalk_remove_screen(x, y)` take screen pixels
+and snap to the nearest junction arm or street segment within 9 m; a crosswalk
+also signalises a junction end whose degree is 3 or more. `signal_pick(x, y)`
+selects the nearest head under the cursor in screen pixels and returns its flat
+index, and `signal_selected()` reports that selection. `signal_preview_screen(x, y)`
+and `crosswalk_preview_screen(x, y)` return the snap target under the cursor
+without placing anything, so the tools can preview where a click would land.
+Head positions sit 3.4 m along the arm and 2.6 m across it, so a light is set back
+from the corner.
+
+### Per-light timing, flashing yellow and coordination (slice 12)
+
+Group 29 carries the granular properties of each individual light. Fields 15 red
+(the all-red "off" time in simulation seconds), 16 manual flash mode (-1 forced
+off, 0 follows the daily window, 1 forced on), 17 whether the light is blinking
+yellow right now, 18 whether the daily window is in use, 19/20 the window's start
+and end hour of the simulation day, 21 coordination group (-1 ungrouped), 22 the
+delay in simulation seconds behind that group's leader, 23 preemption (0 normal,
+1 cross traffic held for an emergency, 2 open on flashing yellow), 24/25 the
+minimum and maximum off time, 26/27 the minimum and maximum amber, 28/29 the
+minimum and maximum coordination delay, 30 whether the amber lamp is lit in this
+half of the blink, 31-34 each arm's state, and 35-38 each arm's street. State 3
+means flashing yellow, so a branch that is neither committed nor waiting reports
+3 rather than a colour.
+
+While a light blinks yellow every approach may go, slowly and yielding: drivers
+are held until the junction box is clear of whoever went in ahead, and approach
+speeds are halved. Pedestrians keep priority at a yielding junction. A preemption
+of kind 1 holds the cross traffic outright, which is what an emergency service
+needs and which no simulated driver may cross.
+
+Group 30 is the coordination map. By link index: 0 leader junction, 1 follower
+junction, 2 leader node, 3 follower node, 4 delay seconds, 5 active, 6/7 the two
+group ids, 8 whether the follower is blinking. Links make a follower run its
+leader's cycle, held back by the delay.
+
+Commands: `signal_set_red(node, seconds)` clamps to fields 24/25 and returns the
+applied value or -1. `signal_set_flash_schedule(node, start_hour, end_hour,
+enabled)` sets the daily window (a start later than the end runs overnight).
+`signal_flash_manual(node, mode)` and `signal_flash_bulk(scope, key, mode)` set
+the manual switch for one light, a whole street (scope 1, key street) or every
+light (scope 0); they return how many lights changed. `signal_apply_bulk(scope,
+key, field, value)` writes one property across the same three scopes, where field
+0 green, 1 amber, 2 off time, 3/4 window hours, 5 window enabled and 6 manual
+flash mode, and returns the number of lights that took the value.
+
+`signal_alert(node, kind, seconds)` is the emergency hook a police or firefighter
+dispatcher will use; kind 1 holds the cross traffic, 2 opens the junction on
+flashing yellow and 3 releases it. Alerts are queued and applied at the next
+update, and a timed hold expires on its own. `signal_alerts_pending()`,
+`signal_alerts_handled()` and `signal_alerts_pushed()` report the queue. Police
+and firefighters are not simulated yet, so today the player's own controls raise
+these alerts. `signal_link(from, to, delay)` and `signal_unlink(from, to)` edit
+the map and `signal_link_count()`/`signal_links_total()` report it.
+
 ## Planning additions
 
 Group 0 field 28 is graph revision. Node and road counts are now live counts. Group 1 fields 13/14 are street ID and property number. Group 3 fields 28/29 are destination/origin building IDs (multiple buildings may share a node). Group 5 fields 15/16 are street ID and pedestrian count. Group 11 fields 5/6 are the stop's street ID and number.
@@ -352,7 +428,7 @@ Commands: `road_class(value)` sets the class (0-2) used by the next
 `road_begin`; `parking_rebuild()` re-seeds facilities after a road is built and
 reposts kerbside prices.
 
-Save schema is version 9, rules `bellwether-2027-04-v9`; version 8 and older are
+Save schema is version 11, rules `bellwether-2027-09-v11`; version 10 and older are
 rejected with result 3. Parking facilities, occupancy, prices, aggregate
 availability, movement, counters and every learned resident field are
 serialized and validated.

@@ -750,13 +750,59 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 12 => @floatFromInt(signals.count),
                 13 => signals.min_green,
                 14 => signals.max_green,
+                // Slice 12: the granular properties the player can set on this
+                // individual light, and where it sits in a coordination group.
+                15 => junction.red,
+                16 => @floatFromInt(@intFromEnum(junction.flash)),
+                17 => if (signals.flashing(junction, game.elapsed)) 1 else 0,
+                18 => if (junction.flash_enabled) 1 else 0,
+                19 => junction.flash_start,
+                20 => junction.flash_end,
+                21 => @floatFromInt(junction.group),
+                22 => junction.delay,
+                23 => @floatFromInt(@intFromEnum(junction.preempt)),
+                24 => signals.min_red,
+                25 => signals.max_red,
+                26 => signals.min_yellow,
+                27 => signals.max_yellow,
+                28 => signals.min_delay,
+                29 => signals.max_delay,
+                30 => if (signals.flashLit(junction, game.elapsed)) 1 else 0,
+                31 => @floatFromInt(@intFromEnum(signals.slotState(headJunction(@intCast(head)), 0, game.elapsed))),
+                32 => @floatFromInt(@intFromEnum(signals.slotState(headJunction(@intCast(head)), 1, game.elapsed))),
+                33 => @floatFromInt(@intFromEnum(signals.slotState(headJunction(@intCast(head)), 2, game.elapsed))),
+                34 => @floatFromInt(@intFromEnum(signals.slotState(headJunction(@intCast(head)), 3, game.elapsed))),
+                35 => @floatFromInt(signals.junctionRoad(headJunction(@intCast(head)), 0)),
+                36 => @floatFromInt(signals.junctionRoad(headJunction(@intCast(head)), 1)),
+                37 => @floatFromInt(signals.junctionRoad(headJunction(@intCast(head)), 2)),
+                38 => @floatFromInt(signals.junctionRoad(headJunction(@intCast(head)), 3)),
+                else => -1,
+            };
+        },
+        30 => {
+            // Slice 12 coordination map: a link names the light that leads, the
+            // light that follows, and the delay in simulation seconds between
+            // their actions.
+            if (id >= signals.link_count) return -1;
+            const l = signals.links[id];
+            const from = signals.junctions[l.from];
+            const to = signals.junctions[l.to];
+            return switch (field) {
+                0 => @floatFromInt(l.from),
+                1 => @floatFromInt(l.to),
+                2 => @floatFromInt(from.node),
+                3 => @floatFromInt(to.node),
+                4 => l.delay,
+                5 => if (l.active) 1 else 0,
+                6 => @floatFromInt(from.group),
+                7 => @floatFromInt(to.group),
+                8 => if (signals.flashing(&to, game.elapsed)) 1 else 0,
                 else => -1,
             };
         },
         else => return -1,
     }
 }
-
 
 // Signal heads are numbered junction by junction, then arm by arm, matching
 // the renderer's own flat numbering.
@@ -1032,6 +1078,96 @@ export fn signal_pick(x: f32, y: f32) i32 {
     return scene.pickSignal(x, y, 20);
 }
 
+// Slice 12: per-light granular timing. The all-red clearance is the "off" time
+// shown next to green and amber in the inspector.
+export fn signal_set_red(node: u32, seconds: f64) f64 {
+    if (node >= city.node_count or !std.math.isFinite(seconds)) return -1;
+    if (!signals.setRed(node, @floatCast(seconds))) return -1;
+    const index = signals.find(node) orelse return -1;
+    return signals.junctions[index].red;
+}
+
+// The daily window, in hours of the simulation day, where this light flashes
+// amber instead of cycling. A window whose start is later than its end runs
+// overnight, as most quiet-hour windows do.
+export fn signal_set_flash_schedule(node: u32, start_hour: f64, end_hour: f64, enabled: u32) bool {
+    if (node >= city.node_count) return false;
+    if (!std.math.isFinite(start_hour) or !std.math.isFinite(end_hour)) return false;
+    return signals.setFlashHours(node, @floatCast(start_hour), @floatCast(end_hour), enabled == 1);
+}
+
+// The manual flashing switch: 1 puts this light on flashing amber now, -1 puts
+// it back on its normal cycle, 0 hands both back to the daily window.
+export fn signal_flash_manual(node: u32, mode: i32) bool {
+    if (node >= city.node_count) return false;
+    return signals.setFlashMode(node, flashMode(mode));
+}
+
+fn flashMode(mode: i32) signals.FlashMode {
+    if (mode > 0) return .on;
+    if (mode < 0) return .off;
+    return .auto;
+}
+
+// The same manual switch applied to a whole street (scope 1, key = road id), to
+// one junction (scope 2, key = node) or to every light (scope 0). Returns how
+// many lights changed.
+export fn signal_flash_bulk(scope: u32, key: u32, mode: i32) u32 {
+    if (scope > 2) return 0;
+    return signals.bulkFlash(@intCast(scope), key, flashMode(mode));
+}
+
+// Emergency hook: 1 holds the cross traffic on this junction, 2 opens it to
+// flashing amber, 3 releases it back to normal. Police and firefighters are not
+// simulated yet, so the player's own controls call this today and a future
+// dispatcher will call the same entry point.
+export fn signal_alert(node: u32, kind: u32, seconds: f64) u32 {
+    if (node >= city.node_count or kind < 1 or kind > 3) return @intCast(signals.alert_count);
+    const until: f64 = if (std.math.isFinite(seconds) and seconds > 0) game.elapsed + seconds else 0;
+    _ = signals.pushAlert(node, @enumFromInt(@as(u8, @intCast(kind))), until);
+    return @intCast(signals.alert_count);
+}
+
+export fn signal_alerts_pending() u32 {
+    return @intCast(signals.alert_count);
+}
+
+export fn signal_alerts_handled() f64 {
+    return @floatFromInt(signals.alerts_handled);
+}
+
+export fn signal_alerts_pushed() f64 {
+    return @floatFromInt(signals.alerts_pushed);
+}
+
+// Coordination: which lights act together, and how far the follower lags.
+export fn signal_link(from_node: u32, to_node: u32, delay: f64) bool {
+    if (from_node >= city.node_count or to_node >= city.node_count) return false;
+    if (!std.math.isFinite(delay)) return false;
+    return signals.link(from_node, to_node, @floatCast(delay));
+}
+
+export fn signal_unlink(from_node: u32, to_node: u32) bool {
+    return signals.unlink(from_node, to_node);
+}
+
+export fn signal_link_count() u32 {
+    return @intCast(signals.link_count);
+}
+
+export fn signal_links_total() f64 {
+    return @floatFromInt(signals.link_total);
+}
+
+// Bulk apply by street, junction or the whole town. field 0 green, 1 amber,
+// 2 all-red off time, 3 and 4 the flash window hours, 5 the window switch,
+// 6 the manual flash mode. Returns how many lights changed.
+export fn signal_apply_bulk(scope: u32, key: u32, field: u32, value: f64) u32 {
+    if (scope > 2 or field > 6) return 0;
+    if (!std.math.isFinite(value)) return 0;
+    return signals.bulkApply(@intCast(scope), key, @intCast(field), @floatCast(value));
+}
+
 export fn signal_selected() i32 {
     return scene.selected_signal;
 }
@@ -1046,10 +1182,9 @@ export fn signal_place_screen(x: f32, y: f32) i32 {
     return signalFlat(junction, 0);
 }
 
-// Add a crosswalk to the nearest segment and signalise its junction.
-export fn crosswalk_place_screen(x: f32, y: f32) i32 {
-    const p = scene.groundPoint(x, y);
-    var best: f32 = 9;
+// Slice 11: the nearest segment to a ground point, within limit metres.
+fn nearRoad(p: city.Vec, limit: f32) i32 {
+    var best: f32 = limit;
     var road: i32 = -1;
     for (city.roads, 0..) |r, id| {
         const a = city.nodes[r.a];
@@ -1062,6 +1197,26 @@ export fn crosswalk_place_screen(x: f32, y: f32) i32 {
             road = @intCast(id);
         }
     }
+    return road;
+}
+
+// Slice 11 previews: report the snap target under the cursor without placing
+// anything, so the traffic tools can show where a click would land.
+export fn signal_preview_screen(x: f32, y: f32) i32 {
+    const p = scene.groundPoint(x, y);
+    const node = nearJunctionNode(p) orelse return -1;
+    return @intCast(node);
+}
+
+export fn crosswalk_preview_screen(x: f32, y: f32) i32 {
+    const p = scene.groundPoint(x, y);
+    return nearRoad(p, 9);
+}
+
+// Add a crosswalk to the nearest segment and signalise its junction.
+export fn crosswalk_place_screen(x: f32, y: f32) i32 {
+    const p = scene.groundPoint(x, y);
+    const road = nearRoad(p, 9);
     if (road < 0) return -1;
     city.roads[@intCast(road)].crosswalk = true;
     const r = city.roads[@intCast(road)];

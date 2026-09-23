@@ -35,6 +35,9 @@ export function createTransport(game, ui) {
   // Slice 11: traffic-signal placement tools and the selected-light inspector.
   const signalButton = $("signal-place"), crosswalkButton = $("crosswalk-place"), crosswalkRemoveButton = $("crosswalk-remove");
   const inspector = $("signal-inspector"), greenInput = $("signal-green"), yellowInput = $("signal-yellow");
+  // Slice 12: the granular per-light controls, the traffic-lights tab and the
+  // coordination map.
+  const redInput = $("signal-red"), flashStartInput = $("signal-flash-start"), flashEndInput = $("signal-flash-end"), flashEnabledInput = $("signal-flash-enabled");
   const arm = (next) => {
     tool = tool === next ? null : next;
     signalButton.setAttribute("aria-pressed", tool === "signal" ? "true" : "false");
@@ -46,39 +49,345 @@ export function createTransport(game, ui) {
       : "");
     return tool;
   };
+  function reveal(element) {
+    const body = element.closest(".window-body");
+    if (!body) return;
+    const outer = body.getBoundingClientRect(), inner = element.getBoundingClientRect();
+    if (inner.bottom > outer.bottom) body.scrollTop += inner.bottom - outer.bottom + 8;
+    else if (inner.top < outer.top) body.scrollTop -= outer.top - inner.top + 8;
+  }
   signalButton.onclick = () => arm("signal");
   crosswalkButton.onclick = () => arm("crosswalk");
   crosswalkRemoveButton.onclick = () => arm("crosswalk-remove");
-  function showSignal(head) {
+  // The panel refreshes twice a real second, so the timing fields are only
+  // refilled when the player changes the selected light, applies an edit, or
+  // is not part-way through typing one. Otherwise a live refresh writes the
+  // stored value back over the number being entered and the edit is replaced.
+  let signalFieldsHead = -1, signalFieldsEdited = false;
+  const signalFieldInputs = [greenInput, yellowInput, redInput, flashStartInput, flashEndInput];
+  for (const input of signalFieldInputs) input.addEventListener("input", () => { signalFieldsEdited = true; });
+  function fillSignalFields(head, force) {
+    const changed = head !== signalFieldsHead;
+    if (!changed && !force && signalFieldsEdited) return; // keep the half-typed edit
+    const fields = [
+      [greenInput, 6], [yellowInput, 7], [redInput, 15],
+      [flashStartInput, 19], [flashEndInput, 20],
+    ];
+    for (const [input, field] of fields) {
+      if (!changed && !force && document.activeElement === input) continue;
+      input.value = r(29, head, field).toFixed(1);
+    }
+    signalFieldsHead = head;
+    signalFieldsEdited = false;
+  }
+  // An empty or unreadable box keeps the stored value rather than sending NaN.
+  function timingInput(input, head, field) {
+    const value = Number(input.value);
+    return input.value.trim() !== "" && Number.isFinite(value) ? value : r(29, head, field);
+  }
+  function showSignal(head, force) {
     signal = head;
-    if (head < 0) { inspector.hidden = true; return; }
+    if (head < 0) { inspector.hidden = true; signalFieldsHead = -1; signalFieldsEdited = false; return; }
     inspector.hidden = false;
     const node = r(29, head, 1), road = r(29, head, 2), state = r(29, head, 5);
-    const names = ["red", "amber", "green"];
+    const names = ["red", "amber", "green", "flashing yellow"];
     const simSeconds = (value) => `${value.toFixed(1)} s (${(value * 3).toFixed(0)} sim min)`;
+    const flashingNow = r(29, head, 17) === 1;
+    const mode = r(29, head, 16);
     $("signal-summary").textContent =
       `Junction at node ${node + 1} · arm on street #${road + 1} · phase ${r(29,head,3) + 1} of ${r(29,head,4)} · currently ${names[state] ?? "?"}. ` +
       `One branch runs at a time; the others wait. ${r(29,head,12)} junctions are signalised.`;
     greenInput.min = r(29, head, 13); greenInput.max = r(29, head, 14);
-    if (document.activeElement !== greenInput) greenInput.value = r(29, head, 6).toFixed(1);
-    if (document.activeElement !== yellowInput) yellowInput.value = r(29, head, 7).toFixed(1);
+    yellowInput.min = r(29, head, 26); yellowInput.max = r(29, head, 27);
+    redInput.min = r(29, head, 24); redInput.max = r(29, head, 25);
+    fillSignalFields(head, force === true);
+    flashEnabledInput.checked = r(29, head, 18) === 1;
+    $("signal-flash-state").textContent = flashingNow
+      ? "Blinking yellow right now: cars may cross slowly, and only when the junction is clear."
+      : mode > 0.5 ? "Flashing yellow by hand. Follow the window hands it back to the daily window."
+      : mode < -0.5 ? "Forced onto the normal cycle; the daily window is ignored until Follow the window."
+      : r(29, head, 18) === 1 ? "Following the daily window: outside it the branches cycle as usual." : "Cycling normally; no daily window is set.";
+    $("signal-flash-on").setAttribute("aria-pressed", mode > 0.5 ? "true" : "false");
+    $("signal-flash-auto").setAttribute("aria-pressed", mode === 0 ? "true" : "false");
+    $("signal-flash-off").setAttribute("aria-pressed", mode < -0.5 ? "true" : "false");
+    const preempt = r(29, head, 23);
+    $("signal-hold").setAttribute("aria-pressed", preempt === 1 ? "true" : "false");
+    $("signal-open").setAttribute("aria-pressed", preempt === 2 ? "true" : "false");
+    $("signal-arms").textContent = `Branches — ${armSummary(head)}.`;
+    const group = r(29, head, 21), delay = r(29, head, 22);
     const left = r(29, head, 9);
     $("signal-clock").textContent =
-      `Green ${simSeconds(r(29,head,6))} · amber ${simSeconds(r(29,head,7))} · full cycle ${simSeconds(r(29,head,8))}. ` +
-      `This branch changes in ${simSeconds(left)}. Timings are simulation time, not real time.`;
+      `Green ${simSeconds(r(29, head, 6))} · amber ${simSeconds(r(29, head, 7))} · off ${simSeconds(r(29, head, 15))} · full cycle ${simSeconds(r(29, head, 8))}. ` +
+      (flashingNow ? "No branch is committed while the light blinks yellow. " : `This branch changes in ${simSeconds(left)}. `) +
+      `Timings are simulation time, not real time. Coordination: ${group < 0 ? "not grouped" : `group ${group + 1}, held back ${simSeconds(delay)}`}` +
+      `${preempt === 1 ? ", and the cross traffic is held for an emergency" : preempt === 2 ? ", and the junction is opened for an emergency" : ""}.`;
   }
   $("signal-apply").onclick = () => {
     if (signal < 0) return;
     const node = r(29, signal, 1);
-    const green = game.signal_set_green(node, Number(greenInput.value));
-    const yellow = game.signal_set_yellow(node, Number(yellowInput.value));
-    message(green < 0 || yellow < 0 ? "That junction has no signal." : `Timing set: green ${green.toFixed(1)} s, amber ${yellow.toFixed(1)} s (simulation time).`);
-    showSignal(signal);
+    const green = game.signal_set_green(node, timingInput(greenInput, signal, 6));
+    const yellow = game.signal_set_yellow(node, timingInput(yellowInput, signal, 7));
+    const red = game.signal_set_red(node, timingInput(redInput, signal, 15));
+    message(green < 0 || yellow < 0 || red < 0 ? "That junction has no signal." : `Timing set: green ${green.toFixed(1)} s, amber ${yellow.toFixed(1)} s, off ${red.toFixed(1)} s (simulation time).`);
+    showSignal(signal, true);
   };
   $("signal-remove").onclick = () => {
     if (signal < 0) return;
     if (game.signal_remove(r(29, signal, 1))) { message("Signal removed."); showSignal(-1); }
   };
+  // Slice 12: the traffic-lights tab. One row per signalised junction, with the
+  // same values the panel above edits one light at a time.
+  const signalTabButtons = { one: $("signal-tab-one"), all: $("signal-tab-all"), map: $("signal-tab-map") };
+  const signalTabViews = { one: $("signal-view-one"), all: $("signal-view-all"), map: $("signal-view-map") };
+  function showSignalTab(name) {
+    for (const key of Object.keys(signalTabViews)) {
+      const on = key === name;
+      signalTabButtons[key].setAttribute("aria-selected", on ? "true" : "false");
+      signalTabViews[key].hidden = !on;
+    }
+    if (name === "all") {
+      // The option helper lives further down the module, so the bulk lists are
+      // built here rather than at load time.
+      syncBulkScope();
+      syncSignalList();
+    }
+    if (name === "map") syncSignalMap();
+  }
+  for (const key of Object.keys(signalTabButtons)) signalTabButtons[key].onclick = () => showSignalTab(key);
+  const signalStateNames = ["red", "amber", "green", "flashing yellow"];
+  // The flat head index is the ABI's own enumeration: walk it until the read
+  // says "no head", then keep one row per junction.
+  function signalHeads() {
+    const heads = [];
+    for (let head = 0; head < 400; head++) {
+      if (r(29, head, 1) < 0) break;
+      heads.push(head);
+    }
+    return heads;
+  }
+  function signalJunctions() {
+    const seen = new Map();
+    for (const head of signalHeads()) {
+      const junction = r(29, head, 0);
+      if (!seen.has(junction)) seen.set(junction, head);
+    }
+    return [...seen.entries()].map(([junction, head]) => ({ junction, head }));
+  }
+  function armSummary(head) {
+    const slots = [];
+    for (let slot = 0; slot < 4; slot++) {
+      const branch = r(29, head, 35 + slot);
+      if (branch < 0) continue;
+      const state = r(29, head, 31 + slot);
+      slots.push(`${streetName(r(5, branch, 15))} #${branch + 1}: ${signalStateNames[state] ?? "?"}`);
+    }
+    return slots.length > 0 ? slots.join(" · ") : "no branches";
+  }
+  function flashSummary(head) {
+    if (r(29, head, 17) === 1) return "blinking yellow";
+    const mode = r(29, head, 16);
+    if (mode > 0.5) return "blinking by hand";
+    if (mode < -0.5) return "manual off";
+    if (r(29, head, 18) !== 1) return "cycling";
+    return `window ${r(29, head, 19).toFixed(0)}–${r(29, head, 20).toFixed(0)}h`;
+  }
+  let signalRowIds = "";
+  function syncSignalList() {
+    const rows = signalJunctions();
+    const ids = rows.map((row) => row.head).join(",");
+    if (ids !== signalRowIds) {
+      signalRowIds = ids;
+      $("signal-list").replaceChildren(
+        ...rows.map((row) => {
+          const button = document.createElement("button");
+          button.className = "signal-row";
+          button.onclick = () => {
+            signal = row.head;
+            showSignalTab("one");
+            showSignal(row.head);
+            reveal(inspector);
+          };
+          return button;
+        }),
+      );
+    }
+    [...$("signal-list").children].forEach((button, i) => {
+      const head = rows[i].head;
+      button.textContent =
+        `Node ${r(29, head, 1) + 1} · ${r(29, head, 4)} branches · green ${r(29, head, 6).toFixed(1)}s · amber ${r(29, head, 7).toFixed(1)}s · off ${r(29, head, 15).toFixed(1)}s · ${flashSummary(head)}`;
+      button.title = armSummary(head);
+      button.setAttribute("aria-pressed", head === signal ? "true" : "false");
+    });
+  }
+  let signalBulkBuilt = false;
+  function syncSignalBulkOptions() {
+    if (signalBulkBuilt) return;
+    signalBulkBuilt = true;
+    $("signal-bulk-street").replaceChildren(
+      ...roads.map((road) => option(road.id, `${streetName(r(5, road.id, 15))} · segment ${road.id + 1}`)),
+    );
+    $("signal-bulk-node").replaceChildren(
+      ...signalJunctions().map((row) => {
+        const node = r(29, row.head, 1);
+        return option(node, `Junction at node ${node + 1}`);
+      }),
+    );
+  }
+  function syncBulkScope() {
+    syncSignalBulkOptions();
+    const scope = Number($("signal-bulk-scope").value);
+    $("signal-bulk-street").disabled = scope !== 1;
+    $("signal-bulk-node").disabled = scope !== 2;
+  }
+  $("signal-bulk-scope").onchange = syncBulkScope;
+  $("signal-bulk-apply").onclick = () => {
+    syncSignalBulkOptions();
+    const scope = Number($("signal-bulk-scope").value);
+    const field = Number($("signal-bulk-field").value);
+    const key =
+      scope === 1 ? Number($("signal-bulk-street").value) :
+      scope === 2 ? Number($("signal-bulk-node").value) : 0;
+    let value = Number($("signal-bulk-value").value);
+    if (field === 5) value = value !== 0 ? 1 : 0;
+    if (field === 6) value = Math.sign(value);
+    const changed = game.signal_apply_bulk(scope, key, field, value);
+    $("signal-bulk-note").textContent = changed > 0
+      ? `${changed} light${changed === 1 ? "" : "s"} took that value.`
+      : "No light took that change. Check the scope you picked.";
+    signalRowIds = "";
+    syncSignalList();
+    if (signal >= 0) showSignal(signal, true);
+  };
+  $("signal-flash-all-on").onclick = () => {
+    const changed = game.signal_flash_bulk(0, 0, 1);
+    $("signal-bulk-note").textContent = `${changed} lights are now blinking yellow by hand.`;
+    signalRowIds = "";
+    syncSignalList();
+  };
+  $("signal-flash-all-off").onclick = () => {
+    const changed = game.signal_flash_bulk(0, 0, 0);
+    $("signal-bulk-note").textContent = `${changed} lights are back on their window and normal cycle.`;
+    signalRowIds = "";
+    syncSignalList();
+  };
+  function signalNode() {
+    return signal < 0 ? -1 : r(29, signal, 1);
+  }
+  $("signal-flash-save").onclick = () => {
+    if (signal < 0) return;
+    const ok = game.signal_set_flash_schedule(
+      signalNode(),
+      Number(flashStartInput.value),
+      Number(flashEndInput.value),
+      flashEnabledInput.checked ? 1 : 0,
+    );
+    message(ok ? "Flash window saved." : "That junction has no signal.");
+    showSignal(signal, true);
+  };
+  const manualFlash = (mode) => () => {
+    if (signal < 0) return;
+    if (!game.signal_flash_manual(signalNode(), mode)) { message("That junction has no signal."); return; }
+    message(mode > 0 ? "Blinking yellow now." : mode < 0 ? "Back on the normal cycle." : "Following the daily window.");
+    showSignal(signal);
+  };
+  $("signal-flash-on").onclick = manualFlash(1);
+  $("signal-flash-auto").onclick = manualFlash(0);
+  $("signal-flash-off").onclick = manualFlash(-1);
+  const raiseAlert = (kind) => () => {
+    if (signal < 0) return;
+    const pending = game.signal_alert(signalNode(), kind, Number($("signal-alert-seconds").value));
+    message(pending > 0 ? `Alert queued (${pending} pending).` : "That junction has no signal.");
+    showSignal(signal);
+  };
+  $("signal-hold").onclick = raiseAlert(1);
+  $("signal-open").onclick = raiseAlert(2);
+  $("signal-release").onclick = raiseAlert(3);
+  function signalLinkRows() {
+    const rows = [];
+    for (let i = 0; i < 128; i++) {
+      if (r(30, i, 0) < 0) break;
+      rows.push({ fromIndex: r(30, i, 0), toIndex: r(30, i, 1), from: r(30, i, 2), to: r(30, i, 3), delay: r(30, i, 4) });
+    }
+    return rows;
+  }
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  let signalLinkBuilt = false;
+  function syncSignalMap() {
+    const rows = signalJunctions();
+    const nodes = new Map();
+    for (const row of rows) {
+      const node = r(29, row.head, 1);
+      nodes.set(row.junction, { node, x: r(11, node, 0), z: r(11, node, 1), head: row.head });
+    }
+    const values = [...nodes.values()];
+    const span = Math.max(1, ...values.map((n) => Math.max(n.x, n.z)));
+    const place = (n) => ({ x: 16 + (n.x / span) * 288, y: 16 + (n.z / span) * 288 });
+    const links = signalLinkRows();
+    const svg = $("signal-map");
+    svg.replaceChildren();
+    for (const link of links) {
+      const a = nodes.get(link.fromIndex), b = nodes.get(link.toIndex);
+      if (!a || !b) continue;
+      const pa = place(a), pb = place(b);
+      const line = document.createElementNS(SVG_NS, "line");
+      line.setAttribute("x1", pa.x); line.setAttribute("y1", pa.y);
+      line.setAttribute("x2", pb.x); line.setAttribute("y2", pb.y);
+      line.setAttribute("stroke", "#efb956"); line.setAttribute("stroke-width", "2");
+      svg.append(line);
+      const label = document.createElementNS(SVG_NS, "text");
+      label.setAttribute("x", (pa.x + pb.x) / 2); label.setAttribute("y", (pa.y + pb.y) / 2);
+      label.setAttribute("fill", "#fff0c8"); label.setAttribute("font-size", "10");
+      label.setAttribute("text-anchor", "middle");
+      label.textContent = `${link.delay.toFixed(0)}s`;
+      svg.append(label);
+    }
+    for (const n of values) {
+      const p = place(n);
+      const circle = document.createElementNS(SVG_NS, "circle");
+      circle.setAttribute("cx", p.x); circle.setAttribute("cy", p.y); circle.setAttribute("r", "4");
+      circle.setAttribute("fill", r(29, n.head, 17) === 1 ? "#efb956" : "#262d2a");
+      circle.setAttribute("stroke", "#efb956"); circle.setAttribute("stroke-width", "2");
+      svg.append(circle);
+      const label = document.createElementNS(SVG_NS, "text");
+      label.setAttribute("x", p.x); label.setAttribute("y", p.y - 7);
+      label.setAttribute("fill", "#fff0c8"); label.setAttribute("font-size", "9");
+      label.setAttribute("text-anchor", "middle");
+      label.textContent = `${n.node + 1}`;
+      svg.append(label);
+    }
+    if (!signalLinkBuilt) {
+      signalLinkBuilt = true;
+      // signalJunctions() carries the flat head; the node is read from it.
+      const choices = rows.map((row) => {
+        const node = r(29, row.head, 1);
+        return option(node, `Node ${node + 1}`);
+      });
+      $("signal-link-from").replaceChildren(...choices.map((o) => o.cloneNode(true)));
+      $("signal-link-to").replaceChildren(...choices);
+    }
+    $("signal-map-note").textContent =
+      `${links.length} coordination link${links.length === 1 ? "" : "s"}. Alerts pushed ${game.signal_alerts_pushed()} · handled ${game.signal_alerts_handled()} · pending ${game.signal_alerts_pending()}.`;
+  }
+  $("signal-link-add").onclick = () => {
+    const from = Number($("signal-link-from").value), to = Number($("signal-link-to").value);
+    const ok = game.signal_link(from, to, Number($("signal-link-delay").value));
+    message(ok ? `Node ${from + 1} now leads node ${to + 1}.` : "Link refused: pick two different signalised junctions.");
+    syncSignalMap();
+  };
+  $("signal-link-remove").onclick = () => {
+    const from = Number($("signal-link-from").value), to = Number($("signal-link-to").value);
+    const ok = game.signal_unlink(from, to);
+    message(ok ? "Link removed." : "Those two are not linked.");
+    syncSignalMap();
+  };
+  $("signal-alert-send").onclick = () => {
+    const node = Number($("signal-link-from").value);
+    game.signal_alert(node, Number($("signal-alert-kind").value), Number($("signal-alert-seconds").value));
+    message(`Alert queued for node ${node + 1}.`);
+    syncSignalMap();
+  };
+  showSignalTab("one");
+
   const option = (value, text) => {
     const o = document.createElement("option");
     o.value = value;
@@ -369,7 +678,14 @@ export function createTransport(game, ui) {
       return true;
     }
     const picked = game.signal_pick(p.x, p.y);
-    if (picked >= 0) { showSignal(picked); return true; }
+    if (picked >= 0) {
+      // Slice 12: the inspector lives in the traffic drawer, so a click on a
+      // light has to bring that drawer forward before it can be read.
+      ui.open("transport");
+      showSignal(picked);
+      reveal(inspector);
+      return true;
+    }
     if (draft) {
       let index = draft.findIndex(
         (n) => Math.hypot(stopPts[n].x - p.x, stopPts[n].y - p.y) < 15,
@@ -404,6 +720,23 @@ export function createTransport(game, ui) {
     return false;
   }
   function pointerMove(event) {
+    // Slice 11: while a placement tool is armed, report the snap target the
+    // click would land on, so placing a light or crosswalk feels immediate.
+    if (tool) {
+      const x = event.clientX, y = event.clientY;
+      if (tool === "signal") {
+        const node = game.signal_preview_screen(x, y);
+        message(node < 0
+          ? "No junction here. Move nearer an arm of the street network."
+          : `Snap: junction ${node + 1}. Click to place the traffic light.`);
+      } else {
+        const road = game.crosswalk_preview_screen(x, y);
+        if (road < 0) message("No street here. Move nearer a street segment.");
+        else if (tool === "crosswalk") message(`Snap: street #${road + 1}. Click to add its crosswalk.`);
+        else message(`Snap: street #${road + 1}${r(5, road, 14) ? " · has a crosswalk, click to remove it." : " · no crosswalk, click to add one."}`);
+      }
+      return true;
+    }
     if (!gesture || !draft) return false;
     draft[gesture.index] = nearestStop({
       x: event.clientX,
@@ -584,6 +917,9 @@ export function createTransport(game, ui) {
       button.textContent = `Bus ${slot + 1} · ${active ? `${r(12, id, 4)}/24 aboard · ${r(12, id, 3).toFixed(1)} m/s · locate` : "Out of service"}`;
     });
     if (signal >= 0) showSignal(signal);
+    // Slice 12: whichever traffic-lights view is on screen keeps itself current.
+    if (!signalTabViews.all.hidden) syncSignalList();
+    if (!signalTabViews.map.hidden) syncSignalMap();
     const road = Number($("traffic-road").value);
     crossing.textContent = r(5,road,14) ? "Remove crosswalk" : "Add crosswalk";
     $("traffic-road-stats").textContent =

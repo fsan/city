@@ -155,8 +155,8 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 10,
-        .rules = "bellwether-2027-05-v10",
+        .version = 11,
+        .rules = "bellwether-2027-09-v11",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = &city.buildings, .parcels = parcels.storage[0..parcels.count], .next_node = next_rows[0..city.node_count], .walk_next = walk_rows[0..city.node_count], .distance = distance_rows[0..city.node_count] },
@@ -461,6 +461,15 @@ fn validate(s: *const State) bool {
         if (!between(junction.green, signals.min_green, signals.max_green) or
             !between(junction.yellow, signals.min_yellow, signals.max_yellow) or
             !between(junction.offset, 0, 60)) return false;
+        // Slice 12: the granular properties and the coordination fields.
+        if (!between(junction.red, signals.min_red, signals.max_red) or
+            !between(junction.delay, signals.min_delay, signals.max_delay) or
+            !between(junction.flash_start, 0, 24) or
+            !between(junction.flash_end, 0, 24) or
+            junction.group < -1 or junction.group >= signals.max_groups or
+            junction.preempt_until < 0) return false;
+        _ = @intFromEnum(junction.flash);
+        _ = @intFromEnum(junction.preempt);
         for (junction.arms[0..junction.arm_count]) |arm| {
             if (arm < 0 or arm >= roads.len) return false;
             const road = roads[@intCast(arm)];
@@ -740,7 +749,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 10 and std.mem.eql(u8, rules, "bellwether-2027-05-v10");
+    return version == 11 and std.mem.eql(u8, rules, "bellwether-2027-09-v11");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

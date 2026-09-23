@@ -92,8 +92,10 @@ learned model of trip time per mode and time of day and of the chance of finding
 a space, updated in batches when they arrive at work or home; mode choice and
 the time to leave home read it. Ownership now decides the municipal assessment:
 owners pay from the household, rented homes pay from the owner's collected
-rent. Manual save files use schema version 9, bellwether-2027-04-v9; older files
-are rejected. See [street types and parking](docs/street-types-parking-learning-slice.md).
+rent. Traffic lights and crosswalks are player-placed from the traffic panel;
+each signal gives one branch green at a time and its green and amber times are
+set in simulation seconds by clicking the light. Manual save files use schema
+version 11, bellwether-2027-09-v11; older files are rejected. See [street types and parking](docs/street-types-parking-learning-slice.md).
 
 
 ## Housing and occupancy

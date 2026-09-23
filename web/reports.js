@@ -105,6 +105,16 @@ export function createReports(game, ui, transport) {
     streetOptions(-1);
     updateWorks();
   };
+  // Scroll the window's own body to reveal a row. scrollIntoView() would also
+  // scroll the map container, which drags the whole game view sideways and
+  // leaves the panel over the button the player just clicked.
+  function reveal(element) {
+    const body = element.closest(".window-body");
+    if (!body) return;
+    const outer = body.getBoundingClientRect(), inner = element.getBoundingClientRect();
+    if (inner.bottom > outer.bottom) body.scrollTop += inner.bottom - outer.bottom + 8;
+    else if (inner.top < outer.top) body.scrollTop -= outer.top - inner.top + 8;
+  }
   function inspect(kind, id) {
     selected = { kind, id };
     game.select_resident(kind === 3 ? id : 0xffffffff);
@@ -131,7 +141,7 @@ export function createReports(game, ui, transport) {
     $("confirm-cancel").hidden = true;
     ui.open("works");
     updateWorks();
-    $("order-detail").scrollIntoView({ block: "nearest" });
+    reveal($("order-detail"));
   }
   $("district-filter").onchange = () => {
     personPage = 0;

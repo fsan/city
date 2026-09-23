@@ -4,6 +4,27 @@ export function createInterface(actions) {
   const windows = [...document.querySelectorAll(".game-window")];
   const order = [];
   let moving = null;
+  // Where the player last clicked. A window opens away from that point so it
+  // never covers the thing that was clicked: a light, a street, a building or
+  // a report row. Clicks on the HUD, the toolbar and window headers keep the
+  // authored positions, because those bars draw above the windows.
+  let clickPoint = null;
+  let mapPoint = null;
+  document.addEventListener("pointerdown", (event) => {
+    const target = event.target;
+    if (target === $("city")) {
+      mapPoint = { x: event.clientX, y: event.clientY };
+      clickPoint = mapPoint;
+    } else if (target.closest(".window-body")) {
+      clickPoint = { x: event.clientX, y: event.clientY };
+    } else if (target.closest(".popup")) {
+      // A menu item acts where the menu was opened, usually on the map.
+      clickPoint = mapPoint;
+    } else {
+      clickPoint = null;
+    }
+  }, true);
+  const edge = 12, gap = 16;
   function bringForward(name) {
     const index = order.indexOf(name);
     if (index >= 0) order.splice(index, 1);
@@ -29,19 +50,78 @@ export function createInterface(actions) {
       .querySelector("[data-submenu]")
       .setAttribute("aria-expanded", "false");
   }
-  function fit(panel) {
+  function bounds(panel) {
     const rect = panel.getBoundingClientRect();
-    const top =
+    const hudBottom =
       document.querySelector(".hud").getBoundingClientRect().bottom + 10;
-    panel.style.left = `${Math.max(12, Math.min(rect.left, innerWidth - rect.width - 12))}px`;
-    panel.style.top = `${Math.max(top, Math.min(rect.top, innerHeight - rect.height - 90))}px`;
+    const minLeft = edge;
+    const maxLeft = Math.max(edge, innerWidth - rect.width - edge);
+    const minTop = Math.max(edge, hudBottom);
+    const maxTop = Math.max(minTop, innerHeight - rect.height - 90);
+    const hold = (value, low, high) => Math.max(low, Math.min(value, high));
+    return {rect, hold, minLeft, maxLeft, minTop, maxTop};
+  }
+  // A window covers the point when the point is inside it, including a gap so
+  // the clicked thing is left visibly clear rather than clipped at the border.
+  function covers(left, top, width, height, point) {
+    return (
+      point.x > left - gap && point.x < left + width + gap &&
+      point.y > top - gap && point.y < top + height + gap
+    );
+  }
+  function fit(panel) {
+    const {rect, hold, minLeft, maxLeft, minTop, maxTop} = bounds(panel);
+    panel.style.left = `${hold(rect.left, minLeft, maxLeft)}px`;
+    panel.style.top = `${hold(rect.top, minTop, maxTop)}px`;
+  }
+  // Opening a window chooses a spot beside the clicked point when the authored
+  // position would sit on top of it.
+  function place(panel, point) {
+    const {rect, hold, minLeft, maxLeft, minTop, maxTop} = bounds(panel);
+    const baseLeft = hold(rect.left, minLeft, maxLeft);
+    const baseTop = hold(rect.top, minTop, maxTop);
+    const spots = [[baseLeft, baseTop]];
+    if (point) {
+      spots.push(
+        [hold(point.x + gap, minLeft, maxLeft), baseTop],
+        [hold(point.x - gap - rect.width, minLeft, maxLeft), baseTop],
+        [baseLeft, hold(point.y + gap, minTop, maxTop)],
+        [baseLeft, hold(point.y - gap - rect.height, minTop, maxTop)],
+        [hold(point.x + gap, minLeft, maxLeft), hold(point.y - rect.height / 2, minTop, maxTop)],
+        [point.x < innerWidth / 2 ? maxLeft : minLeft, baseTop],
+      );
+      // A window too wide or tall to sit clear of the click inside the
+      // viewport may poke past the far edge, as long as most of it stays
+      // visible: covering the thing the player just clicked is worse than a
+      // window that hangs a little over the screen edge.
+      const fits = (x, y) => {
+        const visibleWidth = Math.min(innerWidth, x + rect.width) - Math.max(0, x);
+        const visibleHeight = Math.min(innerHeight, y + rect.height) - Math.max(0, y);
+        return visibleWidth >= rect.width * 0.6 && visibleHeight >= rect.height * 0.6;
+      };
+      for (const [x, y] of [
+        [point.x + gap, baseTop],
+        [point.x - gap - rect.width, baseTop],
+        [baseLeft, point.y + gap],
+        [baseLeft, point.y - gap - rect.height],
+        [point.x + gap, point.y - rect.height / 2],
+        [point.x - gap - rect.width, point.y - rect.height / 2],
+      ]) if (fits(x, y)) spots.push([x, y]);
+    }
+    const [left, top] =
+      spots.find(([x, y]) => !point || !covers(x, y, rect.width, rect.height, point)) ||
+      [baseLeft, baseTop];
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
   }
   function open(name) {
     closeMenus();
     const panel = $(`${name}-window`);
     panel.hidden = false;
     bringForward(name);
-    fit(panel);
+    const point = clickPoint;
+    clickPoint = null; // one placement per click, so later opens keep their spot
+    place(panel, point);
     panel.focus({ preventScroll: true });
     syncButtons();
     actions.clearInput();

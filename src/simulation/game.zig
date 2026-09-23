@@ -45,6 +45,9 @@ pub fn init() void {
 pub fn update(dt: f32) void {
     const day = @floor(elapsed / 480);
     elapsed += dt;
+    // Slice 12: queued police or firefighter alerts reach the signals here, and
+    // any timed emergency hold expires back to the normal cycle.
+    transport.signals.update(elapsed);
     if (@floor(elapsed / 480) > day) {
         // Explicit simplified local trading: staffed businesses earn a daily operating surplus.
         // Contractors live on contracts; municipal institutions do not have taxable assessments.
