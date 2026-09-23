@@ -266,7 +266,8 @@ at `/tmp/city_probe/BASELINE-trace.txt` and `/tmp/city_probe/after.txt`.
 
 ## Completed slice 14 - river and the Rome-inspired seeded town
 
-Complete and committed at `2286060`. This batch is labelled slice 14 because the previous
+Complete and committed (the bus-speed follow-up is the head commit on top of the
+seeded-town commit). This batch is labelled slice 14 because the previous
 agent had already used the label slice 13 for the work-routines batch.
 `docs/river-rome-layout-slice.md`
 records the rules, verification and limits.
