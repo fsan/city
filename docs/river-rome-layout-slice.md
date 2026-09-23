@@ -1,4 +1,4 @@
-# River and the Rome-inspired seeded town (slice 13)
+# River and the Rome-inspired seeded town (slice 14)
 
 Bounded plan: replace the authored seeded town with a larger, irregular street
 plan modelled on the attached slice of Rome, add a flowing river that is an
@@ -100,7 +100,11 @@ kerbside stop, so a change of layout can no longer silently disable them.
 - Bicycle and car park supply is scaled with the new area (`max_bike_parks`
   44 -> 132, `max_car_parks` 16 -> 40). At the old supply the bicycle was
   unavailable at most destinations and riders fell back to walking.
-- `transport.journey` estimates a bus ride from the bus limit and its dwells
+- A bus now takes the street's own class speed less a small load penalty
+  (`travel.busSpeed`) instead of the flat `bus_limit` of 5.5 m/s. The old
+  constant let a car do 9.8 m/s on an avenue while a bus did 5.5, so no trip
+  could ever be won by the bus.
+- `transport.journey` estimates a bus ride from the bus speed and its dwells
   instead of `distance/3 + 5` per leg, and reaches stops within a wider
   catchment than the old 45 m, so a long direct ride competes honestly.
 
@@ -129,27 +133,43 @@ Mode split at the morning peak, before this slice and after:
 
 | day | walk | bike | car | bus | (baseline car) |
 |-----|------|------|-----|-----|----------------|
-| 0 | 69 | 1261 | 1379 | 0 | 363 |
-| 1 | 585 | 878 | 965 | 7 | 144 |
-| 3 | 1040 | 694 | 746 | 6 | 84 |
-| 5 | 1189 | 693 | 502 | 5 | 46 |
-| 7 | 1354 | 586 | 377 | 5 | 48 |
+| 0 | 68 | 1257 | 1379 | 5 | 363 |
+| 1 | 586 | 874 | 966 | 7 | 144 |
+| 3 | 1032 | 700 | 737 | 15 | 84 |
+| 5 | 1211 | 692 | 504 | 17 | 46 |
+| 7 | 1400 | 579 | 366 | 15 | 48 |
 
-Peak car 1,463 and peak bicycle 1,621 on the first day; settled car 380-500 and
-bicycle 590-690 over a week. Car ownership settles at 1,572 of 3,812 adults and
-is stable from day 1, with no household below the cash reserve. The road tool
+Peak car 1,463, peak bicycle 1,617, peak bus 22. Car ownership settles at 1,572
+of 3,812 adults and is stable from day 1, with no household below the cash
+reserve. Distance decides the mode, sampled at mid-morning of day 1:
+
+| home-to-work | walk | bike | car | bus |
+|--------------|------|------|-----|-----|
+| 0-200 m | 634 | 732 | 183 | 7 |
+| 200-400 m | 130 | 186 | 79 | 0 |
+| 400-600 m | 38 | 174 | 187 | 0 |
+| 600-800 m | 41 | 48 | 351 | 2 |
+| 800-1000 m | 12 | 7 | 255 | 0 |
+| 1000-1200 m | 2 | 7 | 89 | 0 |
+| 1200-1400 m | 8 | 59 | 87 | 0 |
+
+Walking and cycling own the short trips; beyond 600 m the car takes 85-93% of
+them. That is the requested behaviour: people from afar reach for the car. The road tool
 refuses a river crossing and a stop in the water; four bridges carry both
 walkers and vehicles. Render vertex count stays inside the buffer. No permanent
 test suite is added.
 
 ## Remaining limits
 
-- The bus carries only single figures. This is a size limit, not a routing
-  fault: the seeded town is about 1.3 km across, and a bicycle at 4.2 m/s is
-  honestly competitive over that distance, so a bus cannot win the trip on
-  time. Making buses matter needs a larger city (`max_nodes` is already at
-  569 of 640, so that is a deliberate budget decision) or a bus-priority
-  measure. The travel model is left honest rather than tuned to a target share.
+- The bus carries roughly 5-22 riders against 366-1,463 car trips. This is
+  structural, not a routing fault. With a town about 1.3 km across, free-flowing
+  traffic and 41% car ownership, a bus loses on time to both the car (170 s
+  against 438 s for a 1 km trip) and, under 600 m, to the bicycle. Giving buses
+  the street's own speed instead of the flat 5.5 m/s roughly doubled their
+  share, but closing the gap needs a larger city (`max_nodes` is already at
+  569 of 640, so that is a deliberate budget decision), real congestion, or a
+  bus-priority measure. The model is left honest rather than tuned to a target
+  share.
 - The renderer draws the water surface and samples the channel inside the
   ground grid and road ribbons near the river. It is verified by build and by
   geometry inspection, not by a rendered screenshot: this environment has no

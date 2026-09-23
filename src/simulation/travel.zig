@@ -8,7 +8,12 @@ pub const walk_speed: f32 = 1.4; // about 5 km/h
 pub const bike_speed: f32 = 4.2; // about 15 km/h
 pub const bike_lane_speed: f32 = 5.0; // protected cycle lane
 pub const car_limit: f32 = 7.0; // about 25 km/h on an ordinary street
-pub const bus_limit: f32 = 5.5;
+// Slice 13: a bus shares the road with the cars and takes the street's own
+// class speed, less a small penalty for stopping to load. The old flat
+// bus_limit of 5.5 m/s let a car on an avenue do 9.8 m/s while a bus did 5.5,
+// so no trip could ever be won by the bus.
+pub const bus_load_penalty: f32 = 0.92;
+pub const bus_plan_speed: f32 = car_limit * 0.92;
 // Street class speed multipliers: 0 lane, 1 street, 2 avenue.
 pub const class_car_speed = [_]f32{ 0.82, 1.0, 1.18 };
 pub const class_names = [_][]const u8{ "Lane", "Street", "Avenue" };
@@ -17,6 +22,10 @@ pub const class_price = [_]f64{ 18, 25, 40 };
 pub fn classSpeed(class: u8, condition: f32, slope: f32, works: bool) f32 {
     const index: usize = @min(class, class_car_speed.len - 1);
     return car_limit * class_car_speed[index] * (0.5 + condition / 200) / (1 + slope * 2) * (if (works) @as(f32, 0.45) else 1);
+}
+
+pub fn busSpeed(class: u8, condition: f32, slope: f32, works: bool) f32 {
+    return classSpeed(class, condition, slope, works) * bus_load_penalty;
 }
 
 pub fn bikeRide(condition: f32, slope: f32, works: bool, cycle_lane: bool) f32 {

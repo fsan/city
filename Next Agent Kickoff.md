@@ -264,9 +264,11 @@ Before, active cars hit zero on day 3 and stayed there; after, cars run every da
 and roughly 2,200 people move at the peak. Traces are kept outside the repository
 at `/tmp/city_probe/BASELINE-trace.txt` and `/tmp/city_probe/after.txt`.
 
-## Completed slice 13 - river and the Rome-inspired seeded town
+## Completed slice 14 - river and the Rome-inspired seeded town
 
-Complete in the worktree (not yet committed). `docs/river-rome-layout-slice.md`
+Complete and committed at `2286060`. This batch is labelled slice 14 because the previous
+agent had already used the label slice 13 for the work-routines batch.
+`docs/river-rome-layout-slice.md`
 records the rules, verification and limits.
 
 The first attempt at this slice made the car share *smaller*, not larger. The
@@ -303,22 +305,33 @@ after:
 
 | day | baseline car | after car | after walk | after bike | after bus |
 |-----|--------------|-----------|------------|------------|-----------|
-| 0 | 363 | 1379 | 69 | 1261 | 0 |
-| 1 | 144 | 965 | 585 | 878 | 7 |
-| 3 | 84 | 746 | 1040 | 694 | 6 |
-| 5 | 46 | 502 | 1189 | 693 | 5 |
-| 7 | 48 | 377 | 1354 | 586 | 5 |
+| 0 | 363 | 1379 | 68 | 1257 | 5 |
+| 1 | 144 | 966 | 586 | 874 | 7 |
+| 3 | 84 | 737 | 1032 | 700 | 15 |
+| 5 | 46 | 504 | 1211 | 692 | 17 |
+| 7 | 48 | 366 | 1400 | 579 | 15 |
 
-Peak car 1,463. Car ownership settles at 1,572 of 3,812 adults and is stable
-from day 1 with no household below the cash reserve. The graph has one
-component, zero unreachable pairs, zero water nodes and zero water buildings,
-and both seeded bus lines stay active with 16 valid stops.
+Peak car 1,463, peak bicycle 1,617, peak bus 22. Distance decides the mode:
+walking and cycling own trips under 400 m and beyond 600 m the car takes
+85-93% of them, which is the requested behaviour. Car ownership settles at
+1,572 of 3,812 adults and is stable from day 1 with no household below the
+cash reserve. The graph has one component, zero unreachable pairs, zero water
+nodes and zero water buildings, and both seeded bus lines stay active with 16
+valid stops.
 
-Known limit: the bus still carries only single figures. The seeded town is
-about 1.3 km across and a bicycle is honestly competitive at that distance, so
-making buses matter needs a larger city (`max_nodes` is at 569 of 640) or a
-bus-priority measure; the model is left honest rather than tuned to a target
-share.
+A bus now takes the street's own class speed less a small load penalty instead
+of the flat `bus_limit` of 5.5 m/s; the old constant let a car do 9.8 m/s on an
+avenue while a bus did 5.5, so no trip could ever be won by the bus. That
+change roughly doubled the bus share.
+
+Known limit: the bus still carries only single figures to low double figures.
+This is structural. With a town about 1.3 km across, free-flowing traffic and
+41% car ownership, a bus loses on time to both the car (170 s against 438 s for
+a 1 km trip) and, under 600 m, to the bicycle. Closing the gap needs a larger
+city (`max_nodes` is at 569 of 640), real congestion, or a bus-priority
+measure; the model is left honest rather than tuned to a target share. The
+renderer draws the water and samples the carve, verified by build and geometry
+inspection only because this environment has no browser.
 
 ## Superseded slice 9 plan text (historical)
 

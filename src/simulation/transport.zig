@@ -462,7 +462,7 @@ pub fn update(dt: f32, elapsed: f64) void {
         // Slice 12: a flashing-amber junction is a caution, not a green, so
         // approaching drivers slow to about half speed and yield.
         const caution: f32 = if (city.degree(v.next) >= 3 and signals.flashingAt(v.next, elapsed)) 0.5 else 1;
-        const limit: f32 = (if (bus) travel.bus_limit else travel.classSpeed(road.class, road.condition, road.slope, road.works)) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1) * caution;
+        const limit: f32 = (if (bus) travel.busSpeed(road.class, road.condition, road.slope, road.works) else travel.classSpeed(road.class, road.condition, road.slope, road.works)) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1) * caution;
         var target = limit;
         if (must_stop or following) target = @min(target, @sqrt(6 * free));
         if (v.speed < target) v.speed = @min(target, v.speed + dt * 2) else v.speed = @max(target, v.speed - dt * 3);
@@ -550,7 +550,7 @@ pub fn journey(from: usize, to: usize) Journey {
     for (&lines, 0..) |l, id| {
         if (!l.active) continue;
         var loop: f32 = 0;
-        for (l.stops[0..l.count], 0..) |n, s| loop += city.distance[n][l.stops[(s + 1) % l.count]] / travel.bus_limit + 5;
+        for (l.stops[0..l.count], 0..) |n, s| loop += city.distance[n][l.stops[(s + 1) % l.count]] / travel.bus_plan_speed + 5;
         const headway = loop / @as(f32, @floatFromInt(@max(1, l.fleet)));
         for (l.stops[0..l.count], 0..) |board_node, s| {
             const access = city.distance[from][board_node];
@@ -559,7 +559,7 @@ pub fn journey(from: usize, to: usize) Journey {
             var prev = board_node;
             for (1..l.count) |offset| {
                 const exit_node = l.stops[(s + offset) % l.count];
-                ride += city.distance[prev][exit_node] / travel.bus_limit + 5;
+                ride += city.distance[prev][exit_node] / travel.bus_plan_speed + 5;
                 prev = exit_node;
                 const egress = city.distance[exit_node][to];
                 if (egress > 120) continue;
