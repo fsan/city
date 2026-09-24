@@ -420,7 +420,11 @@ fn validate(s: *const State) bool {
                 unit.paid_rent != 0 or unit.paid_ownership != 0) return false;
             continue;
         }
-        if (town.buildings[i].kind != .home or unit.rent <= 0 or unit.ownership_cost <= 0 or
+        // Slice 17: an apartment is a dwelling too. The housing, household and
+        // finance modules all ask `city.isHome`, so the snapshot validator has
+        // to ask the same question or a town with apartments can be written but
+        // never read back.
+        if (!city.isHome(town.buildings[i].kind) or unit.rent <= 0 or unit.ownership_cost <= 0 or
             unit.owner_cash < 0 or unit.arrears < 0 or unit.paid_rent < 0 or unit.paid_ownership < 0 or
             unit.owner_cash < unit.paid_rent + unit.paid_ownership - 0.011 or
             unit.occupants != town.buildings[i].occupants or unit.occupants > city.population or

@@ -252,12 +252,48 @@ pub fn classForStreet(street: usize) u8 {
     return 1;
 }
 
+// Slice 17: a split must never leave two roads joining the same pair of nodes.
+// The tighter street mesh puts junctions close enough together that a split
+// point can coincide with a link that already exists, and the snapshot
+// validator rejects a duplicate edge outright, so the town would build but
+// never reload.
+pub fn duplicates(a: usize, b: usize) bool {
+    return a != b and road_between[a][b] >= 0;
+}
+
+fn repoint(id: usize, a: usize, b: usize) void {
+    const old = roads[id];
+    if (road_between[old.a][old.b] == @as(i16, @intCast(id))) road_between[old.a][old.b] = -1;
+    if (road_between[old.b][old.a] == @as(i16, @intCast(id))) road_between[old.b][old.a] = -1;
+    const planar = hypot(nodes[b].x - nodes[a].x, nodes[b].z - nodes[a].z);
+    const dy = nodes[b].y - nodes[a].y;
+    roads[id].a = a;
+    roads[id].b = b;
+    roads[id].length = @sqrt(planar * planar + dy * dy);
+    roads[id].slope = @abs(dy) / @max(0.01, planar);
+    road_between[a][b] = @intCast(id);
+    road_between[b][a] = @intCast(id);
+}
+
 pub fn splitRoad(id: usize, x: f32, z: f32) usize {
     const old = roads[id];
     if (hypot(x - nodes[old.a].x, z - nodes[old.a].z) < 2.5) return old.a;
     if (hypot(x - nodes[old.b].x, z - nodes[old.b].z) < 2.5) return old.b;
     if (node_count + 1 >= max_nodes) return old.a;
+    // Reuse the nearer end when the split point already has a link to it; that
+    // keeps the graph simple instead of adding a parallel edge.
     const n = addNode(x, z, old.street);
+    const first_exists = duplicates(old.a, n);
+    const second_exists = duplicates(n, old.b);
+    if (first_exists and second_exists) return n;
+    if (second_exists) {
+        repoint(id, old.a, n);
+        return n;
+    }
+    if (first_exists) {
+        repoint(id, n, old.b);
+        return n;
+    }
     const added = addRoadClass(n, old.b, old.street, old.class);
     const saved = roads[added];
     roads[added] = old;
@@ -457,6 +493,19 @@ fn splitAtNode(id: usize, n: usize) void {
     // run. Using the flat distance here left a junction-split road a few
     // centimetres short of the distance the snapshot validator recomputes from
     // its endpoints, so a town that crossed a junction could never be reloaded.
+    // Never add a second road between a pair that is already joined; the
+    // crossing just moves onto the existing link instead.
+    const first_exists = duplicates(old.a, n);
+    const second_exists = duplicates(n, old.b);
+    if (first_exists and second_exists) return;
+    if (second_exists) {
+        repoint(id, old.a, n);
+        return;
+    }
+    if (first_exists) {
+        repoint(id, n, old.b);
+        return;
+    }
     const added = addRoadClass(n, old.b, old.street, old.class);
     roads[added].a = n;
     roads[added].b = old.b;
@@ -597,6 +646,22 @@ fn clearOfRoads(x: f32, z: f32, width: f32, depth: f32, ignore: usize) bool {
     return true;
 }
 
+// Slice 17: node heights and road lengths are derived, so they have to be
+// rebuilt once every span exists. A node created before its bridge deck was
+// registered kept the carved river-bed height, and any node inside a deck
+// corridor kept the height it had before the deck arrived. The snapshot
+// validator compares a saved height against `elevation`, so a town that had
+// either kind of node could never be reloaded.
+pub fn refreshElevations() void {
+    for (nodes[0..node_count]) |*n| n.y = elevation(n.x, n.z);
+    for (roads[0..road_count]) |*r| {
+        const dy = nodes[r.b].y - nodes[r.a].y;
+        const planar = hypot(nodes[r.b].x - nodes[r.a].x, nodes[r.b].z - nodes[r.a].z);
+        r.length = @sqrt(planar * planar + dy * dy);
+        r.slope = @abs(dy) / @max(0.01, planar);
+    }
+}
+
 pub fn init() void {
     node_count = 0;
     road_count = 0;
@@ -647,6 +712,7 @@ pub fn init() void {
         }
         b.value *= 0.9 + @as(f64, b.sun) * 0.2;
     }
+    refreshElevations();
     rebuildRoutes();
 }
 
@@ -803,12 +869,18 @@ fn seedBridges() void {
         if (node_count + 4 >= max_nodes or road_count + 6 >= max_roads) return;
         const west = riverPoint(chainage, -(River.half_width[0] + 13));
         const east = riverPoint(chainage, River.half_width[0] + 13);
-        const west_node = addNode(west.x, west.z, bridge_street);
-        const east_node = addNode(east.x, east.z, bridge_street);
         const level = @max(terrain(west.x, west.z), terrain(east.x, east.z));
-        _ = addRoadClass(west_node, east_node, bridge_street, 2);
+        // Slice 17: register the deck before its own nodes exist. A node takes
+        // its height from `elevation`, and `elevation` only knows about spans
+        // that are already in the list, so creating the nodes first left them
+        // standing in the carved river bed at 16.7 m while the deck they belong
+        // to sat at 20 m. A reload then compared the saved height against the
+        // live deck and refused the file.
         spans[span_count] = .{ .ax = west.x, .az = west.z, .bx = east.x, .bz = east.z, .level = level };
         span_count += 1;
+        const west_node = addNode(west.x, west.z, bridge_street);
+        const east_node = addNode(east.x, east.z, bridge_street);
+        _ = addRoadClass(west_node, east_node, bridge_street, 2);
         // Approaches first, so the bridge itself is the direct span. The
         // approach is skipped when the deck already touches a junction.
         var west_link: ?usize = null;
@@ -928,30 +1000,19 @@ fn frontageStep(x: f32, z: f32) f32 {
     return if (inDowntown(x, z)) 10 else 12.5;
 }
 
-fn seedBuildings(first_free: usize) usize {
+// Slice 17: the street wall is swept twice, not once. A single draw against
+// the target cannot know how many of its own candidates the geometry will
+// reject, and on the dense plan that was the difference between the 820 lots
+// the plan asks for and the 391 it actually placed. The first sweep measures
+// the yield; the second spends the corrected share; the loop repeats while it
+// is short. Two or three passes is enough and the result is deterministic.
+fn frontageSweep(first_free: usize, share: f64) usize {
     var placed: usize = first_free;
     var index: usize = 0;
-    // Weighted sweep: the plan is measured first, then each slot takes a
-    // deterministic draw against its own share of the target. This is what
-    // keeps the density spread over the whole town instead of stopping when the
-    // lot array runs out somewhere near the first streets.
-    var total_weight: f64 = 0;
-    for (roads) |r| {
-        if (r.street == bridge_street) continue;
-        const a = nodes[r.a];
-        const b = nodes[r.b];
-        const span = hypot(b.x - a.x, b.z - a.z);
-        if (span < 7) continue;
-        const step = frontageStep((a.x + b.x) / 2, (a.z + b.z) / 2);
-        var along: f32 = step * 0.5;
-        while (along < span - 1.5) : (along += step) {
-            total_weight += 2 * frontageWeight(a.x + (b.x - a.x) * along / span, a.z + (b.z - a.z) * along / span);
-        }
+    @memset(&building_at_node, -1);
+    for (buildings[0..first_free], 0..) |b, i| {
+        if (building_at_node[b.node] < 0) building_at_node[b.node] = @intCast(i);
     }
-    // The budget is the whole town's lots; the parks already hold their share.
-    const remaining: usize = if (building_target > first_free) building_target - first_free else 0;
-    const target: f64 = @floatFromInt(remaining);
-    const share: f64 = if (total_weight > 0) target / total_weight else 0;
     for (0..road_count) |rid| {
         if (placed >= building_target) break;
         const r = roads[rid];
@@ -975,7 +1036,7 @@ fn seedBuildings(first_free: usize) usize {
                 const here_z = a.z + uz * along;
                 const here_down = inDowntown(here_x, here_z);
                 const here_core = coreFactor(here_x, here_z);
-                const here_chance: f32 = @floatCast(@min(0.97, frontageWeight(here_x, here_z) * share));
+                const here_chance: f32 = @floatCast(@min(0.98, frontageWeight(here_x, here_z) * share));
                 if (hash01(@as(u32, @intCast(index)) * 13 + 5) > here_chance) continue;
                 const kind = kindFor(index, here_core, here_down);
                 const size = footprintFor(kind, here_down);
@@ -1016,6 +1077,41 @@ fn seedBuildings(first_free: usize) usize {
                 placed += 1;
             }
         }
+    }
+    return placed;
+}
+
+fn seedBuildings(first_free: usize) usize {
+    var placed: usize = first_free;
+    // Weighted sweep: the plan is measured first, then each slot takes a
+    // deterministic draw against its own share of the target. This is what
+    // keeps the density spread over the whole town instead of stopping when the
+    // lot array runs out somewhere near the first streets.
+    var total_weight: f64 = 0;
+    for (roads) |r| {
+        if (r.street == bridge_street) continue;
+        const a = nodes[r.a];
+        const b = nodes[r.b];
+        const span = hypot(b.x - a.x, b.z - a.z);
+        if (span < 7) continue;
+        const step = frontageStep((a.x + b.x) / 2, (a.z + b.z) / 2);
+        var along: f32 = step * 0.5;
+        while (along < span - 1.5) : (along += step) {
+            total_weight += 2 * frontageWeight(a.x + (b.x - a.x) * along / span, a.z + (b.z - a.z) * along / span);
+        }
+    }
+    // The budget is the whole town's lots; the parks already hold their share.
+    const remaining: usize = if (building_target > first_free) building_target - first_free else 0;
+    const target: f64 = @floatFromInt(remaining);
+    var share: f64 = if (total_weight > 0) target / total_weight else 0;
+    placed = frontageSweep(first_free, share);
+    // Slice 17: geometry, not the draw, decides how many candidates survive, so
+    // the share is corrected against the yield the last pass actually placed.
+    var pass: usize = 0;
+    while (pass < 5 and placed < building_target and placed > first_free) : (pass += 1) {
+        const yielded = @as(f64, @floatFromInt(placed - first_free));
+        share = share * (@as(f64, @floatFromInt(remaining)) * 1.02) / yielded;
+        placed = frontageSweep(first_free, share);
     }
     // The map must never be left without homes or without an employer. Every
     // fallback site is checked exactly like the ones above: an unchecked
@@ -1089,6 +1185,11 @@ fn capacityFor(kind: Kind) usize {
 // in the middle of a block instead of across a street. Trees and bushes inside
 // them are drawn from the lot's own identity by the renderer, so the green
 // space survives a save without carrying a second list of positions.
+// Slice 17: one candidate per district, plus second tries where the blocks are
+// tight, so the authored green space is spread over the whole map instead of
+// clustering on the two banks. Each anchor is a search box: `seedParks` looks
+// for the largest clear rectangle inside it, stepping inward from the nominal
+// centre before it shrinks.
 const park_anchors = [_]LandSite{
     .{ .x = 150, .z = 130, .w = 120, .d = 96 },
     .{ .x = 120, .z = 520, .w = 110, .d = 118 },
@@ -1102,6 +1203,13 @@ const park_anchors = [_]LandSite{
     .{ .x = 730, .z = 250, .w = 92, .d = 88 },
     .{ .x = 900, .z = 980, .w = 96, .d = 80 },
     .{ .x = 420, .z = 120, .w = 88, .d = 84 },
+    // District coverage: Civic Centre, Market Ward, Highgate and a second
+    // Southbank candidate. Without these the mesh's tighter blocks left four
+    // districts with no authored green space at all.
+    .{ .x = 660, .z = 470, .w = 86, .d = 78 },
+    .{ .x = 520, .z = 660, .w = 84, .d = 76 },
+    .{ .x = 980, .z = 640, .w = 84, .d = 76 },
+    .{ .x = 620, .z = 900, .w = 84, .d = 74 },
 };
 const LandSite = struct { x: f32, z: f32, w: f32, d: f32 };
 
@@ -1136,45 +1244,57 @@ fn parkClear(x: f32, z: f32, w: f32, d: f32) bool {
     return true;
 }
 
+// Slice 17: search one anchor. The nominal rectangle is tried first, then the
+// same rectangle nudged around its box, then progressively smaller versions of
+// each. A bounded search rather than a single fixed rectangle is what lets a
+// park fit a block that the tighter mesh made narrower than the authored site.
+fn placePark(anchor: LandSite, placed: usize) ?LandSite {
+    const offsets = [_][2]f32{
+        .{ 0, 0 },      .{ -0.3, 0 },  .{ 0.3, 0 },
+        .{ 0, -0.3 },   .{ 0, 0.3 },   .{ -0.3, -0.3 },
+        .{ 0.3, -0.3 }, .{ -0.3, 0.3 }, .{ 0.3, 0.3 },
+    };
+    var scale: f32 = 1;
+    while (scale > 0.14) : (scale -= 0.08) {
+        for (offsets) |offset| {
+            const w = anchor.w * scale;
+            const d = anchor.d * scale;
+            const x = anchor.x + (anchor.w - w) / 2 + anchor.w * offset[0];
+            const z = anchor.z + (anchor.d - d) / 2 + anchor.d * offset[1];
+            if (!parkClear(x, z, w, d)) continue;
+            if (!clearOfBuildings(x, z, w, d, placed)) continue;
+            return .{ .x = x, .z = z, .w = w, .d = d };
+        }
+    }
+    return null;
+}
+
 fn seedParks() usize {
     var placed: usize = 0;
     for (park_anchors) |anchor| {
         if (placed >= buildings.len) return placed;
-        // Grow the biggest clear rectangle the anchor can hold, then shrink it
-        // towards the centre until one fits.
-        var scale: f32 = 1;
-        while (scale > 0.2) : (scale -= 0.08) {
-            const w = anchor.w * scale;
-            const d = anchor.d * scale;
-            const x = anchor.x + (anchor.w - w) / 2;
-            const z = anchor.z + (anchor.d - d) / 2;
-            if (!parkClear(x, z, w, d)) continue;
-            if (!clearOfBuildings(x, z, w, d, placed)) continue;
-            const road = nearestRoadAt(x + w / 2, z + d);
-            const entry_x = x + w / 2;
-            const entry_z = z + d;
-            buildings[placed] = .{
-                .x = x,
-                .z = z,
-                .width = w,
-                .depth = d,
-                .height = 0.1,
-                .ground = elevation(x + w / 2, z + d / 2),
-                .kind = .park,
-                .district = districtAt(x + w / 2, z + d / 2),
-                .node = 0,
-                .street = roads[road].street,
-                .number = @intFromFloat(@max(1, @round(x))),
-                .value = 0,
-                .capacity = 0,
-                .entry_x = entry_x,
-                .entry_z = entry_z,
-            };
-            buildings[placed].node = attach(placed, road);
-            if (building_at_node[buildings[placed].node] < 0) building_at_node[buildings[placed].node] = @intCast(placed);
-            placed += 1;
-            break;
-        }
+        const site = placePark(anchor, placed) orelse continue;
+        const road = nearestRoadAt(site.x + site.w / 2, site.z + site.d);
+        buildings[placed] = .{
+            .x = site.x,
+            .z = site.z,
+            .width = site.w,
+            .depth = site.d,
+            .height = 0.1,
+            .ground = elevation(site.x + site.w / 2, site.z + site.d / 2),
+            .kind = .park,
+            .district = districtAt(site.x + site.w / 2, site.z + site.d / 2),
+            .node = 0,
+            .street = roads[road].street,
+            .number = @intFromFloat(@max(1, @round(site.x))),
+            .value = 0,
+            .capacity = 0,
+            .entry_x = site.x + site.w / 2,
+            .entry_z = site.z + site.d,
+        };
+        buildings[placed].node = attach(placed, road);
+        if (building_at_node[buildings[placed].node] < 0) building_at_node[buildings[placed].node] = @intCast(placed);
+        placed += 1;
     }
     return placed;
 }
@@ -1520,4 +1640,5 @@ pub fn restoreGraph(saved_nodes: []const Node, saved_roads: []const Road) void {
         if (building_at_node[b.node] < 0) building_at_node[b.node] = @intCast(i);
     }
     rebuildSpans();
+    refreshElevations();
 }

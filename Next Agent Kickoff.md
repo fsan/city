@@ -1,6 +1,19 @@
-# Next agent kickoff — slices 9–12 complete and committed; awaiting the next slice
+# Next agent kickoff — slice 17 complete and committed; awaiting the next slice
 
 Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 at `60a000a`; slice 5 at `4e29f2f`; slice 6 at `cfa432d`; slice 7 at `dcc2577`; slice 8 at `e71fa0b`. Slices 9 (housing and occupancy) and 10 (street types, parking and learned travel) are complete and committed at `fd1a3a4`. Two further batches are also committed: player-placed traffic signals and crosswalks at `935cfb6`, and per-light timing, flashing yellow, coordination and bulk editing at `92d1846`; their own note labels those two batches slices 11 and 12. The worktree is clean, so nothing is left to commit before the next slice. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, explicit bus fleet and staffing commitments, and cure-first transport contract enforcement.
+
+**Slice 17 is complete and committed.** The committed dense-town batch
+(slice 15/16, commit `56f948c`) built and rendered but was internally
+inconsistent: the street wall placed 391 of its 820 target lots, only 7 of 12
+park anchors found a clear rectangle, Garden Ward had no green space, and
+`persistence.load` returned 4 for its own freshly written v12 file. Slice 17
+repairs and completes it — measured street-wall calibration, a per-district
+park search, deck heights registered before their nodes and refreshed by
+`city.refreshElevations`, no duplicate graph edges, and the snapshot validator
+using `city.isHome` so apartments round-trip. See
+`docs/dense-town-slice.md` for the rules, the measured table and the limits,
+including the one open defect: saving *after* the renderer has drawn a frame
+still returns 4, while saving immediately after `init` returns 0.
 
 **Authorized goal:** none is outstanding. Slices 1–12 are complete and committed, and the previously authorized slice 9 was carried through implementation, verification and documentation. No further slice is authorized until the user names one; the next candidate and the numbering conflict are recorded under the numbered development sequence below. Each new slice must have its own short slice note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation, and this kickoff refreshed before the following slice starts.
 
@@ -420,4 +433,4 @@ Timetables, transfers and automatic route optimisation need separate transport s
 
 ## Continuation instruction
 
-Slices 1–12 are committed and slice 13 is complete in the worktree but not yet committed, so this kickoff authorizes no new slice by itself. If the user names the next slice, confirm which numbering they mean when the request is ambiguous, then for that slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the following slice. Preserve existing work and do not stop at a plan. Do not add a permanent test suite or expand into the proposed sequence without authorization. Finish each slice with what changed, what was verified and remaining limitations.
+Slices 1–14 are committed, the slice 15/16 dense-town batch and the slice 17 repair are committed, and the worktree is clean, so this kickoff authorizes no new slice by itself. If the user names the next slice, confirm which numbering they mean when the request is ambiguous, then for that slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the following slice. Preserve existing work and do not stop at a plan. Do not add a permanent test suite or expand into the proposed sequence without authorization. Finish each slice with what changed, what was verified and remaining limitations.
