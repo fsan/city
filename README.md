@@ -54,13 +54,13 @@ Each folder has a short responsibility note. Read `docs/scene.md` before changin
 
 ## Scope
 
-3,840 residents, 288 seeded parcels in 34 street blocks, 12 neighbourhoods, 60 employers (including three street contractors), 503 seeded street segments, and terrain from 0–24 metres. Stable home/work assignments respect employer capacity. Residents travel through a slope-weighted graph and along front paths and supported steps. Crew assignments interrupt normal routines.
+3,840 residents, 288 seeded parcels, 12 neighbourhoods, 60 employers (including three street contractors), about 90 enclosed street blocks served by roughly 725 street segments, and terrain from 0–24 metres. Stable home/work assignments respect employer capacity. Residents travel through a slope-weighted graph and along front paths and supported steps. Crew assignments interrupt normal routines.
 
 The management loop supports specific property taxes, a cash ledger, operating disbursements, protected work-order reserves, company acceptance/refusal, physical crew travel, delivered work, cancellations and settlement. Read `docs/economy.md` for the explicit economic assumptions and tuning rules. No automatic repair timer remains.
 
 The renderer batches geometry into one depth-tested draw call. NPCs use six vertices each. Static geometry currently rebuilds each frame; caching / GPU camera projection / instancing are future profiling-led optimisations. The buffer holds 600,000 vertices (about 435,000 in the current smoke check in this slice).
 
-The map now spans 520 × 440 metres with low-rise suburbs and room within blocks for future construction. Daylight shading and ground shadows are illustrative; property assessments use a simple neighbouring-height exposure proxy.
+The map now spans 1,320 × 1,040 metres with low-rise suburbs and room within blocks for future construction. Daylight shading and ground shadows are illustrative; property assessments use a simple neighbouring-height exposure proxy.
 
 No complete household finances, intersection collision physics, elections, full service simulation, procedural generation or backend authority yet. Manual versioned save/load is available (town format version 7); see `docs/save-load-slice.md`. Routines are shortened and all residents are adult placeholders. Refreshed tabs restart the town. Contracts retain 64 orders per session; the ledger retains 1,024 entries and history retains 96 samples.
 

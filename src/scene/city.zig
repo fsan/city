@@ -102,12 +102,24 @@ fn deckAt(x: f32, z: f32) ?f32 {
     return null;
 }
 
-// True inside the water itself, and true a little way up the bank, which is
-// what the road tool, the parcel seeder and the building seeder all want.
+// True inside the water itself, and true a little way up the bank. The road
+// tool and the parcel seeder only need the carriageway clear of the waterline,
+// so three metres of bank is enough; a building needs its whole wall on dry
+// ground, which is what `inWaterForBuilding` adds.
 pub fn inWater(x: f32, z: f32) bool {
     if (River.count == 0) return false;
     const s = River.nearest(x, z);
     return s.distance < s.half_width + 3;
+}
+
+// Water test for anything with a footprint. A frontage is eleven metres back
+// from its node, so the corner of a wall can still stand in the channel even
+// when the centre passes the closer test above. Nine metres of bank clearance
+// keeps a 6.2 x 7 m footprint on the dry side of the waterline.
+pub fn inWaterForBuilding(x: f32, z: f32) bool {
+    if (River.count == 0) return false;
+    const s = River.nearest(x, z);
+    return s.distance < s.half_width + 9;
 }
 
 pub fn isBridge(road: usize) bool {
@@ -298,6 +310,14 @@ fn riverPoint(chainage: f32, lateral: f32) Vec {
 // west-bank piece and an east-bank piece and leaves the bridges to reconnect
 // them.
 fn chain(street: usize, class: u8, from: Vec, to: Vec, step: f32, seed: u32) void {
+    chainJitter(street, class, from, to, step, seed, @min(9, step * 0.22));
+}
+
+// The mesh wants to read as a street grid rather than as a bundle of wandering
+// ribbons, so its runs carry a small wobble: enough that the plan is not a
+// printed lattice, but small enough that a run still meets the cross street it
+// was aimed at and closes a face. Wide jitter only ever produced dead ends.
+fn chainJitter(street: usize, class: u8, from: Vec, to: Vec, step: f32, seed: u32, wobble: f32) void {
     const span = hypot(to.x - from.x, to.z - from.z);
     const pieces: usize = @max(1, @as(usize, @intFromFloat(@round(span / step))));
     var previous: ?usize = null;
@@ -305,7 +325,7 @@ fn chain(street: usize, class: u8, from: Vec, to: Vec, step: f32, seed: u32) voi
         if (node_count + 4 >= max_nodes or road_count + 4 >= max_roads) return;
         const t = @as(f32, @floatFromInt(k)) / @as(f32, @floatFromInt(pieces));
         const edge = k == 0 or k == pieces;
-        const amount: f32 = if (edge) 0 else @min(9, step * 0.22);
+        const amount: f32 = if (edge) 0 else wobble;
         const x = from.x + (to.x - from.x) * t + jitter(seed +% @as(u32, @intCast(k)) * 7, amount);
         const z = from.z + (to.z - from.z) * t + jitter(seed +% @as(u32, @intCast(k)) * 13 + 5, amount);
         if (x < 8 or z < 8 or x > size_x - 8 or z > size_z - 8 or inWater(x, z)) {
@@ -480,15 +500,36 @@ fn clearOfBuildings(x: f32, z: f32, width: f32, depth: f32, placed: usize) bool 
     return true;
 }
 
-fn clearOfRoads(x: f32, z: f32, ignore: usize) bool {
-    for (roads[0..road_count], 0..) |r, i| {
-        if (i == ignore) continue;
-        const a = nodes[r.a];
-        const b = nodes[r.b];
-        const u = projection(.{ .x = x, .z = z }, a, b);
-        const px = a.x + (b.x - a.x) * u;
-        const pz = a.z + (b.z - a.z) * u;
-        if (hypot(px - x, pz - z) < 6.4) return false;
+// True when the whole footprint of a building is far enough from every road
+// surface to be built on. Testing the centre alone let an 11 m frontage offset
+// push a wall over a carriageway, so the corners and the middle are all
+// measured against the ribbon the renderer actually draws (half-width 2.7 plus
+// a metre of kerb).
+fn clearOfRoads(x: f32, z: f32, width: f32, depth: f32, ignore: usize) bool {
+    // Every footprint sample has to clear every carriageway. The street the
+    // building is meant to face is not skipped outright — it is only held to
+    // the shoulder edge (the ribbon the renderer draws at 2.7 m), because a
+    // frontage that is skipped entirely is exactly how a wall ended up standing
+    // on the road it was supposed to address.
+    const margin: f32 = 3.7;
+    const own_margin: f32 = 2.9;
+    const samples = [_]Vec{
+        .{ .x = x, .z = z },
+        .{ .x = x + width, .z = z },
+        .{ .x = x, .z = z + depth },
+        .{ .x = x + width, .z = z + depth },
+        .{ .x = x + width / 2, .z = z + depth / 2 },
+    };
+    for (samples) |p| {
+        for (roads[0..road_count], 0..) |r, i| {
+            const a = nodes[r.a];
+            const b = nodes[r.b];
+            const u = projection(p, a, b);
+            const px = a.x + (b.x - a.x) * u;
+            const pz = a.z + (b.z - a.z) * u;
+            const limit: f32 = if (i == ignore) own_margin else margin;
+            if (hypot(px - p.x, pz - p.z) < limit) return false;
+        }
     }
     return true;
 }
@@ -566,15 +607,23 @@ fn seedStreets() void {
     chain(10, 2, .{ .x = 1060, .z = 480 }, .{ .x = 1080, .z = 900 }, 75, 19);
     // The irregular local mesh. Each run spans the whole plan and is trimmed at
     // the water, so the west and east banks get their own street pattern.
+    //
+    // The plan carries more runs than the first pass did, but each run is
+    // sampled at a coarser step. Two long ribbons that cross mid-span make one
+    // junction and cost no vertex between them, while every extra sample along
+    // a ribbon is a degree-2 bend that only reads as "one long road". Trading
+    // samples for runs therefore buys crossroads without spending the node
+    // budget: the routing tables are quadratic and the save file is capped at
+    // 16 MiB, so the town cannot afford to grow its node count to buy density.
     var seed: u32 = 100;
-    for (0..6) |k| {
-        const z = 130 + @as(f32, @floatFromInt(k)) * 155 + jitter(seed +% @as(u32, @intCast(k)) * 31, 30);
-        chain(7, 0, .{ .x = 60, .z = z }, .{ .x = size_x - 60, .z = z }, 78, seed +% @as(u32, @intCast(k)) * 3);
+    for (0..7) |k| {
+        const z = 110 + @as(f32, @floatFromInt(k)) * 130 + jitter(seed +% @as(u32, @intCast(k)) * 31, 14);
+        chainJitter(7, 0, .{ .x = 60, .z = z }, .{ .x = size_x - 60, .z = z }, 120, seed +% @as(u32, @intCast(k)) * 3, 2.5);
         seed +%= 7;
     }
-    for (0..4) |k| {
-        const x = 130 + @as(f32, @floatFromInt(k)) * 300 + jitter(seed +% @as(u32, @intCast(k)) * 17, 40);
-        chain(8, 0, .{ .x = x, .z = 50 }, .{ .x = x + jitter(seed +% @as(u32, @intCast(k)), 60), .z = size_z - 50 }, 82, seed +% @as(u32, @intCast(k)) * 5);
+    for (0..9) |k| {
+        const x = 110 + @as(f32, @floatFromInt(k)) * 140 + jitter(seed +% @as(u32, @intCast(k)) * 17, 16);
+        chainJitter(8, 0, .{ .x = x, .z = 50 }, .{ .x = x + jitter(seed +% @as(u32, @intCast(k)), 24), .z = size_z - 50 }, 130, seed +% @as(u32, @intCast(k)) * 5, 2.5);
         seed +%= 11;
     }
     // A couple of long diagonals for variety, and the outer ring.
@@ -732,9 +781,9 @@ fn seedBuildings() void {
                 const width: f32 = 6.2;
                 const depth: f32 = 7;
                 if (x < 3 or z < 3 or x + width > size_x - 3 or z + depth > size_z - 3) continue;
-                if (inWater(x, z) or inWater(x + width, z + depth)) continue;
+                if (inWaterForBuilding(x, z) or inWaterForBuilding(x + width, z + depth)) continue;
                 if (!clearOfBuildings(x, z, width, depth, placed)) continue;
-                if (!clearOfRoads(x + width / 2, z + depth / 2, road)) continue;
+                if (!clearOfRoads(x, z, width, depth, road)) continue;
                 const kind = kindFor(index, core);
                 const height = heightFor(kind, index, core);
                 const entry_x = x + width / 2;
@@ -754,15 +803,39 @@ fn seedBuildings() void {
             }
         }
     }
-    // The map must never be left without homes or without an employer.
+    // The map must never be left without homes or without an employer. Every
+    // fallback site is checked exactly like the ones above: an unchecked
+    // placement here is what used to drop frontages into the river and push
+    // slabs across a carriageway.
     if (placed < buildings.len) {
-        // Fill any remainder with homes beside the first nodes, bounded.
-        var n: usize = 0;
-        while (placed < buildings.len and n < node_total) : (n += 1) {
-            if (degree(n) == 0) continue;
-            buildings[placed] = .{ .x = nodes[n].x + 6, .z = nodes[n].z + 6, .width = 6.2, .depth = 7, .height = 3, .ground = elevation(nodes[n].x + 12, nodes[n].z + 13), .kind = .home, .district = districtAt(nodes[n].x, nodes[n].z), .node = n, .street = nodes[n].street, .number = nodes[n].number + 1, .value = 1800000, .capacity = 0, .entry_x = nodes[n].x + 9, .entry_z = nodes[n].z + 6 };
-            if (building_at_node[buildings[placed].node] < 0) building_at_node[buildings[placed].node] = @intCast(placed);
-            placed += 1;
+        const width: f32 = 6.2;
+        const depth: f32 = 7;
+        var attempt: usize = 0;
+        while (placed < buildings.len and attempt < 4) : (attempt += 1) {
+            for (0..node_total) |n| {
+                if (placed >= buildings.len or node_count + 2 >= max_nodes) break;
+                if (degree(n) == 0) continue;
+                if (nodes[n].street == bridge_street) continue;
+                if (building_at_node[n] >= 0) continue;
+                const road = firstRoad(n) orelse continue;
+                for ([_]f32{ 1, -1 }) |side| {
+                    if (placed >= buildings.len) break;
+                    const a = nodes[roads[road].a];
+                    const b = nodes[roads[road].b];
+                    const span = @max(0.001, hypot(b.x - a.x, b.z - a.z));
+                    const offset = 11 + jitter(@as(u32, @intCast(placed + attempt * 613)) * 3 + 1, 2.4);
+                    const x = nodes[n].x - (b.z - a.z) / span * offset * side - 3.1;
+                    const z = nodes[n].z + (b.x - a.x) / span * offset * side + 3.1;
+                    if (x < 3 or z < 3 or x + width > size_x - 3 or z + depth > size_z - 3) continue;
+                    if (inWaterForBuilding(x, z) or inWaterForBuilding(x + width, z + depth)) continue;
+                    if (!clearOfBuildings(x, z, width, depth, placed)) continue;
+                    if (!clearOfRoads(x, z, width, depth, road)) continue;
+                    buildings[placed] = .{ .x = x, .z = z, .width = width, .depth = depth, .height = 3, .ground = elevation(x + width, z + depth), .kind = .home, .district = districtAt(x, z), .node = 0, .street = nodes[n].street, .number = nodes[n].number + @as(usize, if (side > 0) 1 else 0), .value = 1800000, .capacity = 0, .entry_x = x + width / 2, .entry_z = if (side > 0) z else z + depth };
+                    buildings[placed].node = attach(placed, road);
+                    if (building_at_node[buildings[placed].node] < 0) building_at_node[buildings[placed].node] = @intCast(placed);
+                    placed += 1;
+                }
+            }
         }
     }
 }
@@ -842,6 +915,10 @@ fn seedParking() void {
         for (&buildings) |*b| {
             if (b.district != district) continue;
             if (b.kind != .park and b.kind != .vacant) continue;
+            // A parking slab is a drawn surface, not a wall, but the player still
+            // reads a tan rectangle over the carriageway as a glitch, so the
+            // conversion is held to the same footprint clearance as a frontage.
+            if (!clearOfRoads(b.x, b.z, b.width, b.depth, max_roads)) continue;
             const kind: Kind = if (placed_bike < bike_target and bike_placed < max_bike_parks) .bike_park else if (placed_car < car_target and car_placed < max_car_parks) .car_park else continue;
             if (kind == .bike_park) {
                 placed_bike += 1;

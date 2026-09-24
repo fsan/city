@@ -4,7 +4,7 @@
 
 # Scene scheme
 
-X/Z are the ground plane; Y is elevation, in abstract metres. Bellwether has 18 × 16 authored lots (288), 12 neighbourhoods, 323 street nodes and 610 bidirectional segments over 360 × 320 metres. The fixed ASCII plan in `src/scene/city.zig` is the source of building uses. No random generator is involved.
+X/Z are the ground plane; Y is elevation, in abstract metres. Bellwether has 288 authored lots, 12 neighbourhoods and, after the density pass, about 626 street nodes and 725 bidirectional segments over 1,320 × 1,040 metres. The plan in `src/scene/city.zig` is the source of building uses. No random generator is involved; the jitter is a deterministic hash of the seed, so the same plan comes back every run.
 
 Terrain is an authored height function: two eastward rises (8 m and 11 m) and a southern terrace (+5 m), joined by slopes. Buildings use level foundations at their footprint's highest corner. Front paths follow terrain and end at supported steps near the uphill corner of each building. Residents walk these connectors; cars are stored at street nodes. Parks follow the terrain without foundations. Ground and road triangles split at the exact terrain crease coordinates — x 30, 210, 1140 and 1300, and z 130, 830 and 1020 — so no tile chords across a corner the ground actually turns at and every drawn surface matches the height the simulation walks on. The renderer draws the carved ground, while walkers, vehicles and picking read a surface that also includes the bridge decks, so the two never disagree about where a bridge is. Residents are hidden while dwelling inside buildings or riding vehicles; detailed interiors are not modelled.
 
