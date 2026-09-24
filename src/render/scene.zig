@@ -70,21 +70,49 @@ fn streetColor(condition: f32) Color {
     const amount = condition / 100;
     return .{ 0.8 - amount * 0.6, 0.25 + amount * 0.4, 0.2 + amount * 0.25 };
 }
+// The terrain's own creases: the ends of the ramps authored in `city.terrain`.
+// A triangle that spans one is drawn as a straight edge across a corner the
+// ground actually turns at, so the drawn surface stops agreeing with the
+// surface the simulation walks on and can rise through a road laid over it.
+const crease_x = [_]f32{ 30, 210, 1140, 1300 };
+const crease_z = [_]f32{ 130, 830, 1020 };
+
+// Sample positions across one axis of a tile. No gap is wider than `step` and
+// none straddles a crease, so every quad built from two neighbours lies on a
+// single affine piece of the terrain and reproduces it exactly.
+fn sampleAxis(out: *[24]f32, start: f32, end: f32, step: f32, creases: []const f32) usize {
+    out[0] = start;
+    var n: usize = 1;
+    var cursor = start;
+    while (cursor < end - 0.0001 and n < out.len) {
+        var next = @min(end, cursor + step);
+        for (creases) |c| {
+            if (c > cursor + 0.0001 and c < next) next = c;
+        }
+        cursor = next;
+        out[n] = cursor;
+        n += 1;
+    }
+    return n;
+}
+
 // Slice 13: the ground is sampled finely wherever the river could carve it, so
 // the channel and its banks are drawn instead of being averaged away between
 // two tile corners. Away from the water one quad per tile is enough.
 fn groundQuad(x: f32, z: f32, w: f32, d: f32, offset: f32, color: Color) void {
-    const step: f32 = if (nearRiver(x, z, w, d)) 8 else 40;
-    var xx = x;
-    while (xx < x + w - 0.0001) {
-        const nx = @min(x + w, xx + step);
-        var zz = z;
-        while (zz < z + d - 0.0001) {
-            const nz = @min(z + d, zz + step);
-            quad(.{ xx, city.elevation(xx, zz) + offset, zz }, .{ nx, city.elevation(nx, zz) + offset, zz }, .{ nx, city.elevation(nx, nz) + offset, nz }, .{ xx, city.elevation(xx, nz) + offset, nz }, color);
-            zz = nz;
+    const step: f32 = if (nearRiver(x, z, w, d)) 4 else 40;
+    var xs: [24]f32 = undefined;
+    var zs: [24]f32 = undefined;
+    const nx = sampleAxis(&xs, x, x + w, step, &crease_x);
+    const nz = sampleAxis(&zs, z, z + d, step, &crease_z);
+    for (0..nx - 1) |i| {
+        for (0..nz - 1) |j| {
+            const x0 = xs[i];
+            const x1 = xs[i + 1];
+            const z0 = zs[j];
+            const z1 = zs[j + 1];
+            quad(.{ x0, city.elevation(x0, z0) + offset, z0 }, .{ x1, city.elevation(x1, z0) + offset, z0 }, .{ x1, city.elevation(x1, z1) + offset, z1 }, .{ x0, city.elevation(x0, z1) + offset, z1 }, color);
         }
-        xx = nx;
     }
 }
 
@@ -95,33 +123,71 @@ fn nearRiver(x: f32, z: f32, w: f32, d: f32) bool {
     return c.distance < c.half_width + city.River.bank_width + @max(w, d) * 0.75;
 }
 
-// The water surface: one quad per centreline span, drawn at the authored level,
-// so a future flow model that raises the levels moves the surface with them.
+// The water surface. Every centreline point contributes one shared edge, laid
+// on the bisector of the two spans that meet there, so consecutive spans meet
+// exactly and a bend no longer leaves a wedge of bank showing through the
+// water. The surface also reaches well past the waterline, which is where the
+// carved bank rises through the water plane: its own boundary is then buried
+// under the bank, and the water simply ends wherever the ground crosses it.
 fn riverSurface() void {
     const r = city.River;
     if (r.count < 2) return;
-    var i: usize = 0;
-    while (i + 1 < r.count) : (i += 1) {
-        const a = r.points[i];
-        const b = r.points[i + 1];
-        const dx = b.x - a.x;
-        const dz = b.z - a.z;
-        const len = city.hypot(dx, dz);
-        if (len < 0.001) continue;
-        const nx = -dz / len;
-        const nz = dx / len;
-        const wa = r.half_width[i];
-        const wb = r.half_width[i + 1];
-        const ya = r.levelAt(i) + 0.35;
-        const yb = r.levelAt(i + 1) + 0.35;
-        quad(.{ a.x + nx * wa, ya, a.z + nz * wa }, .{ b.x + nx * wb, yb, b.z + nz * wb }, .{ b.x - nx * wb, yb, b.z - nz * wb }, .{ a.x - nx * wa, ya, a.z - nz * wa }, .{ 0.17, 0.33, 0.44 });
+    const reach = r.bank_width + 4;
+    var have_previous = false;
+    var left_previous: Point = undefined;
+    var right_previous: Point = undefined;
+    for (0..r.count) |i| {
+        const edge = bankEdge(i, reach);
+        if (have_previous) quad(left_previous, edge[0], edge[1], right_previous, .{ 0.17, 0.33, 0.44 });
+        left_previous = edge[0];
+        right_previous = edge[1];
+        have_previous = true;
     }
 }
+
+// The two ends of the water surface's shared edge at one centreline point. The
+// edge is pushed out along the bisector of the neighbouring spans by whatever
+// it takes to stay `reach` past the channel from both of them.
+fn bankEdge(index: usize, reach: f32) [2]Point {
+    const r = city.River;
+    const centre = r.points[index];
+    const y = r.levelAt(index) + 0.35;
+    var nx: f32 = 0;
+    var nz: f32 = 0;
+    var spans: f32 = 0;
+    if (index > 0) {
+        const a = r.points[index - 1];
+        const len = city.hypot(centre.x - a.x, centre.z - a.z);
+        if (len > 0.001) {
+            nx += -(centre.z - a.z) / len;
+            nz += (centre.x - a.x) / len;
+            spans += 1;
+        }
+    }
+    if (index + 1 < r.count) {
+        const b = r.points[index + 1];
+        const len = city.hypot(b.x - centre.x, b.z - centre.z);
+        if (len > 0.001) {
+            nx += -(b.z - centre.z) / len;
+            nz += (b.x - centre.x) / len;
+            spans += 1;
+        }
+    }
+    const len = city.hypot(nx, nz);
+    if (len < 0.001) return .{ .{ centre.x, y, centre.z }, .{ centre.x, y, centre.z } };
+    nx /= len;
+    nz /= len;
+    // Two spans make a miter, one span needs no widening at all.
+    const miter = if (spans < 2) 1 else @min(3, 2 / len);
+    const edge = (r.half_width[index] + reach) * miter;
+    return .{ .{ centre.x + nx * edge, y, centre.z + nz * edge }, .{ centre.x - nx * edge, y, centre.z - nz * edge } };
+}
+
 // Clip ribbons at each analytical terrain crease before triangulating.
 fn terrainFace(points: []const city.Vec, offset: f32, color: Color) void {
     // Clip ribbons at the terrain's own ramps (west hill, east rise, southern
     // rise, northern shelf) before triangulating.
-    const cuts = [_]f32{ 30, 210, 1140, 1300, 130, 830 };
+    const cuts = [_]f32{ 30, 210, 1140, 1300, 130, 830, 1020 };
     for (cuts, 0..) |cut, axis| {
         var lo: f32 = 1e9;
         var hi: f32 = -1e9;
