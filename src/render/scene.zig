@@ -111,8 +111,73 @@ fn groundQuad(x: f32, z: f32, w: f32, d: f32, offset: f32, color: Color) void {
             const x1 = xs[i + 1];
             const z0 = zs[j];
             const z1 = zs[j + 1];
-            quad(.{ x0, city.elevation(x0, z0) + offset, z0 }, .{ x1, city.elevation(x1, z0) + offset, z0 }, .{ x1, city.elevation(x1, z1) + offset, z1 }, .{ x0, city.elevation(x0, z1) + offset, z1 }, color);
+            quad(.{ x0, city.carved(x0, z0) + offset, z0 }, .{ x1, city.carved(x1, z0) + offset, z0 }, .{ x1, city.carved(x1, z1) + offset, z1 }, .{ x0, city.carved(x0, z1) + offset, z1 }, color);
         }
+    }
+}
+
+// The bridge decks. A span is drawn as its own slab over the water with a
+// parapet on either side and nothing beneath it, so the channel keeps its full
+// width and the river reads as continuous under the bridge instead of being
+// dammed by a causeway.
+fn bridgeDecks() void {
+    const deck = Color{ 0.42, 0.42, 0.39 };
+    const parapet = Color{ 0.52, 0.51, 0.47 };
+    const half: f32 = 4.2;
+    const thickness: f32 = 1.1;
+    for (city.spans[0..city.span_count]) |s| {
+        const dx = s.bx - s.ax;
+        const dz = s.bz - s.az;
+        const length = city.hypot(dx, dz);
+        if (length < 0.001) continue;
+        const ux = dx / length;
+        const uz = dz / length;
+        const nx = -uz;
+        const nz = ux;
+        const cx = (s.ax + s.bx) / 2;
+        const cz = (s.az + s.bz) / 2;
+        // The slab itself, hanging below the deck level the traffic walks on.
+        vehicleBox(cx, cz, length, half * 2, thickness, s.level - thickness, ux, uz, deck);
+        // Parapets along both edges, so the span reads as a bridge.
+        for ([_]f32{ -1, 1 }) |side| {
+            vehicleBox(cx + nx * side * (half - 0.25), cz + nz * side * (half - 0.25), length, 0.5, 0.55, s.level, ux, uz, parapet);
+        }
+    }
+}
+
+// The bank strip either side of the water. The waterline is a curve, but the
+// ground tiles that carry it are chords of an axis-aligned grid, so the edge
+// they present to the river is ragged. This strip is built from the river's own
+// centreline, so the water reads against the authored curve instead of the grid,
+// and it laps a little way up the bank where the ground is already above the
+// water plane.
+fn riverBank() void {
+    const r = city.River;
+    if (r.count < 2) return;
+    const inner = r.bank_width * 0.6875;
+    const outer = inner + 7;
+    const color = Color{ 0.36, 0.40, 0.32 };
+    var have = false;
+    var in_left: Point = undefined;
+    var in_right: Point = undefined;
+    var out_left: Point = undefined;
+    var out_right: Point = undefined;
+    for (0..r.count) |i| {
+        const ei = bankEdge(i, inner);
+        const eo = bankEdge(i, outer);
+        const i_left = Point{ ei[0][0], city.carved(ei[0][0], ei[0][2]) + 0.04, ei[0][2] };
+        const i_right = Point{ ei[1][0], city.carved(ei[1][0], ei[1][2]) + 0.04, ei[1][2] };
+        const o_left = Point{ eo[0][0], city.carved(eo[0][0], eo[0][2]) + 0.04, eo[0][2] };
+        const o_right = Point{ eo[1][0], city.carved(eo[1][0], eo[1][2]) + 0.04, eo[1][2] };
+        if (have) {
+            quad(in_left, i_left, o_left, out_left, color);
+            quad(out_right, o_right, i_right, in_right, color);
+        }
+        in_left = i_left;
+        in_right = i_right;
+        out_left = o_left;
+        out_right = o_right;
+        have = true;
     }
 }
 
@@ -295,6 +360,8 @@ pub fn draw(w: f32, h: f32) void {
         groundQuad(x, z, city.spacing, city.spacing, 0, .{ 0.36, 0.40, 0.32 });
     };
     riverSurface();
+    riverBank();
+    bridgeDecks();
     // Visible edges communicate the plateau heights without a terrain art dependency.
     for (0..city.cols) |i| {
         const x = @as(f32, @floatFromInt(i)) * city.spacing;

@@ -64,11 +64,11 @@ pub fn terrain(x: f32, z: f32) f32 {
     return 7 + ramp(x, 30, 210) * 10 + ramp(x, 1140, 1300) * 7 + ramp(z, 830, 1020) * 5 + ramp(z, 0, 130) * 3;
 }
 
-// Walkable surface: the raw terrain with the channel carved into it, plus the
-// bridge decks. Called for every vertex, vehicle corner and resident, so the
-// river test is guarded by the bounding box computed in `init`.
-pub fn elevation(x: f32, z: f32) f32 {
-    if (deckAt(x, z)) |level| return level;
+// The carved ground: the raw terrain with the channel cut into it and nothing
+// else. This is what the renderer draws for the ground surface, so a bridge
+// crossing stays open water underneath rather than a causeway damming the
+// river. The river test is guarded by the bounding box computed in `init`.
+pub fn carved(x: f32, z: f32) f32 {
     const ground = terrain(x, z);
     if (River.count == 0) return ground;
     if (x < river_min_x or x > river_max_x or z < river_min_z or z > river_max_z) return ground;
@@ -78,6 +78,14 @@ pub fn elevation(x: f32, z: f32) f32 {
     if (s.distance <= s.half_width) return @min(ground, bed);
     const t = (s.distance - s.half_width) / River.bank_width;
     return @min(ground, bed + (s.level + River.bank_height - bed) * t);
+}
+
+// Walkable surface: the carved ground plus the bridge decks, so walkers,
+// vehicles and picking all cross at the deck height instead of dropping into
+// the channel. Called for every vertex, vehicle corner and resident.
+pub fn elevation(x: f32, z: f32) f32 {
+    if (deckAt(x, z)) |level| return level;
+    return carved(x, z);
 }
 
 fn deckAt(x: f32, z: f32) ?f32 {
@@ -538,8 +546,10 @@ pub fn init() void {
 fn seedStreets() void {
     // A riverside road on each bank, then the two long bank arterials set back
     // behind them: Viale di Trastevere in the west, Viale Aventino in the east.
-    riverside(2, 1, -1, 13, 55);
-    riverside(4, 1, 1, 13, 55);
+    // The setback clears the waterline, which sits at 0.6875 of the bank ramp
+    // past the channel, so the carriageway never overlaps the water surface.
+    riverside(2, 1, -1, 17, 55);
+    riverside(4, 1, 1, 17, 55);
     riverside(0, 2, -1, 62, 95);
     riverside(3, 2, 1, 78, 95);
     // The hill road on the west, and the two south-western arterials.
