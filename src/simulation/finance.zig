@@ -100,22 +100,22 @@ pub fn periodRead(index: u32, field: u32) f64 {
 }
 pub fn base(home: bool) f64 {
     var total: f64 = 0;
-    for (city.buildings) |b| {
-        if ((b.kind == .home) == home) total += b.value;
+    for (city.lots()) |b| {
+        if (city.isHome(b.kind) == home) total += b.value;
     }
     return total;
 }
 pub fn bill(building: usize) f64 {
     const b = city.buildings[building];
-    return cents(b.value * (if (b.kind == .home) residential_rate else commercial_rate) / 100 / 360);
+    return cents(b.value * (if (city.isHome(b.kind)) residential_rate else commercial_rate) / 100 / 360);
 }
 pub fn projection() f64 {
     var total: f64 = 0;
-    for (0..city.buildings.len) |i| total += bill(i);
+    for (0..city.lot_count) |i| total += bill(i);
     return total;
 }
 pub fn daily(time: f64) void {
-    for (city.buildings, 0..) |b, i| {
+    for (city.lots(), 0..) |b, i| {
         if (b.value == 0) continue;
         arrears[i] = cents(arrears[i] + bill(i));
         var payment = arrears[i];
@@ -123,7 +123,7 @@ pub fn daily(time: f64) void {
             const company = &residents.companies[@intCast(b.employer)];
             payment = @min(payment, company.cash);
             company.cash = cents(company.cash - payment);
-        } else if (b.kind == .home and housing.valid(i)) {
+        } else if (city.isHome(b.kind) and housing.valid(i)) {
             // Slice 10: tenure decides who pays the municipal assessment. An
             // owner-occupier pays from the shared household balance; a rented
             // home is paid by its property owner out of rent actually collected.
@@ -138,7 +138,7 @@ pub fn daily(time: f64) void {
                 break :blk paid;
             };
         }
-        if (payment > 0) record(time, payment, if (b.kind == .home) 1 else 2, @intCast(i), -1);
+        if (payment > 0) record(time, payment, if (city.isHome(b.kind)) 1 else 2, @intCast(i), -1);
         arrears[i] = cents(arrears[i] - payment);
     }
 }

@@ -12,19 +12,48 @@ pub const size_x: f32 = 1320;
 pub const size_z: f32 = 1040;
 pub const population = 3840;
 pub const district_count = 12;
-pub const max_nodes = 640;
-pub const max_roads = 1200;
+// Slice 16 lifted the ceiling that used to cap this. `rebuildRoutes` is no
+// longer O(nodes^3) (it is one Dijkstra per source over an adjacency list), and
+// the snapshot no longer carries the all-pairs tables, so neither the frame
+// budget nor the 16 MiB save buffer is set by the node count any more. The
+// plan can therefore afford an access street off every avenue instead of a
+// handful of long ribbons with empty blocks between them.
+pub const max_nodes = 1600;
+pub const max_roads = 3200;
 pub const street_count_default: usize = 14;
 // Street 12 is reserved for the bridges, which are the only spans that may
 // cross the water. Nothing is built on them.
 pub const bridge_street: usize = 12;
 pub const max_spans = 16;
-pub const Kind = enum(u32) { home, shop, office, clinic, hall, park, depot, vacant, bike_park, car_park };
+// Slice 15 appended the downtown and green-space kinds. Existing values are
+// retained so saved towns, `web/data.js` and the reports keep their meaning.
+pub const Kind = enum(u32) { home, shop, office, clinic, hall, park, depot, vacant, bike_park, car_park, apartment, market, playground, plaza };
+// Slice 15: the authored population grew from 288 lots to a dense street wall
+// of mixed housing, business and public space, so the fixed lot array grew with
+// it. The count is capped by the node ceiling above, not by this array.
+pub const max_buildings = 900;
 pub const Building = struct { x: f32, z: f32, width: f32, depth: f32, height: f32, ground: f32, kind: Kind, district: usize, node: usize, value: f64, capacity: usize, slots: usize = 0, sun: f32 = 1, occupants: usize = 0, employer: i32 = -1, entry_x: f32 = 0, entry_z: f32 = 0, street: usize = 0, number: usize = 0 };
 pub const Node = struct { x: f32, z: f32, y: f32, street: usize = 0, number: usize = 0 };
 pub const Road = struct { a: usize, b: usize, length: f32, slope: f32, district: usize, condition: f32, street: usize = 0, class: u8 = 1, pedestrians: bool = true, vehicles: bool = true, crosswalk: bool = false, works: bool = false };
 pub const Vec = struct { x: f32, z: f32 };
-pub var buildings: [288]Building = undefined;
+pub var buildings: [max_buildings]Building = undefined;
+// Slice 15: `buildings.len` is the array bound (900), not the number of lots the
+// street wall actually placed. Everything that walks the town - the scalar ABI,
+// the parcel list, the assessment roll, the snapshot validator and the browser -
+// must use this count instead, otherwise the unused tail is read as a row of
+// zero-sized homes standing on the origin.
+pub var lot_count: usize = 0;
+
+// The placed lots, as opposed to the fixed storage the array reserves. Every
+// walk of the town uses this slice so the unused tail can never be read as a
+// building standing on the origin.
+pub fn lots() []Building {
+    return buildings[0..lot_count];
+}
+// Slice 15: how many lots the street wall aims to fill. `max_buildings` is the
+// hard array bound; this is the authored density target, so the sweep leaves
+// room at the end of the array for the fallback sites.
+pub const building_target: usize = 820;
 var node_storage: [max_nodes]Node = undefined;
 var road_storage: [max_roads]Road = undefined;
 pub var nodes: []Node = node_storage[0..0];
@@ -130,7 +159,7 @@ pub fn districtAt(x: f32, z: f32) usize {
     return @as(usize, @intFromFloat(std.math.clamp(z / (size_z / 4), 0, 3))) * 3 + @as(usize, @intFromFloat(std.math.clamp(x / (size_x / 3), 0, 2)));
 }
 
-fn hash01(value: u32) f32 {
+pub fn hash01(value: u32) f32 {
     var v = value *% 2654435761;
     v ^= v >> 15;
     v *%= 2246822519;
@@ -140,6 +169,33 @@ fn hash01(value: u32) f32 {
 
 fn jitter(seed: u32, amount: f32) f32 {
     return (hash01(seed) - 0.5) * 2 * amount;
+}
+
+// Slice 15: the two questions the rest of the game keeps asking about a lot.
+// `isHome` is what makes an apartment a permanent dwelling in the housing,
+// household, tax and residence-counting code; `isGreen` is what makes a park,
+// playground or plaza a place a family can spend an afternoon.
+pub fn isHome(kind: Kind) bool {
+    return kind == .home or kind == .apartment;
+}
+
+pub fn isGreen(kind: Kind) bool {
+    return kind == .park or kind == .playground or kind == .plaza;
+}
+
+// Slice 15: the downtown quarter. It is the east-bank commercial core around
+// the central avenue, bounded by the local mesh to the west, the east rise to
+// the north-east and the southern arterials. Every frontage inside it is built
+// up, taller and more commercial than the surrounding neighbourhoods, and it
+// holds the market hall, the plazas and the office towers.
+pub const downtown_x0: f32 = 830;
+pub const downtown_z0: f32 = 330;
+pub const downtown_x1: f32 = 1150;
+pub const downtown_z1: f32 = 700;
+pub const downtown_name = "Market Ward core";
+
+pub fn inDowntown(x: f32, z: f32) bool {
+    return x >= downtown_x0 and x <= downtown_x1 and z >= downtown_z0 and z <= downtown_z1;
 }
 
 // 0 at the centre of the plan, 1 in the outer suburbs. Drives how dense the
@@ -396,16 +452,23 @@ fn splitAtNode(id: usize, n: usize) void {
     const old = roads[id];
     if (old.a == n or old.b == n) return;
     if (node_count + 1 >= max_nodes or road_count + 1 >= max_roads) return;
+    // The two halves have to be measured the same way `addRoadClass` measures a
+    // span: the three-dimensional length, with the slope taken over the planar
+    // run. Using the flat distance here left a junction-split road a few
+    // centimetres short of the distance the snapshot validator recomputes from
+    // its endpoints, so a town that crossed a junction could never be reloaded.
     const added = addRoadClass(n, old.b, old.street, old.class);
     roads[added].a = n;
     roads[added].b = old.b;
-    roads[added].length = hypot(nodes[n].x - nodes[old.b].x, nodes[n].z - nodes[old.b].z);
-    const dy = nodes[n].y - nodes[old.b].y;
-    roads[added].slope = @abs(dy) / @max(0.01, roads[added].length);
+    const added_planar = hypot(nodes[n].x - nodes[old.b].x, nodes[n].z - nodes[old.b].z);
+    const added_dy = nodes[n].y - nodes[old.b].y;
+    roads[added].length = @sqrt(added_planar * added_planar + added_dy * added_dy);
+    roads[added].slope = @abs(added_dy) / @max(0.01, added_planar);
     roads[id].b = n;
-    roads[id].length = hypot(nodes[n].x - nodes[old.a].x, nodes[n].z - nodes[old.a].z);
+    const first_planar = hypot(nodes[n].x - nodes[old.a].x, nodes[n].z - nodes[old.a].z);
     const first_dy = nodes[n].y - nodes[old.a].y;
-    roads[id].slope = @abs(first_dy) / @max(0.01, roads[id].length);
+    roads[id].length = @sqrt(first_planar * first_planar + first_dy * first_dy);
+    roads[id].slope = @abs(first_dy) / @max(0.01, first_planar);
     road_between[n][old.b] = @intCast(added);
     road_between[old.b][n] = @intCast(added);
     road_between[old.a][n] = @intCast(id);
@@ -566,14 +629,20 @@ pub fn init() void {
     seedBridges();
     resolveJunctions();
     linkFragments();
-    seedBuildings();
+    // Slice 15: the large authored parks claim their block interiors before the
+    // street wall is laid out, so a terrace never grows through a park.
+    // The parks claim their block interiors first and the street wall starts
+    // from the first free lot, so a terrace can never be written over a park.
+    const park_lots = seedParks();
+    lot_count = seedBuildings(park_lots);
+    @memset(buildings[lot_count..], std.mem.zeroes(Building));
     for (roads, 0..) |*r, i| {
         r.condition = if (r.district == 0 or r.district == 3) 34 + @as(f32, @floatFromInt(i % 15)) else 62 + @as(f32, @floatFromInt(i % 25));
         r.crosswalk = (degree(r.a) >= 3 or degree(r.b) >= 3) and i % 3 == 0;
     }
     seedParking();
-    for (&buildings) |*b| {
-        for (&buildings) |other| {
+    for (lots()) |*b| {
+        for (lots()) |other| {
             if (other.z > b.z and other.z - b.z < 35 and @abs(other.x - b.x) < 9) b.sun = @max(0.35, b.sun - @max(0, other.height - b.height * 0.5) / 45);
         }
         b.value *= 0.9 + @as(f64, b.sun) * 0.2;
@@ -605,31 +674,81 @@ fn seedStreets() void {
     // The central avenue east of the river.
     chain(10, 2, .{ .x = 980, .z = 60 }, .{ .x = 1060, .z = 480 }, 75, 18);
     chain(10, 2, .{ .x = 1060, .z = 480 }, .{ .x = 1080, .z = 900 }, 75, 19);
-    // The irregular local mesh. Each run spans the whole plan and is trimmed at
-    // the water, so the west and east banks get their own street pattern.
-    //
-    // The plan carries more runs than the first pass did, but each run is
-    // sampled at a coarser step. Two long ribbons that cross mid-span make one
-    // junction and cost no vertex between them, while every extra sample along
-    // a ribbon is a degree-2 bend that only reads as "one long road". Trading
-    // samples for runs therefore buys crossroads without spending the node
-    // budget: the routing tables are quadratic and the save file is capped at
-    // 16 MiB, so the town cannot afford to grow its node count to buy density.
+    // The local mesh. Slice 16 tightened the spacing so the blocks are the size
+    // of a real block rather than a field: at 130/140 m the arterials crossed
+    // vast empty ground with a couple of isolated houses on each face, which is
+    // the sparse look the plan was reported for.
     var seed: u32 = 100;
-    for (0..7) |k| {
-        const z = 110 + @as(f32, @floatFromInt(k)) * 130 + jitter(seed +% @as(u32, @intCast(k)) * 31, 14);
-        chainJitter(7, 0, .{ .x = 60, .z = z }, .{ .x = size_x - 60, .z = z }, 120, seed +% @as(u32, @intCast(k)) * 3, 2.5);
+    for (0..11) |k| {
+        const z = 90 + @as(f32, @floatFromInt(k)) * 86 + jitter(seed +% @as(u32, @intCast(k)) * 31, 9);
+        chainJitter(7, 0, .{ .x = 60, .z = z }, .{ .x = size_x - 60, .z = z }, 74, seed +% @as(u32, @intCast(k)) * 3, 2.5);
         seed +%= 7;
     }
-    for (0..9) |k| {
-        const x = 110 + @as(f32, @floatFromInt(k)) * 140 + jitter(seed +% @as(u32, @intCast(k)) * 17, 16);
-        chainJitter(8, 0, .{ .x = x, .z = 50 }, .{ .x = x + jitter(seed +% @as(u32, @intCast(k)), 24), .z = size_z - 50 }, 130, seed +% @as(u32, @intCast(k)) * 5, 2.5);
+    for (0..14) |k| {
+        const x = 90 + @as(f32, @floatFromInt(k)) * 88 + jitter(seed +% @as(u32, @intCast(k)) * 17, 10);
+        chainJitter(8, 0, .{ .x = x, .z = 50 }, .{ .x = x + jitter(seed +% @as(u32, @intCast(k)), 24), .z = size_z - 50 }, 78, seed +% @as(u32, @intCast(k)) * 5, 2.5);
         seed +%= 11;
     }
     // A couple of long diagonals for variety, and the outer ring.
     chain(13, 0, .{ .x = 220, .z = 60 }, .{ .x = 520, .z = 560 }, 90, 21);
     chain(13, 0, .{ .x = 900, .z = 120 }, .{ .x = 1250, .z = 620 }, 90, 22);
     ring(11, 0, 55);
+    // Slice 16: access streets. Every avenue and arterial gets short side lanes
+    // off both faces at a walking interval, which is what turns a ribbon with a
+    // vast empty block behind it into a built-up street. Each lane joins the
+    // avenue at a node that is either already there or a short split of it, so
+    // the cost is one node per lane rather than a node per metre.
+    accessStreets();
+}
+
+// The interval between access lanes along a big street, and how far each one
+// reaches back from the kerb before it stops inside the block.
+const access_step: f32 = 34;
+const access_depth: f32 = 26;
+
+fn accessStreets() void {
+    var seed: u32 = 9001;
+    var rid: usize = 0;
+    while (rid < road_count) : (rid += 1) {
+        if (node_count + 6 >= max_nodes or road_count + 6 >= max_roads) return;
+        const r = roads[rid];
+        // Only the big streets carry frontage lanes; the local mesh is already
+        // the access layer.
+        if (r.street == bridge_street or r.class < 1) continue;
+        const a = nodes[r.a];
+        const b = nodes[r.b];
+        const span = hypot(b.x - a.x, b.z - a.z);
+        if (span < access_step * 2) continue;
+        const ux = (b.x - a.x) / span;
+        const uz = (b.z - a.z) / span;
+        const nx = -uz;
+        const nz = ux;
+        var along: f32 = access_step * 0.5;
+        while (along < span - 1.0) : (along += access_step) {
+            if (node_count + 3 >= max_nodes or road_count + 3 >= max_roads) return;
+            const jx = a.x + ux * along;
+            const jz = a.z + uz * along;
+            if (inWater(jx, jz)) continue;
+            for ([_]f32{ 1, -1 }) |side| {
+                if (node_count + 3 >= max_nodes or road_count + 3 >= max_roads) return;
+                seed +%= 17;
+                const depth = access_depth * (0.75 + hash01(seed) * 0.5);
+                const ex = jx + nx * side * depth;
+                const ez = jz + nz * side * depth;
+                if (ex < 8 or ez < 8 or ex > size_x - 8 or ez > size_z - 8) continue;
+                if (inWater(ex, ez) or inWater((jx + ex) / 2, (jz + ez) / 2)) continue;
+                // Reuse the avenue node if the lane happens to start on one,
+                // otherwise split the avenue so the lane has a junction.
+                const junction = nodeAt(jx, jz, r.street, 6);
+                const start = if (junction < node_count) junction else splitRoad(rid, jx, jz);
+                const end = addNode(ex, ez, 8);
+                if (start == end or road_between[start][end] >= 0) continue;
+                const lane = addRoadClass(start, end, 8, 0);
+                road_between[start][end] = @intCast(lane);
+                road_between[end][start] = @intCast(lane);
+            }
+        }
+    }
 }
 
 // A road that follows the water at a fixed setback from the bank. Sampled by
@@ -720,86 +839,181 @@ fn seedBridges() void {
     }
 }
 
-fn kindFor(index: usize, core: f32) Kind {
+// Slice 15: the mix a frontage gets. The downtown core is almost all business,
+// services and apartments with public space between them; the inner
+// neighbourhoods are a dense mixed wall; the outer suburbs stay low and green.
+fn kindFor(index: usize, core: f32, downtown: bool) Kind {
     const roll = hash01(@as(u32, @intCast(index)) * 31 + 7);
-    if (index % 47 == 0) return .depot;
+    if (index % 47 == 0 and !downtown) return .depot;
+    if (downtown) {
+        if (roll < 0.30) return .office;
+        if (roll < 0.52) return .shop;
+        if (roll < 0.66) return .apartment;
+        if (roll < 0.72) return .market;
+        if (roll < 0.78) return .hall;
+        if (roll < 0.84) return .plaza;
+        if (roll < 0.89) return .playground;
+        return .park;
+    }
     if (core > 0.45) {
-        if (roll < 0.24) return .home;
-        if (roll < 0.44) return .shop;
-        if (roll < 0.62) return .office;
-        if (roll < 0.70) return .clinic;
-        if (roll < 0.76) return .hall;
-        if (roll < 0.86) return .park;
+        if (roll < 0.22) return .home;
+        if (roll < 0.34) return .apartment;
+        if (roll < 0.52) return .shop;
+        if (roll < 0.66) return .office;
+        if (roll < 0.72) return .clinic;
+        if (roll < 0.78) return .hall;
+        if (roll < 0.83) return .playground;
+        if (roll < 0.93) return .park;
         return .vacant;
     }
-    if (roll < 0.62) return .home;
-    if (roll < 0.70) return .shop;
-    if (roll < 0.75) return .office;
-    if (roll < 0.84) return .park;
-    if (roll < 0.94) return .vacant;
+    if (roll < 0.56) return .home;
+    if (roll < 0.66) return .apartment;
+    if (roll < 0.75) return .shop;
+    if (roll < 0.79) return .office;
+    if (roll < 0.85) return .playground;
+    if (roll < 0.93) return .park;
+    if (roll < 0.97) return .vacant;
     return .home;
 }
 
-fn heightFor(kind: Kind, index: usize, core: f32) f32 {
+fn heightFor(kind: Kind, index: usize, core: f32, downtown: bool) f32 {
     return switch (kind) {
         .home => if (core > 0.5) 5 + @as(f32, @floatFromInt(index % 5)) * 1.7 else 3,
-        .office => 7 + @as(f32, @floatFromInt(index % 6)) * 2.4,
-        .shop => 3,
+        .apartment => (if (downtown) @as(f32, 13) else 8) + @as(f32, @floatFromInt(index % 4)) * 3,
+        .office => if (downtown) 15 + @as(f32, @floatFromInt(index % 6)) * 3.6 else 7 + @as(f32, @floatFromInt(index % 6)) * 2.4,
+        .shop => if (downtown) 4.5 else 3,
+        .market => 6,
         .clinic => 5,
-        .hall => 9,
+        .hall => if (downtown) 12 else 9,
         .depot => 3.5,
         else => 0.1,
     };
 }
 
-// Buildings stand beside the street nodes rather than mid-segment, so their
-// frontage snaps to a node that already exists and the routing graph stays
-// small: the whole plan costs roughly 400 nodes instead of 500.
-fn seedBuildings() void {
-    var placed: usize = 0;
+// Footprints are authored per use so a downtown block reads as offices and
+// apartments around a market, and the suburbs stay small and cottage-like.
+fn footprintFor(kind: Kind, downtown: bool) [2]f32 {
+    return switch (kind) {
+        .apartment => if (downtown) .{ 9.5, 10 } else .{ 7.4, 8 },
+        .office => if (downtown) .{ 10.5, 11 } else .{ 7, 8 },
+        .market => .{ 13, 15 },
+        .hall => .{ 10, 10 },
+        .clinic => .{ 8, 8 },
+        .depot => .{ 9, 9 },
+        .shop => if (downtown) .{ 7.5, 8 } else .{ 6.2, 7 },
+        else => .{ 6.2, 7 },
+    };
+}
+
+// Slice 15: a street wall instead of a scattering of lots. Every road is
+// walked end to end and built up at a fixed frontage interval, on both sides,
+// so a block face reads as a terrace of homes, shops and offices rather than
+// two isolated buildings per junction. The downtown core is built almost
+// solidly, the inner neighbourhoods densely, and the outer suburbs sparsely.
+//
+// The node ceiling, not this loop, is what bounds the result: `attach` snaps a
+// frontage onto a node the plan already has whenever one is close, so a long
+// terrace shares a handful of routing nodes.
+// How heavy a frontage slot's claim on the town's building budget is. Weight is
+// relative, so the sweep is normalised against the plan's own total rather than
+// filled front-to-back: every district gets its share, and downtown gets most.
+fn frontageWeight(x: f32, z: f32) f32 {
+    if (inDowntown(x, z)) return 3.4;
+    return 0.28 + coreFactor(x, z) * 1.15;
+}
+
+// The step a frontage is sampled at, in metres: denser downtown, longer in the
+// suburbs, so a terrace is fine-grained where it is busiest.
+fn frontageStep(x: f32, z: f32) f32 {
+    return if (inDowntown(x, z)) 10 else 12.5;
+}
+
+fn seedBuildings(first_free: usize) usize {
+    var placed: usize = first_free;
     var index: usize = 0;
-    const node_total = node_count;
-    var pass: usize = 0;
-    while (placed < buildings.len and pass < 6) : (pass += 1) {
-        for (0..node_total) |n| {
-            if (placed >= buildings.len) break;
-            if (node_count + 2 >= max_nodes) break;
-            if (degree(n) == 0) continue;
-            if (nodes[n].street == bridge_street) continue;
-            const core = coreFactor(nodes[n].x, nodes[n].z);
-            if (hash01(@as(u32, @intCast(n)) * 13 + @as(u32, @intCast(pass * 977))) > 0.35 + core * 0.5) continue;
+    // Weighted sweep: the plan is measured first, then each slot takes a
+    // deterministic draw against its own share of the target. This is what
+    // keeps the density spread over the whole town instead of stopping when the
+    // lot array runs out somewhere near the first streets.
+    var total_weight: f64 = 0;
+    for (roads) |r| {
+        if (r.street == bridge_street) continue;
+        const a = nodes[r.a];
+        const b = nodes[r.b];
+        const span = hypot(b.x - a.x, b.z - a.z);
+        if (span < 7) continue;
+        const step = frontageStep((a.x + b.x) / 2, (a.z + b.z) / 2);
+        var along: f32 = step * 0.5;
+        while (along < span - 1.5) : (along += step) {
+            total_weight += 2 * frontageWeight(a.x + (b.x - a.x) * along / span, a.z + (b.z - a.z) * along / span);
+        }
+    }
+    // The budget is the whole town's lots; the parks already hold their share.
+    const remaining: usize = if (building_target > first_free) building_target - first_free else 0;
+    const target: f64 = @floatFromInt(remaining);
+    const share: f64 = if (total_weight > 0) target / total_weight else 0;
+    for (0..road_count) |rid| {
+        if (placed >= building_target) break;
+        const r = roads[rid];
+        if (r.street == bridge_street) continue;
+        const a = nodes[r.a];
+        const b = nodes[r.b];
+        const span = hypot(b.x - a.x, b.z - a.z);
+        if (span < 7) continue;
+        const ux = (b.x - a.x) / span;
+        const uz = (b.z - a.z) / span;
+        const nx = -uz;
+        const nz = ux;
+        const step = frontageStep((a.x + b.x) / 2, (a.z + b.z) / 2);
+        var along: f32 = step * 0.5;
+        while (along < span - 1.5) : (along += step) {
+            if (placed >= building_target) break;
             for ([_]f32{ 1, -1 }) |side| {
-                if (placed >= buildings.len) break;
-                if (nodes[n].street == bridge_street) break;
-                const road = firstRoad(n) orelse continue;
-                const a = nodes[roads[road].a];
-                const b = nodes[roads[road].b];
-                const span = @max(0.001, hypot(b.x - a.x, b.z - a.z));
-                const offset = 11 + jitter(@as(u32, @intCast(index)) * 3 + 1, 2.4);
-                const x = nodes[n].x - (b.z - a.z) / span * offset * side - 3.1;
-                const z = nodes[n].z + (b.x - a.x) / span * offset * side + 3.1;
-                const width: f32 = 6.2;
-                const depth: f32 = 7;
+                if (placed >= building_target) break;
+                index += 1;
+                const here_x = a.x + ux * along;
+                const here_z = a.z + uz * along;
+                const here_down = inDowntown(here_x, here_z);
+                const here_core = coreFactor(here_x, here_z);
+                const here_chance: f32 = @floatCast(@min(0.97, frontageWeight(here_x, here_z) * share));
+                if (hash01(@as(u32, @intCast(index)) * 13 + 5) > here_chance) continue;
+                const kind = kindFor(index, here_core, here_down);
+                const size = footprintFor(kind, here_down);
+                const width = size[0];
+                const depth = size[1];
+                const back = 8 + depth * 0.5 + jitter(@as(u32, @intCast(index)) * 7 + 3, 2.0);
+                const cx = here_x + nx * side * back;
+                const cz = here_z + nz * side * back;
+                const x = cx - width / 2;
+                const z = cz - depth / 2;
                 if (x < 3 or z < 3 or x + width > size_x - 3 or z + depth > size_z - 3) continue;
                 if (inWaterForBuilding(x, z) or inWaterForBuilding(x + width, z + depth)) continue;
                 if (!clearOfBuildings(x, z, width, depth, placed)) continue;
-                if (!clearOfRoads(x, z, width, depth, road)) continue;
-                const kind = kindFor(index, core);
-                const height = heightFor(kind, index, core);
-                const entry_x = x + width / 2;
-                const entry_z = if (side > 0) z else z + depth;
-                buildings[placed] = .{ .x = x, .z = z, .width = width, .depth = depth, .height = height, .ground = elevation(x + width, z + depth), .kind = kind, .district = districtAt(x, z), .node = 0, .street = roads[road].street, .number = nodes[n].number + @as(usize, if (side > 0) @as(usize, 1) else 0) , .value = if (kind == .home) 1800000 else if (kind == .shop or kind == .office or kind == .depot) 2400000 else 0, .capacity = switch (kind) {
-                    .home, .park, .vacant, .bike_park, .car_park => 0,
-                    .office => 95,
-                    .shop => 40,
-                    .clinic => 80,
-                    .hall => 90,
-                    .depot => 24,
-                }, .entry_x = entry_x, .entry_z = entry_z };
-                buildings[placed].node = attach(placed, road);
+                if (!clearOfRoads(x, z, width, depth, rid)) continue;
+                const height = heightFor(kind, index, here_core, here_down);
+                // The door faces the road the building stands on.
+                const entry_x = cx;
+                const entry_z = cz + (if (side * nz >= 0) -depth / 2 else depth / 2);
+                buildings[placed] = .{
+                    .x = x,
+                    .z = z,
+                    .width = width,
+                    .depth = depth,
+                    .height = height,
+                    .ground = elevation(x + width, z + depth),
+                    .kind = kind,
+                    .district = districtAt(x, z),
+                    .node = 0,
+                    .street = r.street,
+                    .number = @intFromFloat(@max(1, @round(@max(x, z)))),
+                    .value = valueFor(kind),
+                    .capacity = capacityFor(kind),
+                    .entry_x = entry_x,
+                    .entry_z = entry_z,
+                };
+                buildings[placed].node = attach(placed, rid);
                 if (building_at_node[buildings[placed].node] < 0) building_at_node[buildings[placed].node] = @intCast(placed);
                 placed += 1;
-                index += 1;
             }
         }
     }
@@ -807,25 +1021,26 @@ fn seedBuildings() void {
     // fallback site is checked exactly like the ones above: an unchecked
     // placement here is what used to drop frontages into the river and push
     // slabs across a carriageway.
-    if (placed < buildings.len) {
-        const width: f32 = 6.2;
-        const depth: f32 = 7;
+    if (placed < 140 + first_free) {
+        const floor = 140 + first_free;
         var attempt: usize = 0;
-        while (placed < buildings.len and attempt < 4) : (attempt += 1) {
-            for (0..node_total) |n| {
-                if (placed >= buildings.len or node_count + 2 >= max_nodes) break;
+        while (placed < floor and attempt < 4) : (attempt += 1) {
+            for (0..node_count) |n| {
+                if (placed >= floor) break;
                 if (degree(n) == 0) continue;
                 if (nodes[n].street == bridge_street) continue;
                 if (building_at_node[n] >= 0) continue;
                 const road = firstRoad(n) orelse continue;
                 for ([_]f32{ 1, -1 }) |side| {
-                    if (placed >= buildings.len) break;
+                    if (placed >= floor) break;
                     const a = nodes[roads[road].a];
                     const b = nodes[roads[road].b];
                     const span = @max(0.001, hypot(b.x - a.x, b.z - a.z));
                     const offset = 11 + jitter(@as(u32, @intCast(placed + attempt * 613)) * 3 + 1, 2.4);
                     const x = nodes[n].x - (b.z - a.z) / span * offset * side - 3.1;
                     const z = nodes[n].z + (b.x - a.x) / span * offset * side + 3.1;
+                    const width: f32 = 6.2;
+                    const depth: f32 = 7;
                     if (x < 3 or z < 3 or x + width > size_x - 3 or z + depth > size_z - 3) continue;
                     if (inWaterForBuilding(x, z) or inWaterForBuilding(x + width, z + depth)) continue;
                     if (!clearOfBuildings(x, z, width, depth, placed)) continue;
@@ -838,6 +1053,149 @@ fn seedBuildings() void {
             }
         }
     }
+    return placed;
+}
+
+// Slice 15: assessed value and employment by use. Apartments and homes are
+// residential property; shops, offices, markets and depots are commercial;
+// public open space carries no assessment.
+fn valueFor(kind: Kind) f64 {
+    return switch (kind) {
+        .home => 1800000,
+        .apartment => 2600000,
+        .shop, .office, .market, .depot => 2400000,
+        else => 0,
+    };
+}
+
+fn capacityFor(kind: Kind) usize {
+    return switch (kind) {
+        .office => 95,
+        .shop => 40,
+        .market => 70,
+        .clinic => 80,
+        .hall => 90,
+        .depot => 24,
+        else => 0,
+    };
+}
+
+// Slice 15: the authored green spaces. Each site is a candidate rectangle; the
+// largest size that clears every carriageway and every lot already placed wins,
+// so a park lands in the middle of a block instead of on a street. Trees and
+// bushes inside them are drawn from the lot's own identity by the renderer.
+// The parks are found rather than pinned: each anchor is scanned for the
+// largest axis-aligned rectangle that clears every carriageway, so a park lands
+// in the middle of a block instead of across a street. Trees and bushes inside
+// them are drawn from the lot's own identity by the renderer, so the green
+// space survives a save without carrying a second list of positions.
+const park_anchors = [_]LandSite{
+    .{ .x = 150, .z = 130, .w = 120, .d = 96 },
+    .{ .x = 120, .z = 520, .w = 110, .d = 118 },
+    .{ .x = 400, .z = 320, .w = 116, .d = 96 },
+    .{ .x = 300, .z = 800, .w = 118, .d = 96 },
+    .{ .x = 980, .z = 860, .w = 128, .d = 96 },
+    .{ .x = 1140, .z = 160, .w = 110, .d = 124 },
+    .{ .x = 540, .z = 920, .w = 104, .d = 84 },
+    .{ .x = 1080, .z = 400, .w = 92, .d = 88 },
+    .{ .x = 340, .z = 580, .w = 96, .d = 84 },
+    .{ .x = 730, .z = 250, .w = 92, .d = 88 },
+    .{ .x = 900, .z = 980, .w = 96, .d = 80 },
+    .{ .x = 420, .z = 120, .w = 88, .d = 84 },
+};
+const LandSite = struct { x: f32, z: f32, w: f32, d: f32 };
+
+// How much clear ground a park lot needs from a carriageway.
+const park_clearance: f32 = 5.5;
+
+fn parkClear(x: f32, z: f32, w: f32, d: f32) bool {
+    if (x < 4 or z < 4 or x + w > size_x - 4 or z + d > size_z - 4) return false;
+    if (inWaterForBuilding(x, z) or inWaterForBuilding(x + w, z) or inWaterForBuilding(x, z + d) or
+        inWaterForBuilding(x + w, z + d) or inWaterForBuilding(x + w / 2, z + d / 2)) return false;
+    const samples = [_]Vec{
+        .{ .x = x, .z = z },
+        .{ .x = x + w, .z = z },
+        .{ .x = x, .z = z + d },
+        .{ .x = x + w, .z = z + d },
+        .{ .x = x + w / 2, .z = z + d / 2 },
+        .{ .x = x + w / 2, .z = z },
+        .{ .x = x + w / 2, .z = z + d },
+        .{ .x = x, .z = z + d / 2 },
+        .{ .x = x + w, .z = z + d / 2 },
+    };
+    for (samples) |p| {
+        for (roads[0..road_count]) |r| {
+            const a = nodes[r.a];
+            const b = nodes[r.b];
+            const u = projection(p, a, b);
+            const px = a.x + (b.x - a.x) * u;
+            const pz = a.z + (b.z - a.z) * u;
+            if (hypot(px - p.x, pz - p.z) < park_clearance) return false;
+        }
+    }
+    return true;
+}
+
+fn seedParks() usize {
+    var placed: usize = 0;
+    for (park_anchors) |anchor| {
+        if (placed >= buildings.len) return placed;
+        // Grow the biggest clear rectangle the anchor can hold, then shrink it
+        // towards the centre until one fits.
+        var scale: f32 = 1;
+        while (scale > 0.2) : (scale -= 0.08) {
+            const w = anchor.w * scale;
+            const d = anchor.d * scale;
+            const x = anchor.x + (anchor.w - w) / 2;
+            const z = anchor.z + (anchor.d - d) / 2;
+            if (!parkClear(x, z, w, d)) continue;
+            if (!clearOfBuildings(x, z, w, d, placed)) continue;
+            const road = nearestRoadAt(x + w / 2, z + d);
+            const entry_x = x + w / 2;
+            const entry_z = z + d;
+            buildings[placed] = .{
+                .x = x,
+                .z = z,
+                .width = w,
+                .depth = d,
+                .height = 0.1,
+                .ground = elevation(x + w / 2, z + d / 2),
+                .kind = .park,
+                .district = districtAt(x + w / 2, z + d / 2),
+                .node = 0,
+                .street = roads[road].street,
+                .number = @intFromFloat(@max(1, @round(x))),
+                .value = 0,
+                .capacity = 0,
+                .entry_x = entry_x,
+                .entry_z = entry_z,
+            };
+            buildings[placed].node = attach(placed, road);
+            if (building_at_node[buildings[placed].node] < 0) building_at_node[buildings[placed].node] = @intCast(placed);
+            placed += 1;
+            break;
+        }
+    }
+    return placed;
+}
+
+// Nearest road to a point, used to give a park an address on the street it
+// fronts. Returns 0 when the plan is empty.
+fn nearestRoadAt(x: f32, z: f32) usize {
+    var best: usize = 0;
+    var best_distance: f32 = 1e9;
+    for (roads, 0..) |r, rid| {
+        if (r.street == bridge_street) continue;
+        const u = projection(.{ .x = x, .z = z }, nodes[r.a], nodes[r.b]);
+        const px = nodes[r.a].x + (nodes[r.b].x - nodes[r.a].x) * u;
+        const pz = nodes[r.a].z + (nodes[r.b].z - nodes[r.a].z) * u;
+        const d = hypot(px - x, pz - z);
+        if (d < best_distance) {
+            best_distance = d;
+            best = rid;
+        }
+    }
+    return best;
 }
 
 fn firstRoad(node: usize) ?usize {
@@ -847,8 +1205,11 @@ fn firstRoad(node: usize) ?usize {
     return null;
 }
 
-// A building's frontage node: split the street it faces at the projection of
-// its entrance, which snaps to an existing node whenever one is close.
+// A building's frontage node. Slice 15: a dense street wall has far more doors
+// than the routing graph can afford nodes, so the door snaps onto a node the
+// plan already has whenever one is within reach, and only splits the street
+// when it is not. This is what keeps a built-up frontage from growing the
+// quadratic routing tables one shop at a time.
 fn attach(index: usize, road: usize) usize {
     const b = buildings[index];
     var best: f32 = 1e9;
@@ -866,8 +1227,22 @@ fn attach(index: usize, road: usize) usize {
             point = .{ .x = px, .z = pz };
         }
     }
+    var nearest: ?usize = null;
+    var nearest_distance: f32 = building_snap;
+    for (nodes, 0..) |n, i| {
+        if (n.street != b.street) continue;
+        const d = hypot(n.x - point.x, n.z - point.z);
+        if (d < nearest_distance) {
+            nearest_distance = d;
+            nearest = i;
+        }
+    }
+    if (nearest) |n| return n;
     return splitRoad(road_id, point.x, point.z);
 }
+
+// How far a frontage will walk to share a routing node, in metres.
+pub const building_snap: f32 = 26;
 
 fn alreadyOrdered(prefix: []const usize, candidate: usize) bool {
     for (prefix) |value| if (value == candidate) return true;
@@ -883,7 +1258,7 @@ const max_car_parks = 40;
 fn seedParking() void {
     var workplaces: [district_count]usize = @splat(0);
     var homes: [district_count]usize = @splat(0);
-    for (&buildings) |*b| {
+    for (lots()) |*b| {
         const district = @min(b.district, district_count - 1);
         if (b.capacity > 0) workplaces[district] += 1;
         if (b.kind == .home) homes[district] += 1;
@@ -912,9 +1287,11 @@ fn seedParking() void {
         const car_slots: usize = @intFromFloat(std.math.clamp(20 + @as(f32, @floatFromInt(workplaces[district])) * 6, 20, 80));
         var placed_bike: usize = 0;
         var placed_car: usize = 0;
-        for (&buildings) |*b| {
+        for (lots()) |*b| {
             if (b.district != district) continue;
             if (b.kind != .park and b.kind != .vacant) continue;
+            // Slice 15: a large park is public open space, not a car park site.
+            if (b.width > 22 or b.depth > 22) continue;
             // A parking slab is a drawn surface, not a wall, but the player still
             // reads a tan rectangle over the carriageway as a glitch, so the
             // conversion is held to the same footprint clearance as a frontage.
@@ -933,14 +1310,109 @@ fn seedParking() void {
     }
 }
 
+// Slice 16: the all-pairs tables are filled by one Dijkstra per source over an
+// adjacency list. The triple loop this replaced was O(nodes^3); at the 1,500
+// nodes the dense plan needs that is 3.4 billion relaxations per rebuild, and
+// `rebuildRoutes` runs every 60 simulation seconds. Per-source Dijkstra is
+// O(nodes * edges * log nodes), roughly fifty million, and it is what lets the
+// town carry enough streets to be built up instead of a handful of long,
+// empty ribbons.
+const max_directed = max_roads * 2;
+var adj_head: [max_nodes]i32 = undefined;
+var adj_link: [max_directed]i32 = undefined;
+var adj_to: [max_directed]u16 = undefined;
+var adj_drive: [max_directed]f32 = undefined;
+var adj_walk: [max_directed]f32 = undefined;
+var heap_at: [max_directed]u16 = undefined;
+var heap_key: [max_directed]f32 = undefined;
+
+fn heapPush(count: *usize, node: usize, key: f32) void {
+    if (count.* >= heap_at.len) return;
+    var i = count.*;
+    count.* += 1;
+    heap_at[i] = @intCast(node);
+    heap_key[i] = key;
+    while (i > 0) {
+        const parent = (i - 1) / 2;
+        if (heap_key[parent] <= heap_key[i]) break;
+        const tn = heap_at[parent];
+        const tk = heap_key[parent];
+        heap_at[parent] = heap_at[i];
+        heap_key[parent] = heap_key[i];
+        heap_at[i] = tn;
+        heap_key[i] = tk;
+        i = parent;
+    }
+}
+
+fn heapPop(count: *usize) struct { node: usize, key: f32 } {
+    const top_node: usize = heap_at[0];
+    const top_key = heap_key[0];
+    count.* -= 1;
+    heap_at[0] = heap_at[count.*];
+    heap_key[0] = heap_key[count.*];
+    var i: usize = 0;
+    while (true) {
+        const left = i * 2 + 1;
+        const right = left + 1;
+        var best = i;
+        if (left < count.* and heap_key[left] < heap_key[best]) best = left;
+        if (right < count.* and heap_key[right] < heap_key[best]) best = right;
+        if (best == i) break;
+        const tn = heap_at[best];
+        const tk = heap_key[best];
+        heap_at[best] = heap_at[i];
+        heap_key[best] = heap_key[i];
+        heap_at[i] = tn;
+        heap_key[i] = tk;
+        i = best;
+    }
+    return .{ .node = top_node, .key = top_key };
+}
+
+fn addDirected(used: usize, from: usize, to: usize, drive: f32, walk: f32) usize {
+    if (used >= max_directed) return used;
+    adj_to[used] = @intCast(to);
+    adj_drive[used] = drive;
+    adj_walk[used] = walk;
+    adj_link[used] = adj_head[from];
+    adj_head[from] = @intCast(used);
+    return used + 1;
+}
+
+// One source's shortest paths. `next_out[to]` is the first hop out of `source`
+// towards `to`, which is the shape `next_node` has always had.
+fn search(source: usize, weights: *const [max_directed]f32, dist_out: *[max_nodes]f32, next_out: *[max_nodes]u16) void {
+    for (0..node_count) |i| {
+        dist_out[i] = if (i == source) 0 else 1e9;
+        next_out[i] = @intCast(i);
+    }
+    var count: usize = 0;
+    heapPush(&count, source, 0);
+    while (count > 0) {
+        const top = heapPop(&count);
+        if (top.key > dist_out[top.node]) continue;
+        var edge = adj_head[top.node];
+        while (edge >= 0) {
+            const id: usize = @intCast(edge);
+            const to: usize = adj_to[id];
+            const candidate = top.key + weights[id];
+            if (candidate < dist_out[to]) {
+                dist_out[to] = candidate;
+                next_out[to] = if (top.node == source) @intCast(to) else next_out[top.node];
+                heapPush(&count, to, candidate);
+            }
+            edge = adj_link[id];
+        }
+    }
+}
+
 pub fn rebuildRoutes() void {
+    for (0..max_nodes) |i| adj_head[i] = -1;
     for (0..node_count) |a| for (0..node_count) |b| {
         road_between[a][b] = if (road_between[a][b] > 0) road_between[a][b] else -1;
-        next_node[a][b] = @intCast(b);
-        walk_next[a][b] = @intCast(b);
-        walk_distance[a][b] = if (a == b) 0 else 1e9;
-        distance[a][b] = if (a == b) 0 else 1e9;
     };
+    var used: usize = 0;
     for (roads, 0..) |r, i| {
         road_between[r.a][r.b] = @intCast(i);
         road_between[r.b][r.a] = @intCast(i);
@@ -948,24 +1420,18 @@ pub fn rebuildRoutes() void {
     for (roads) |r| {
         if (!r.pedestrians) continue;
         const cost = r.length * (1 + r.slope * 3) / (0.7 + r.condition / 100);
-        distance[r.a][r.b] = cost;
-        distance[r.b][r.a] = cost;
-        const aligned = horizontal(r.a, r.b);
-        walk_distance[r.a][r.b] = cost + (if (markedCrossing(r.b, aligned)) @as(f32, 0) else 7);
-        walk_distance[r.b][r.a] = cost + (if (markedCrossing(r.a, aligned)) @as(f32, 0) else 7);
+        used = addDirected(used, r.a, r.b, cost, cost + (if (markedCrossing(r.b, true)) @as(f32, 0) else 7));
+        used = addDirected(used, r.b, r.a, cost, cost + (if (markedCrossing(r.a, true)) @as(f32, 0) else 7));
     }
-    // All-pairs next hops: shared by every resident; no per-frame path allocations.
-    for (0..node_count) |k| for (0..node_count) |a| for (0..node_count) |b| {
-        const walking_cost = walk_distance[a][k] + walk_distance[k][b];
-        if (walking_cost < walk_distance[a][b]) {
-            walk_distance[a][b] = walking_cost;
-            walk_next[a][b] = walk_next[a][k];
-        }
-        const cost = distance[a][k] + distance[k][b];
-        if (cost < distance[a][b]) {
-            distance[a][b] = cost;
-            next_node[a][b] = next_node[a][k];
-        }
+    for (0..node_count) |source| {
+        search(source, &adj_drive, &distance[source], &next_node[source]);
+        search(source, &adj_walk, &walk_distance[source], &walk_next[source]);
+    }
+    // An unreachable pair keeps the identity hop, so a route walker can never
+    // read a hop left over from an earlier rebuild.
+    for (0..node_count) |a| for (0..node_count) |b| {
+        if (distance[a][b] >= 1e9) next_node[a][b] = @intCast(b);
+        if (walk_distance[a][b] >= 1e9) walk_next[a][b] = @intCast(b);
     };
 }
 
@@ -999,11 +1465,28 @@ pub fn markedCrossing(node: usize, _: bool) bool {
 
 pub fn frontage(b: Building) Vec {
     const n = nodes[b.node];
-    var p = sidewalk(b.node);
-    if ((p.x - n.x) * (b.entry_x - n.x) + (p.z - n.z) * (b.entry_z - n.z) < 0) {
-        p.x = 2 * n.x - p.x;
-        p.z = 2 * n.z - p.z;
+    // Slice 15: several doors can share one frontage node, so the walk starts at
+    // the kerb outside this building's own door and only then joins the street
+    // the shared node belongs to.
+    var point: Vec = .{ .x = b.entry_x, .z = b.entry_z };
+    var best: f32 = 1e9;
+    for (roads, 0..) |r, rid| {
+        if (r.street != b.street and roads[rid].a != b.node and roads[rid].b != b.node) continue;
+        const a = nodes[r.a];
+        const c = nodes[r.b];
+        const u = projection(.{ .x = b.entry_x, .z = b.entry_z }, a, c);
+        const px = a.x + (c.x - a.x) * u;
+        const pz = a.z + (c.z - a.z) * u;
+        const d = hypot(px - b.entry_x, pz - b.entry_z);
+        if (d < best and d < 60) {
+            best = d;
+            point = .{ .x = px, .z = pz };
+        }
     }
+    const span = hypot(point.x - n.x, point.z - n.z);
+    if (best >= 60 or span < 0.001) return sidewalk(b.node);
+    const p = Vec{ .x = point.x - (point.z - n.z) / span * 2.3, .z = point.z + (point.x - n.x) / span * 2.3 };
+    if (insideBuilding(p.x, p.z, b)) return point;
     return p;
 }
 
@@ -1033,7 +1516,7 @@ pub fn restoreGraph(saved_nodes: []const Node, saved_roads: []const Road) void {
         road_between[r.a][r.b] = @intCast(i);
         road_between[r.b][r.a] = @intCast(i);
     }
-    for (&buildings, 0..) |b, i| {
+    for (lots(), 0..) |b, i| {
         if (building_at_node[b.node] < 0) building_at_node[b.node] = @intCast(i);
     }
     rebuildSpans();

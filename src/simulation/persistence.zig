@@ -32,9 +32,6 @@ const Town = struct {
     roads: []const city.Road,
     buildings: []const city.Building,
     parcels: []const parcels.Parcel,
-    next_node: []const []const u16,
-    walk_next: []const []const u16,
-    distance: []const []const f32,
 };
 const Citizens = struct {
     people: []const residents.Person,
@@ -143,26 +140,21 @@ const State = struct {
     history_count: usize,
 };
 var lane_values: [city.max_roads]u32 = undefined;
-var next_rows: [city.max_nodes][]const u16 = undefined;
-var walk_rows: [city.max_nodes][]const u16 = undefined;
-var distance_rows: [city.max_nodes][]const f32 = undefined;
 fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
-    for (0..city.node_count) |i| {
-        next_rows[i] = city.next_node[i][0..city.node_count];
-        walk_rows[i] = city.walk_next[i][0..city.node_count];
-        distance_rows[i] = city.distance[i][0..city.node_count];
-    }
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 11,
-        .rules = "bellwether-2027-09-v11",
+        .version = 12,
+        .rules = "bellwether-2027-09-v12",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
-        .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = &city.buildings, .parcels = parcels.storage[0..parcels.count], .next_node = next_rows[0..city.node_count], .walk_next = walk_rows[0..city.node_count], .distance = distance_rows[0..city.node_count] },
+        .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = city.lots(), .parcels = parcels.storage[0..parcels.count] },
         .parked = .{ .facilities = parking.facilities[0..parking.count], .attempts = parking.attempts, .successes = parking.successes, .fallbacks = parking.fallbacks, .refusals = parking.refusals, .revenue_today = parking.revenue_today, .revenue_total = parking.revenue_total, .kerbside_used = parking.kerbside_used, .batches_applied = residents.batches_applied, .batches_dropped = residents.batches_dropped },
-        .homes = &households.homes,
-        .housing = &housing.units,
+        // Slice 15: the household and housing rolls are stored per placed lot,
+        // matching `town.buildings`, so the unused tail of the lot array never
+        // enters the snapshot.
+        .homes = households.homes[0..city.lot_count],
+        .housing = housing.units[0..city.lot_count],
         .housing_moves_today = housing.moves_today,
         .housing_displacements_today = housing.displacements_today,
         .housing_applications_today = housing.applications_today,
@@ -296,8 +288,8 @@ fn validate(s: *const State) bool {
         !between(c.next_week, c.elapsed, c.elapsed + calendar.seconds_per_week + 0.1) or
         !between(s.camera.zoom, 0.5, 12) or !between(s.camera.x, -100, city.size_x + 100) or !between(s.camera.z, -100, city.size_z + 100) or
         n < 2 or n > city.max_nodes or roads.len == 0 or roads.len > city.max_roads or town.street_count < 14 or town.street_count > city.max_roads + 14 or
-        town.buildings.len != city.buildings.len or town.parcels.len > parcels.max_parcels or town.parcels.len < city.buildings.len or
-        people.len != city.population or companies.len == 0 or companies.len > city.buildings.len or
+        town.buildings.len != city.lot_count or town.parcels.len > parcels.max_parcels or town.parcels.len < city.lot_count or
+        people.len != city.population or companies.len == 0 or companies.len > city.lot_count or
         m.vehicles.len != transport.vehicles.len or m.lines.len != transport.max_lines or m.accounts.len != 3 or
         m.observations.len != transport.max_lines or m.previous_observations.len != transport.max_lines or
         m.lanes.len != roads.len or m.occupancy.len != roads.len or m.queues.len != roads.len or m.congestion.len != roads.len or m.movement.len != roads.len or s.citizens.pedestrians.len != roads.len or s.citizens.district_outcomes.len != city.district_count or
@@ -331,11 +323,10 @@ fn validate(s: *const State) bool {
         edges[road.a][road.b] = @intCast(i);
         edges[road.b][road.a] = @intCast(i);
     }
-    if (town.distance.len != n or !routeTable(town.next_node, n) or !routeTable(town.walk_next, n)) return false;
-    for (town.distance, 0..) |row, i| {
-        if (row.len != n) return false;
-        for (row, 0..) |value, j| if (!between(value, 0, 1e9) or (i == j and value != 0) or (i != j and value <= 0)) return false;
-    }
+    // The all-pairs routing tables are derived: `rebuildRoutes` reconstructs
+    // them from the graph on load, so they are deliberately not part of the
+    // snapshot. Writing them cost 53% of the file and made the node count the
+    // thing that decided whether a town could be saved at all.
     for (town.buildings) |b| if (b.node >= n or b.district >= 12 or b.street >= town.street_count or !index(b.employer, companies.len) or b.width <= 0 or b.depth <= 0 or b.value < 0 or b.capacity > city.population or b.occupants > city.population or !between(b.sun, 0, 1)) return false;
     for (town.parcels) |p| if (p.node >= n or p.street >= town.street_count or p.zone > 5 or !index(p.building, town.buildings.len) or !index(p.block, 128) or p.width <= 0 or p.depth <= 0) return false;
     var riders: [transport.vehicles.len]usize = @splat(0);
@@ -624,22 +615,22 @@ fn validate(s: *const State) bool {
     return true;
 }
 fn commit(s: *const State) void {
-    @memcpy(&city.buildings, s.town.buildings);
+    @memcpy(city.buildings[0..s.town.buildings.len], s.town.buildings);
+    @memset(city.buildings[s.town.buildings.len..], std.mem.zeroes(city.Building));
+    city.lot_count = s.town.buildings.len;
     city.restoreGraph(s.town.nodes, s.town.roads);
     city.revision = s.town.revision;
     city.street_count = s.town.street_count;
-    for (0..city.node_count) |i| {
-        @memcpy(city.next_node[i][0..city.node_count], s.town.next_node[i]);
-        @memcpy(city.walk_next[i][0..city.node_count], s.town.walk_next[i]);
-        @memcpy(city.distance[i][0..city.node_count], s.town.distance[i]);
-    }
+    city.rebuildRoutes();
     parcels.count = s.town.parcels.len;
     @memcpy(parcels.storage[0..parcels.count], s.town.parcels);
     parcels.rebuildBlocks();
     parcels.selected = -1;
     parcels.visible = false;
-    @memcpy(&households.homes, s.homes);
-    @memcpy(&housing.units, s.housing);
+    @memcpy(households.homes[0..s.homes.len], s.homes);
+    @memset(households.homes[s.homes.len..], .{});
+    @memcpy(housing.units[0..s.housing.len], s.housing);
+    @memset(housing.units[s.housing.len..], .{});
     housing.moves_today = s.housing_moves_today;
     housing.displacements_today = s.housing_displacements_today;
     housing.applications_today = s.housing_applications_today;
@@ -749,7 +740,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 11 and std.mem.eql(u8, rules, "bellwether-2027-09-v11");
+    return version == 12 and std.mem.eql(u8, rules, "bellwether-2027-09-v12");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

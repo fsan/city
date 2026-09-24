@@ -123,7 +123,7 @@ pub fn preview() void {
             error_code = 9;
             return;
         }
-        for (&city.buildings) |building| {
+        for (city.lots()) |building| {
             if (building.kind != .vacant and hitsBuilding(a, b, building)) {
                 error_code = 2;
                 return;

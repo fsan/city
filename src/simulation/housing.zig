@@ -41,8 +41,8 @@ pub fn init() void {
     rent_collected_total = 0;
     ownership_collected_total = 0;
     failed_moves_today = 0;
-    for (&city.buildings, 0..) |*building, i| {
-        if (building.kind != .home) continue;
+    for (city.lots(), 0..) |*building, i| {
+        if (!city.isHome(building.kind)) continue;
         const value = @max(1, building.value);
         units[i].present = true;
         units[i].tenure = if (i % 5 == 0) .rented else .owned;
@@ -97,7 +97,7 @@ fn hasCrewOrOrder(old: usize) bool {
 }
 
 fn canMove(old: usize) bool {
-    if (old >= city.buildings.len or !valid(old)) return false;
+    if (old >= city.lot_count or !valid(old)) return false;
     if (city.buildings[old].occupants == 0) return false;
     if (city.buildings[old].occupants > city.population) return false;
     return !hasCrewOrOrder(old);
@@ -109,8 +109,8 @@ fn findTarget(old: usize) ?usize {
     var best_score: f64 = 1e9;
     const old_charge = charge(old);
     const old_commute = if (household.income > 0) commuteCost(old, old) else 0;
-    for (&city.buildings, 0..) |*building, candidate| {
-        if (building.kind != .home or building.occupants != 0) continue;
+    for (city.lots(), 0..) |*building, candidate| {
+        if (!city.isHome(building.kind) or building.occupants != 0) continue;
         if (!valid(candidate) or candidate == old) continue;
         const target_charge = charge(candidate);
         if (target_charge >= old_charge - 0.0001) continue;
@@ -181,8 +181,8 @@ pub fn daily() void {
     ownership_collected_today = 0;
     failed_moves_today = 0;
     var move_count: usize = 0;
-    for (&city.buildings, 0..) |*building, i| {
-        if (building.kind != .home) continue;
+    for (city.lots(), 0..) |*building, i| {
+        if (!city.isHome(building.kind)) continue;
         const unit = &units[i];
         unit.occupants = @intCast(building.occupants);
         if (!unit.present or building.occupants == 0) {

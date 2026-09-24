@@ -265,6 +265,13 @@ export function createReports(game, ui, transport) {
             "Government",
             "Recreation",
             "Street contractor",
+            "Undeveloped",
+            "Parking",
+            "Parking",
+            "Housing",
+            "Employment",
+            "Recreation",
+            "Public space",
           ][id],
         ]),
       );

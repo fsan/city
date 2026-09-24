@@ -53,7 +53,7 @@ pub fn rebuild() void {
     const previous_count = count;
     @memcpy(staged[0..previous_count], facilities[0..previous_count]);
     var next: usize = 0;
-    for (&city.buildings, 0..) |*b, i| {
+    for (city.lots(), 0..) |*b, i| {
         const kind: Kind = switch (b.kind) {
             .bike_park => .bike,
             .car_park => .car,

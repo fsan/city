@@ -11,12 +11,14 @@ pub const Block = struct { nodes: [128]usize = undefined, count: usize = 0, area
 pub var blocks: [128]Block = undefined;
 pub var block_count: usize = 0;
 pub fn init() void {
-    count = city.buildings.len;
+    count = city.lot_count;
     selected = -1;
     visible = false;
-    for (&city.buildings, 0..) |b, i| storage[i] = .{ .x = b.x, .z = b.z, .width = b.width, .depth = b.depth, .zone = switch (b.kind) {
-        .home => 1,
-        .shop, .office => 2,
+    for (city.lots(), 0..) |b, i| storage[i] = .{ .x = b.x, .z = b.z, .width = b.width, .depth = b.depth, .zone = switch (b.kind) {
+        // Slice 15: apartments are residential, markets and offices commercial,
+        // and parks, playgrounds and squares are civic/park reserve.
+        .home, .apartment => 1,
+        .shop, .office, .market => 2,
         .depot => 3,
         .vacant => 0,
         else => 5,

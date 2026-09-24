@@ -43,10 +43,12 @@ pub fn init() void {
     district_outcomes = @splat(.{});
     var homes: [city.buildings.len * 6]usize = undefined;
     var home_count: usize = 0;
-    for (&city.buildings, 0..) |*b, i| {
-        if (b.kind == .home) {
+    for (city.lots(), 0..) |*b, i| {
+        // Slice 15: apartments are dwellings too, and because they are tall they
+        // carry proportionally more of the population than a cottage does.
+        if (city.isHome(b.kind)) {
             const weight: usize = @intFromFloat(@max(1, b.height - 2));
-            for (0..@min(6, weight)) |_| {
+            for (0..@min(10, weight)) |_| {
                 homes[home_count] = i;
                 home_count += 1;
             }
@@ -250,6 +252,7 @@ fn facilityOf(kind: city.Kind) calendar.Facility {
     return switch (kind) {
         .office => .office,
         .shop => .shop,
+        .market => .shop,
         .clinic => .clinic,
         .hall => .hall,
         .depot => .depot,
@@ -266,21 +269,46 @@ fn routineDestination(p: *const Person, index: usize, routine: calendar.Phase, t
     const facility = facilityOf(city.buildings[work].kind);
     if (calendar.onFacilityShift(facility, p.shift, time)) return work;
     if (calendar.isWeekend(time)) {
-        if ((routine == .morning or routine == .leisure) and index % 8 == 0) return errandTarget(p);
+        // Slice 15: a weekend morning or afternoon is when a family can
+        // actually use a playground, so this is the window that carries the
+        // green-space demand. One household in five goes out at a time.
+        if (routine == .morning and index % 5 == 0) return errandTarget(p, true);
+        if (routine == .leisure and index % 4 == 0) return errandTarget(p, true);
         return p.home;
     }
-    // A short errand window keeps weekday demand on the network outside work.
-    if (routine == .evening and index % 7 == 0) return errandTarget(p);
+    // A short evening window keeps weekday demand on the network outside work,
+    // and is the other time the town's playgrounds are reachable.
+    if (routine == .evening and index % 7 == 0) return errandTarget(p, true);
     return p.home;
 }
 
-fn errandTarget(p: *const Person) usize {
+// Slice 15: what a free household does with its own time. Playgrounds and
+// parks come first for a family, then the market, the hall and the shops; the
+// nearest qualifying place in the resident's own district wins, and the choice
+// is stable per resident so the same family keeps returning to the same green.
+fn errandTarget(p: *const Person, leisure: bool) usize {
     const district = city.buildings[p.home].district;
-    for (&city.buildings, 0..) |*b, i| {
-        if (b.district != district or b.kind == .home or b.kind == .vacant) continue;
-        if (b.kind == .park or b.kind == .hall or b.kind == .shop) return i;
+    var choice: usize = p.home;
+    var best_score: f32 = 1e9;
+    for (city.lots(), 0..) |*b, i| {
+        if (b.district != district or city.isHome(b.kind) or b.kind == .vacant) continue;
+        var preference: f32 = 4;
+        if (b.kind == .playground) preference = 0;
+        if (b.kind == .park) preference = 1;
+        if (b.kind == .plaza) preference = 2;
+        if (b.kind == .market or b.kind == .hall or b.kind == .shop) preference = 3;
+        if (preference > 3 and leisure) continue;
+        // Distance from the resident's own home keeps the trip local, and the
+        // preference keeps a playground ahead of a shop of equal distance.
+        const dx = b.x - city.buildings[p.home].x;
+        const dz = b.z - city.buildings[p.home].z;
+        const score = preference * 1000 + dx * dx + dz * dz;
+        if (score < best_score) {
+            best_score = score;
+            choice = i;
+        }
     }
-    return p.home;
+    return choice;
 }
 
 pub fn update(dt: f32, elapsed: f64) void {

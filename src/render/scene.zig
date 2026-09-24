@@ -1,7 +1,11 @@
 const std = @import("std");
 const city = @import("../scene/city.zig");
 const game = @import("../simulation/game.zig");
-pub var vertices: [600000 * 6]f32 = undefined;
+// Slice 15: the dense town needs rather more geometry than the slice-14
+// lattice did. The buffer is sized for the authored street wall plus the
+// downtown towers, the parks and their trees with room left for the selection
+// highlights and route ribbons drawn on top.
+pub var vertices: [1400000 * 6]f32 = undefined;
 pub var count: usize = 0;
 pub var camera_x: f32 = 24;
 pub var camera_z: f32 = 24;
@@ -346,6 +350,86 @@ pub fn focus(x: f32, z: f32) void {
     camera_z = z;
     zoom = 3;
 }
+// Slice 15: greenery. A green lot is planted from its own seed, so the same
+// park always carries the same trees and bushes and nothing has to be saved
+// beyond the lot itself. Trees stand on trunks with a rounded canopy of three
+// slabs; bushes are low two-slab clumps.
+fn tree(x: f32, z: f32, size: f32, i: usize) void {
+    const y = city.elevation(x, z);
+    box(x - size * 0.09, z - size * 0.09, size * 0.18, size * 0.18, size * 0.85, y, .{ 0.32, 0.26, 0.19 });
+    const trunk = y + size * 0.85;
+    box(x - size * 0.5, z - size * 0.5, size, size, size * 0.55, trunk, if (i % 3 == 0) .{ 0.22, 0.36, 0.21 } else .{ 0.25, 0.40, 0.23 });
+    box(x - size * 0.34, z - size * 0.34, size * 0.68, size * 0.68, size * 0.5, trunk + size * 0.5, .{ 0.29, 0.44, 0.26 });
+}
+
+fn bush(x: f32, z: f32, size: f32, i: usize) void {
+    const y = city.elevation(x, z);
+    box(x - size * 0.5, z - size * 0.5, size, size, size * 0.5, y, if (i % 2 == 0) .{ 0.28, 0.40, 0.25 } else .{ 0.32, 0.43, 0.28 });
+    box(x - size * 0.32, z - size * 0.32, size * 0.64, size * 0.64, size * 0.3, y + size * 0.4, .{ 0.34, 0.46, 0.29 });
+}
+
+// Plant one green lot. Density scales with the lot's own area, so the large
+// authored parks read as woodland and a pocket playground gets a pair of trees.
+fn vegetation(b: city.Building, i: usize) void {
+    const area = b.width * b.depth;
+    const plant_count: usize = @intFromFloat(std.math.clamp(area / 90, 2, 26));
+    const seed: u32 = @as(u32, @intCast(i)) *% 2654435761;
+    const margin: f32 = if (b.kind == .playground) 4.5 else 3.0;
+    var k: usize = 0;
+    while (k < plant_count) : (k += 1) {
+        const ux = city.hash01(seed +% @as(u32, @intCast(k)) * 7 + 1);
+        const uz = city.hash01(seed +% @as(u32, @intCast(k)) * 13 + 5);
+        const roll = city.hash01(seed +% @as(u32, @intCast(k)) * 29 + 11);
+        const x = b.x + margin + ux * @max(0.5, b.width - margin * 2);
+        const z = b.z + margin + uz * @max(0.5, b.depth - margin * 2);
+        if (roll < 0.68) {
+            tree(x, z, 2.2 + roll * 2.4, i + k);
+        } else {
+            bush(x, z, 1.4 + roll * 1.2, i + k);
+        }
+    }
+}
+
+// Playground equipment: a slide, a swing frame and a climbing frame on the
+// sand, so a family visit has something to walk to.
+fn playground(b: city.Building) void {
+    const cx = b.x + b.width * 0.5;
+    const cz = b.z + b.depth * 0.5;
+    const y = city.elevation(cx, cz);
+    // Sand pit.
+    groundQuad(cx - b.width * 0.42, cz - b.depth * 0.42, b.width * 0.84, b.depth * 0.84, 0.09, .{ 0.74, 0.68, 0.51 });
+    // Slide: a ladder, a tall deck and a ramp down.
+    box(cx - 2.2, cz - 0.7, 0.3, 0.3, 1.5, y, .{ 0.55, 0.30, 0.24 });
+    box(cx - 1.0, cz - 0.9, 1.2, 1.8, 0.12, y + 1.4, .{ 0.62, 0.36, 0.28 });
+    box(cx + 0.2, cz - 0.6, 2.1, 1.2, 0.12, y + 0.9, .{ 0.70, 0.48, 0.30 });
+    // Swing frame with two seats.
+    box(cx - 0.1, cz + 2.6, 0.18, 0.18, 2.2, y, .{ 0.42, 0.44, 0.46 });
+    box(cx + 3.0, cz + 2.6, 0.18, 0.18, 2.2, y, .{ 0.42, 0.44, 0.46 });
+    box(cx - 0.1, cz + 2.52, 3.2, 0.12, 0.14, y + 2.1, .{ 0.48, 0.50, 0.52 });
+    box(cx + 0.5, cz + 2.5, 0.7, 0.10, 0.10, y + 1.2, .{ 0.30, 0.32, 0.34 });
+    box(cx + 2.0, cz + 2.5, 0.7, 0.10, 0.10, y + 1.2, .{ 0.30, 0.32, 0.34 });
+    // Climbing frame.
+    box(cx - 3.6, cz + 2.2, 1.8, 1.8, 1.6, y, .{ 0.58, 0.49, 0.32 });
+    box(cx - 3.5, cz + 2.3, 1.6, 1.6, 0.12, y + 1.6, .{ 0.66, 0.57, 0.38 });
+}
+
+// A downtown plaza: paving, a fountain and a pair of benches.
+fn plaza(b: city.Building) void {
+    const cx = b.x + b.width * 0.5;
+    const cz = b.z + b.depth * 0.5;
+    const y = city.elevation(cx, cz);
+    groundQuad(b.x + 0.6, b.z + 0.6, @max(1, b.width - 1.2), @max(1, b.depth - 1.2), 0.08, .{ 0.58, 0.56, 0.51 });
+    box(cx - 2.2, cz - 2.2, 4.4, 4.4, 0.45, y + 0.05, .{ 0.52, 0.51, 0.47 });
+    box(cx - 1.5, cz - 1.5, 3.0, 3.0, 0.55, y + 0.1, .{ 0.40, 0.50, 0.55 });
+    box(cx - 0.45, cz - 0.45, 0.9, 0.9, 1.5, y + 0.5, .{ 0.62, 0.62, 0.58 });
+    for (0..2) |side| {
+        const sx = cx + (if (side == 0) -@as(f32, 5.0) else 5.0);
+        box(sx - 0.9, cz - 0.35, 1.8, 0.7, 0.12, y + 0.5, .{ 0.46, 0.36, 0.27 });
+        box(sx - 0.9, cz - 0.35, 0.12, 0.7, 0.45, y + 0.05, .{ 0.40, 0.42, 0.44 });
+        box(sx + 0.78, cz - 0.35, 0.12, 0.7, 0.45, y + 0.05, .{ 0.40, 0.42, 0.44 });
+    }
+}
+
 fn carColor(id: usize) Color {
     const palette = [_]Color{ .{ 0.64, 0.27, 0.22 }, .{ 0.26, 0.38, 0.52 }, .{ 0.78, 0.76, 0.69 }, .{ 0.25, 0.29, 0.27 }, .{ 0.62, 0.52, 0.31 }, .{ 0.48, 0.51, 0.55 }, .{ 0.36, 0.45, 0.34 } };
     return palette[(id * 17 + id / 7) % palette.len];
@@ -437,7 +521,7 @@ pub fn draw(w: f32, h: f32) void {
     const hour: f32 = @floatCast(@mod(game.elapsed / 20, 24));
     if (hour > 6 and hour < 18) {
         const azimuth = (hour - 6) / 12 * std.math.pi;
-        for (&city.buildings) |b| {
+        for (city.lots()) |b| {
             if (b.kind == .park or b.kind == .vacant) continue;
             const reach = @min(16, b.height / @max(0.4, @sin(azimuth)));
             for (0..6) |step| {
@@ -446,22 +530,22 @@ pub fn draw(w: f32, h: f32) void {
             }
         }
     }
-    for (&city.buildings, 0..) |b, i| {
+    for (city.lots(), 0..) |b, i| {
         const materials = [_]Color{ .{ 0.57, 0.52, 0.43 }, .{ 0.62, 0.60, 0.53 }, .{ 0.47, 0.42, 0.36 }, .{ 0.66, 0.65, 0.60 }, .{ 0.48, 0.50, 0.48 } };
-        const color: Color = if (b.kind == .office) .{ 0.43, 0.48, 0.48 } else if (b.kind == .park) .{ 0.33, 0.43, 0.31 } else materials[i % materials.len];
-        if (selected == @as(i32, @intCast(i)) and (b.kind == .vacant or b.kind == .park)) groundQuad(b.x - 0.25, b.z - 0.25, b.width + 0.5, b.depth + 0.5, 0.03, .{ 0.94, 0.76, 0.32 });
+        const color: Color = if (b.kind == .office) .{ 0.43, 0.48, 0.48 } else if (b.kind == .park) .{ 0.33, 0.43, 0.31 } else if (b.kind == .apartment) .{ 0.55, 0.45, 0.40 } else if (b.kind == .market) .{ 0.60, 0.48, 0.35 } else materials[i % materials.len];
+        if (selected == @as(i32, @intCast(i)) and (b.kind == .vacant or b.kind == .park or b.kind == .plaza or b.kind == .playground)) groundQuad(b.x - 0.25, b.z - 0.25, b.width + 0.5, b.depth + 0.5, 0.03, .{ 0.94, 0.76, 0.32 });
         if (b.kind == .vacant) {
             groundQuad(b.x, b.z, b.width, b.depth, 0.025, .{ 0.43, 0.46, 0.35 });
             continue;
         }
-        if (b.kind == .park) {
+        // Slice 15: green space. Every park, playground and plaza is planted
+        // from its own identity, so a large park reads as trees and bushes in
+        // grass without carrying a second list of positions in the save file.
+        if (b.kind == .park or b.kind == .playground or b.kind == .plaza) {
             groundQuad(b.x, b.z, b.width, b.depth, 0.06, color);
-            for (0..3) |t| {
-                const x = b.x + 1 + @as(f32, @floatFromInt(t)) * 2;
-                const y = city.elevation(x, b.z + 3);
-                box(x, b.z + 3, 0.25, 0.25, 1.8, y, .{ 0.33, 0.28, 0.21 });
-                box(x - 0.6, b.z + 2.4, 1.6, 1.6, 2, y + 1.4, .{ 0.25, 0.35, 0.24 });
-            }
+            vegetation(b, i);
+            if (b.kind == .playground) playground(b);
+            if (b.kind == .plaza) plaza(b);
             continue;
         }
         const entry = city.frontage(b);
@@ -482,14 +566,20 @@ pub fn draw(w: f32, h: f32) void {
             box(b.x + 0.3, b.z + 0.3, b.width - 0.6, b.depth - 0.6, 0.2, b.ground + b.height + 0.3, shade(color, 0.78));
             if (b.kind == .home and i % 3 == 0) box(b.x + 1, b.z + 1, b.width - 2, b.depth - 2, 0.9, b.ground + b.height + 0.5, .{ 0.36, 0.34, 0.31 });
             if (b.kind == .depot) box(b.x + 0.5, b.z + b.depth, 5, 0.05, 2.5, b.ground + 0.3, .{ 0.25, 0.27, 0.26 });
+            // Slice 15: only the two façades the camera can see carry window
+            // boxes, and windows step every 2.6 m rather than every 2 m. The
+            // dense town has three times the lots of the old lattice, so this
+            // is what keeps a full street wall inside the vertex budget.
+            const toward_x = @cos(angle) <= 0;
+            const toward_z = @sin(angle) <= 0;
             var floor: f32 = 1.5;
-            while (floor + 0.75 <= b.height - 0.4) : (floor += 2) {
+            while (floor + 0.75 <= b.height - 0.4) : (floor += 2.6) {
                 for (0..3) |j| {
                     const offset = 0.8 + @as(f32, @floatFromInt(j)) * (@min(b.width, b.depth) - 2.4) / 2;
-                    if (j != 1 or b.sun > 0.65) box(b.x + offset, b.z - 0.035, 0.8, 0.035, 0.75, b.ground + floor, .{ 0.27, 0.32, 0.33 });
-                    box(b.x - 0.035, b.z + offset, 0.035, 0.8, 0.75, b.ground + floor, .{ 0.27, 0.32, 0.33 });
-                    box(b.x + offset, b.z + b.depth, 0.8, 0.035, 0.75, b.ground + floor, .{ 0.26, 0.31, 0.31 });
-                    box(b.x + b.width, b.z + offset, 0.035, 0.8, 0.75, b.ground + floor, .{ 0.29, 0.34, 0.34 });
+                    if (toward_z) box(b.x + offset, b.z - 0.035, 0.8, 0.035, 0.75, b.ground + floor, .{ 0.27, 0.32, 0.33 });
+                    if (toward_x) box(b.x - 0.035, b.z + offset, 0.035, 0.8, 0.75, b.ground + floor, .{ 0.27, 0.32, 0.33 });
+                    if (!toward_z) box(b.x + offset, b.z + b.depth, 0.8, 0.035, 0.75, b.ground + floor, .{ 0.26, 0.31, 0.31 });
+                    if (!toward_x) box(b.x + b.width, b.z + offset, 0.035, 0.8, 0.75, b.ground + floor, .{ 0.29, 0.34, 0.34 });
                 }
             }
         }
@@ -623,7 +713,7 @@ pub fn pick(sx: f32, sy: f32) void {
     var nearest: f32 = -1e9;
     selected = -1;
     selected_person = -1;
-    for (&city.buildings, 0..) |b, i| {
+    for (city.lots(), 0..) |b, i| {
         const low = Point{ b.x, b.ground, b.z };
         const high = Point{ b.x + b.width, b.ground + b.height + 0.6, b.z + b.depth };
         var enter: f32 = -1e9;

@@ -1,4 +1,6 @@
 // Named browser-side schema for the scalar Zig ABI. No simulation rules live here.
+// Mirrors scene.city.Kind in enum order. Slice 15 appended the downtown and
+// green-space uses, so the report and the inspector can name them.
 export const kinds = [
   "Homes",
   "Shops",
@@ -10,6 +12,10 @@ export const kinds = [
   "Vacant land",
   "Bicycle park",
   "Car park",
+  "Apartments",
+  "Market hall",
+  "Playground",
+  "Plaza",
 ];
 export const streetClasses = ["Lane", "Street", "Avenue"];
 export const parkingKinds = ["Bicycle park", "Car park", "Kerbside"];

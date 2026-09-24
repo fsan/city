@@ -101,7 +101,7 @@ export fn quote(company: u32, road: u32, scope: f32, price: f64, field: u32) f64
     return if (field == 0) contracts.estimate(company, road, scope) else @floatFromInt(contracts.reason(company, road, scope, price));
 }
 export fn focus(kind: u32, id: u32) void {
-    if (kind == 1 and id < city.buildings.len) {
+    if (kind == 1 and id < city.lot_count) {
         const b = &city.buildings[id];
         scene.focus(b.x, b.z);
         scene.selected = @intCast(id);
@@ -146,7 +146,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             11 => @floatFromInt(finance.funding),
             12 => finance.maintenance_paid,
             13 => speed,
-            14 => city.buildings.len,
+            14 => @floatFromInt(city.lot_count),
             15 => @floatFromInt(city.roads.len),
             16 => city.district_count,
             17 => @floatFromInt(contracts.count),
@@ -171,7 +171,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             // Slice 7 household budgets.
             35 => @floatFromInt(game.households.inArrears()),
             36 => game.households.totalArrears(),
-            37 => @floatFromInt(@as(u32, @intFromFloat(@min(@as(f64, @floatFromInt(city.buildings.len)), @as(f64, 1e9))))),
+            37 => @floatFromInt(city.lot_count),
             // Slice 8 employment: jobseekers, open posts, last-day hiring and pay.
             38 => @floatFromInt(game.employment.unemployedCount()),
             39 => @floatFromInt(game.employment.totalVacancies()),
@@ -240,7 +240,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             else => -1,
         },
         1 => {
-            if (id >= city.buildings.len) return -1;
+            if (id >= city.lot_count) return -1;
             const b = &city.buildings[id];
             return switch (field) {
                 0 => @floatFromInt(@intFromEnum(b.kind)),
@@ -644,7 +644,7 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             };
         },
         25 => {
-            if (id >= city.buildings.len) return -1;
+            if (id >= city.lot_count) return -1;
             return game.households.read(id, field);
         },
         27 => return game.employment.read(id, field),
