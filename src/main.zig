@@ -237,6 +237,10 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             67 => @floatFromInt(game.parking.kerbside_used),
             68 => @floatFromInt(game.residents.batches_applied),
             69 => @floatFromInt(game.residents.batches_dropped),
+            // Slice 18 development proposals and permits. 70-73 are the live
+            // queue, 74-77 what has happened so far, and 78 the levy the
+            // municipal ledger has actually received.
+            70...78 => game.development.read0(field - 70),
             else => -1,
         },
         1 => {
@@ -716,9 +720,13 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 4 => @floatFromInt(p.block),
                 5 => @floatFromInt(p.street),
                 6 => @floatFromInt(p.number),
+                // Slice 18: the open application on this parcel, newest first,
+                // so a zoned site waiting on a permit is never read as empty.
+                7 => @floatFromInt(game.development.pendingFor(id)),
                 else => -1,
             };
         },
+        31 => return game.development.read(id, field),
         29 => {
             // Slice 11 signal heads, addressed by a flat index over junctions
             // and their arms. Green and yellow are simulation seconds.
@@ -1037,6 +1045,16 @@ export fn zoning_pick(x: f32, y: f32) i32 {
 }
 export fn zoning_apply(id: u32, zone: u32, block: u32) bool {
     return game.parcels.paint(id, zone, block == 1);
+}
+
+// Slice 18: grant or refuse a private development permit. Both are validated in
+// Zig against the live lot, and the levy is recorded only on a granted permit.
+export fn development_accept(id: u32) bool {
+    return game.development.accept(id, game.elapsed);
+}
+
+export fn development_refuse(id: u32) bool {
+    return game.development.refuse(id, game.elapsed);
 }
 
 // Slice 11: the traffic submenu places crosswalks and signals by clicking the

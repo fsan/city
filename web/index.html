@@ -1136,6 +1136,7 @@
         <button id="road-tool" aria-pressed="false">Build roads <kbd>N</kbd></button>
         <button id="zone-tool" aria-pressed="false">Zoning <kbd>Z</kbd></button>
         <button id="pedestrian-overlay" aria-pressed="false">Pedestrians <kbd>F</kbd></button>
+        <button id="permit-tool" aria-pressed="false">Permits <kbd>P</kbd></button>
       </div>
       <section id="planning-panel" hidden aria-label="Road and zoning planner">
         <header><strong>STREETS &amp; LAND USE</strong><button id="planning-close" aria-label="Close planner">×</button></header>
@@ -1149,7 +1150,15 @@
           <label>Zone <select id="zone-kind"><option value="0">Unzoned</option><option value="1">Residential</option><option value="2">Commercial</option><option value="3">Industrial</option><option value="4">Mixed use</option><option value="5">Civic / park reserve</option></select></label>
           <label>Apply to <select id="zone-scope"><option value="block">Whole enclosed block</option><option value="parcel">Selected parcel</option></select></label>
           <button id="zone-apply" disabled>Apply zoning</button>
-          <p>Green homes · blue commerce · ochre industry · violet mixed · teal civic · grey unzoned. Zoning reserves future use; existing buildings remain. Automatic development is not yet simulated.</p>
+          <p>Green homes · blue commerce · ochre industry · violet mixed · teal civic · grey unzoned. Zoning reserves future use, and existing buildings remain. Zoned vacant land now attracts private applications: see <strong>Permits</strong>.</p>
+        </div>
+        <div id="permit-options" hidden>
+          <p id="permit-summary">No applications. Private developers only apply where the town is measurably crowded and the land is zoned.</p>
+          <div class="table-scroll"><table>
+            <thead><tr><th>#</th><th>Use</th><th>Where</th><th>Levy</th><th>Decide by</th><th></th></tr></thead>
+            <tbody id="permit-rows"></tbody>
+          </table></div>
+          <p>Granting a permit takes the development levy into the municipal ledger; the applicant builds at their own cost and the site is redeveloped when the work finishes. Silence is a decision: an unanswered application lapses.</p>
         </div>
         <p id="planning-status" role="status"></p>
       </section>

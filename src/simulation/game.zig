@@ -12,6 +12,7 @@ pub const households = @import("households.zig");
 pub const employment = @import("employment.zig");
 pub const housing = @import("housing.zig");
 pub const parking = @import("parking.zig");
+pub const development = @import("development.zig");
 pub const travel = @import("travel.zig");
 pub var elapsed: f64 = 160;
 pub var trust: [city.district_count]f32 = undefined;
@@ -38,6 +39,7 @@ pub fn init() void {
     employment.init();
     housing.init();
     parking.init();
+    development.init();
     roadworks.reset();
     parcels.init();
     for (&trust, 0..) |*value, i| value.* = 20 + city.condition(i) * 0.65;
@@ -64,7 +66,14 @@ pub fn update(dt: f32) void {
         parking.daily();
         parking.refreshPrices(&transport.movement);
         residents.daily();
+        // Slice 18: private developers read the day's settled town - occupied
+        // homes, staffed premises and the zoning the player has applied - so a
+        // proposal is only ever lodged against measured demand.
+        development.daily(elapsed);
     }
+    // Bounded construction: a permit granted earlier completes on its own
+    // schedule, and the check costs nothing while nothing is being built.
+    development.update(elapsed);
     if (elapsed >= next_operating) {
         finance.operating(elapsed);
         next_operating = elapsed + 30;

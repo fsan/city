@@ -36,6 +36,23 @@ pub var company_count: usize = 0;
 pub var pedestrians: [city.max_roads]usize = @splat(0);
 pub var walking: usize = 0;
 pub var employed: usize = 0;
+// Slice 18: one company for one workplace, with the same capacity, wage, skill
+// requirement and contractor flag `init` derives from the same kind. A private
+// development that completes a shop or an office takes the next company index,
+// so every existing index, crew list and wage-arrears record keeps its meaning.
+pub fn addEmployer(building: usize, kind: city.Kind) void {
+    if (building >= city.lot_count or company_count >= companies.len) return;
+    const b = &city.buildings[building];
+    if (b.capacity == 0) return;
+    b.employer = @intCast(company_count);
+    companies[company_count] = .{ .building = building, .capacity = b.capacity, .contractor = kind == .depot, .margin = 1.15 + @as(f64, @floatFromInt(company_count % 3)) * 0.12, .labour = 14 + @as(f64, @floatFromInt(company_count % 3)) * 3, .wage = 40 + @as(f64, @floatFromInt(company_count % 3)) * 15, .skill_required = switch (kind) {
+        .office, .hall => 1,
+        .clinic => 2,
+        else => 0,
+    } };
+    company_count += 1;
+}
+
 pub fn init() void {
     company_count = 0;
     employed = 0;
@@ -54,13 +71,7 @@ pub fn init() void {
             }
         }
         if (b.capacity == 0) continue;
-        b.employer = @intCast(company_count);
-        companies[company_count] = .{ .building = i, .capacity = b.capacity, .contractor = b.kind == .depot, .margin = 1.15 + @as(f64, @floatFromInt(company_count % 3)) * 0.12, .labour = 14 + @as(f64, @floatFromInt(company_count % 3)) * 3, .wage = 40 + @as(f64, @floatFromInt(company_count % 3)) * 15, .skill_required = switch (b.kind) {
-            .office, .hall => 1,
-            .clinic => 2,
-            else => 0,
-        } };
-        company_count += 1;
+        addEmployer(i, b.kind);
     }
     // Slice 8: employment starts from an explicit inherited position. Post
     // requirements are read across employers by post slot so the skill mix

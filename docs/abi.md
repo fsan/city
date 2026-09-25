@@ -118,6 +118,39 @@ Group 15 fields 0–5: road preview error, price, length, parcel count, selected
 
 Commands: `road_begin(curved)`, `road_point(index,x,z)`, `road_screen_point(index,x,y)`, `road_build()`, `road_cancel()`, `zoning_show(enabled)`, `zoning_pick(screenX,screenY)`, `zoning_apply(parcel,zone,wholeBlock)`. Overlay 3 is pedestrian density.
 
+## Development proposals and permits (slice 18)
+
+Private development responds to the zoning the player has applied and to demand
+the live simulation has actually generated. A proposal always targets an
+authored lot whose kind is vacant (7) and whose parcel is zoned residential,
+commercial, industrial or mixed; the lot is redeveloped in place, so it keeps
+its identity, position, frontage, node, street and address number.
+
+Group 31 reads one application by newest-first index. Fields: 0 application
+number (one-based), 1 parcel, 2 building (the authored lot), 3 district, 4 zone,
+5 proposed kind (see `web/data.js`), 6 height, 7 assessed value, 8 capacity,
+9 levy in pounds, 10 offered time, 11 decision deadline, 12 decided time,
+13 expected completion time, 14 decision (0 offered, 1 approved, 2 refused,
+3 lapsed, 4 built), 15 reason (0 none, 1 no eligible site, 2 not zoned,
+3 no measured demand, 4 site already built on, 5 refused by the authority,
+6 lapsed undecided), 16 the measured pressure that justified the application,
+17 applications ever lodged, 18 currently pending, 19 retained records.
+Out-of-range indexes return -1.
+
+Group 0 fields 70-78 are the running totals: 70 pending applications, 71 permits
+under construction, 72 completed buildings, 73 applications refused, 74 lapsed,
+75 ever lodged, 76 development levies received, 77 zoned vacant sites that are
+eligible right now, 78 applications lodged today. Group 16 field 7 is the
+pending application on that parcel, newest first, or -1.
+
+Commands: `development_accept(id)` grants the permit, records the levy in the
+municipal ledger as kind 12 under the application's own number and starts a
+bounded 2-6 day build; it returns false and retires the application with reason
+4 when the site is no longer vacant. `development_refuse(id)` retires the
+application with reason 5. Both return false for an application that has already
+been decided. The levy is the only money this batch moves; construction is the
+applicant's own cost.
+
 ## Agreement review additions
 
 `service_quote(operator,fleet,days,price,field)` is read-only: fields 0 minimum acceptable penny price, 1 reason (0 eligible, 1 capacity, 2 price, 3 invalid terms), 2 available fleet/drivers. Invalid terms return -1 for other fields. Offer and acceptance share this validation. Price must round to a positive penny and be at most £1 billion.
@@ -428,7 +461,8 @@ Commands: `road_class(value)` sets the class (0-2) used by the next
 `road_begin`; `parking_rebuild()` re-seeds facilities after a road is built and
 reposts kerbside prices.
 
-Save schema is version 11, rules `bellwether-2027-09-v11`; version 10 and older are
-rejected with result 3. Parking facilities, occupancy, prices, aggregate
+Save schema is version 13, rules `bellwether-2027-11-v13`; version 12 and older are
+rejected with result 3. The bounded development queue, its counters and its
+district rotation are serialized and validated field by field. Parking facilities, occupancy, prices, aggregate
 availability, movement, counters and every learned resident field are
 serialized and validated.

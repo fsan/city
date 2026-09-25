@@ -1176,6 +1176,28 @@ fn capacityFor(kind: Kind) usize {
     };
 }
 
+// Slice 18 (numbered list item 10): private development reuses the authored
+// numbers above rather than inventing a second set, so a proposal and the
+// seeded plan agree on what a home, a shop or a depot is worth. These are the
+// only public doors into those tables.
+pub fn lotValue(kind: Kind) f64 {
+    return valueFor(kind);
+}
+
+pub fn lotCapacity(kind: Kind) usize {
+    return capacityFor(kind);
+}
+
+// Where a proposed use would be allowed to build: the plan's own height rule,
+// read at the site's real position so a downtown proposal is downtown tall.
+pub fn proposalHeight(kind: Kind, index: usize, x: f32, z: f32) f32 {
+    return heightFor(kind, index, coreFactor(x, z), inDowntown(x, z));
+}
+
+pub fn proposalFootprint(kind: Kind, x: f32, z: f32) [2]f32 {
+    return footprintFor(kind, inDowntown(x, z));
+}
+
 // Slice 15: the authored green spaces. Each site is a candidate rectangle; the
 // largest size that clears every carriageway and every lot already placed wins,
 // so a park lands in the middle of a block instead of on a street. Trees and
@@ -1407,11 +1429,16 @@ fn seedParking() void {
         const car_slots: usize = @intFromFloat(std.math.clamp(20 + @as(f32, @floatFromInt(workplaces[district])) * 6, 20, 80));
         var placed_bike: usize = 0;
         var placed_car: usize = 0;
-        for (lots()) |*b| {
+        for (lots(), 0..) |*b, index| {
             if (b.district != district) continue;
             if (b.kind != .park and b.kind != .vacant) continue;
             // Slice 15: a large park is public open space, not a car park site.
             if (b.width > 22 or b.depth > 22) continue;
+            // Slice 18: vacant land is also the site pool private development
+            // draws on, so the parking pass must never take all of it. A
+            // deterministic share of each district's vacant lots stays vacant
+            // and can be zoned and built on later. Park lots are unaffected.
+            if (b.kind == .vacant and hash01(@as(u32, @intCast(index)) * 13 + 5) < 0.6) continue;
             // A parking slab is a drawn surface, not a wall, but the player still
             // reads a tan rectangle over the carriageway as a glitch, so the
             // conversion is held to the same footprint clearance as a frontage.

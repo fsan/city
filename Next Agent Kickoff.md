@@ -1,4 +1,4 @@
-# Next agent kickoff — slice 17 complete and committed; awaiting the next slice
+# Next agent kickoff — slice 18 complete in the worktree; awaiting the next slice
 
 Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 at `60a000a`; slice 5 at `4e29f2f`; slice 6 at `cfa432d`; slice 7 at `dcc2577`; slice 8 at `e71fa0b`. Slices 9 (housing and occupancy) and 10 (street types, parking and learned travel) are complete and committed at `fd1a3a4`. Two further batches are also committed: player-placed traffic signals and crosswalks at `935cfb6`, and per-light timing, flashing yellow, coordination and bulk editing at `92d1846`; their own note labels those two batches slices 11 and 12. The worktree is clean, so nothing is left to commit before the next slice. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, explicit bus fleet and staffing commitments, and cure-first transport contract enforcement.
 
@@ -15,13 +15,95 @@ using `city.isHome` so apartments round-trip. See
 including the one open defect: saving *after* the renderer has drawn a frame
 still returns 4, while saving immediately after `init` returns 0.
 
-**Authorized goal:** none is outstanding. Slices 1–12 are complete and committed, and the previously authorized slice 9 was carried through implementation, verification and documentation. No further slice is authorized until the user names one; the next candidate and the numbering conflict are recorded under the numbered development sequence below. Each new slice must have its own short slice note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation, and this kickoff refreshed before the following slice starts.
+**Slice 18 is complete in the worktree (not yet committed).** It is the next
+entry in the numbered list below — development proposals and permits, private
+construction responding to zoning and demand. The inherited state had zoning
+with no consequence: `docs/city-planning.md` recorded that automatic
+development was not simulated, every authored vacant lot stayed vacant for the
+whole session, and the parking pass had in fact converted all of them, so there
+was no developable site anywhere in the town. Slice 18 adds a bounded private
+development queue:
+
+- `src/simulation/development.zig` (new) holds the proposal ring. A private
+  developer reads the settled day once per rollover, measures each district's
+  residents per dwelling and residents per commercial premises against the
+  same ratio for the whole city, and lodges an application only where a
+  district stands at or above 1.35x and still has a zoned vacant site. At most
+  two applications a day, one undecided per district and eight pending in all.
+  An application nobody answers lapses after five simulated days.
+- Use follows the zone: residential proposes a home (an apartment at 2x
+  pressure), commercial proposes a shop (an office at 2x), industrial proposes
+  a works depot, mixed use takes whichever pressure is higher, and unzoned or
+  civic-reserve land is never a site.
+- **A proposal redevelops an authored vacant lot in place.** The lot keeps its
+  identity, position, frontage, node, street and address number; only its use,
+  height, value and capacity change and the parcel's `building` link is filled
+  in. Nothing grows, so the snapshot, the renderer, the assessment roll and
+  every report agree by construction. `housing.enroll` gives a completed
+  dwelling the same rent and ownership formulas `housing.init` uses, and
+  `residents.addEmployer` gives a completed workplace the same capacity, wage,
+  skill and contractor rules `residents.init` derives from the same kind.
+- Granting a permit takes `levy_rate` (0.0005) of the assessed value, rounded to
+  pennies, into the municipal ledger as **kind 12** under the application's own
+  one-based number. Construction is the applicant's own cost and takes two to
+  six simulated days. Refusals and lapses move no money and carry their own
+  reason codes.
+- `seedParking` now reserves a deterministic share of each district's vacant
+  lots, because the parking pass had taken every one of them and left the town
+  with no developable land at all. The authored plan keeps 10 vacant sites
+  across seven districts.
+- Schema moves to **v13 / `bellwether-2027-11-v13`**; v12 and older are rejected
+  with result 3. The validator checks the queue field by field, raises the
+  ledger's kind ceiling to 12, and names the kind-12 party/order rule.
+- ABI: **group 31** reads one application (0 number, 1 parcel, 2 building,
+  3 district, 4 zone, 5 kind, 6 height, 7 value, 8 capacity, 9 levy,
+  10 offered, 11 deadline, 12 decided, 13 complete, 14 decision, 15 reason,
+  16 pressure, 17 ever lodged, 18 pending, 19 retained). **Group 0 fields
+  70-78** are the running totals. **Group 16 field 7** is the pending
+  application on that parcel. Commands `development_accept(id)` and
+  `development_refuse(id)`. `web/planning.js` gains a Permits mode on P with a
+  cell-reusing row builder that only reports back what Zig accepted.
+
+See `docs/development-proposals-slice.md` for the rules, the measured table and
+the limits. The limits are that construction is abstract (no crews, materials,
+terrain grading or foundation costs — those are numbered item 11), a proposal
+never redevelops an occupied lot, demand is a structural ratio rather than a
+price model, and the levy is a flat share of assessed value with no tender.
+
+**Verified.** A throwaway ReleaseSafe probe outside the repository reports
+`checks failed: 0`: 820 lots of 900 storage, 1,328 nodes, 1,624 roads; ten
+vacant sites and no eligible site until the player zones one; seven districts
+holding a site with the busiest at 2.058x; the first application landing on the
+engine's own chosen parcel with zone 1, a residential kind and a £1,300.00
+levy; the cash delta and the ledger kind-12 delta both equal to that levy; a
+completed dwelling enrolled at £117.00 rent and £57.20 ownership cost with its
+parcel link filled; a completed office of capacity 95 appending company 295 to
+296 with the employer link correct; refusal and lapse moving no money; no
+application ever on zone 0 or 5; a v13 round trip returning 0 with count 9,
+next_number 10, built 2, levies £2,500.00 and pending 3; staged round trips
+returning 0 at init, offer, accept, built, refuse, lapse and shop; a v12 file
+returning 3; and one further simulated day at 1,126 peak cars with 11
+applications lodged. `make build` publishes a fresh `/output/city.wasm` whose
+sha256 matches the served `/build/city.wasm` byte for byte
+(`96618d92…`), and the served markup, `planning.js`, `data.js` and `reports.js`
+carry the Permits panel, the permit commands, the decision labels and the new
+ledger category.
+
+**The slice 17 defect is still open.** Saving after the renderer has drawn a
+frame still returns `load result=4` while saving immediately after `init`
+returns 0, as recorded in `docs/dense-town-slice.md`. Slice 18 did not change
+that path; it remains the first thing to chase when a later slice touches the
+snapshot or the renderer.
+
+**Authorized goal:** none is outstanding. Slice 18 (numbered item 10, development proposals and permits) was authorized by the user's "finish the next missing slice" and is now implemented, built, verified and documented in the worktree. No further slice is authorized until the user names one; the next candidate and the numbering conflict are recorded under the numbered development sequence below. Each new slice must have its own short slice note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation, and this kickoff refreshed before the following slice starts.
+
+Slice 18 is uncommitted. `git status` shows modified `docs/abi.md`, `docs/city-planning.md`, `src/main.zig`, `src/scene/city.zig`, `src/simulation/{game,housing,persistence,residents}.zig`, `web/{data,index.html,main,planning,reports}.js`, and new `docs/development-proposals-slice.md` and `src/simulation/development.zig`. Do not commit, reset, rewrite history or push without a request.
 
 Inspect current code, git status and recent commits before editing. The `.tmp_degrees.zig` cleanup item is done: the temporary file was removed in `60a000a`. Do not reset, rewrite history or push without a request.
 
 ## Read first
 
-Start with `docs/development-roadmap.md`, then `docs/passenger-outcomes-slice.md`, `docs/save-load-slice.md`, `docs/regularity-target-slice.md` and `docs/stop-regularity-slice.md`.
+Start with `docs/development-roadmap.md`, then `docs/development-proposals-slice.md` (the most recent batch), `docs/dense-town-slice.md`, `docs/passenger-outcomes-slice.md`, `docs/save-load-slice.md`, `docs/regularity-target-slice.md` and `docs/stop-regularity-slice.md`.
 
 Read `README.md`, `docs/operator-capital-slice.md`, `docs/service-agreements.md`, `docs/transport.md`, `docs/abi.md` and `docs/city-planning.md`. The operator-capital note contains the exact accounting rules, limitations, refusal/remedy scenarios and verification history. The Development Agent Kickoff and Modern City Management Game Scope Specification provide product direction; their old planning-only phase does not replace a new implementation request.
 
@@ -42,6 +124,8 @@ Use Zig for rules and measurements, JavaScript for WebGL/input/reports. Compile 
 - Off-hours add no delivery target. Contracts retain window and target. Private service continues with the last operator/fleet/window after closure. Refresh/Restart clears the live session; manual import restores an exported town.
 - Passenger outcomes are measured from real transitions, not report polling: wait starts, completed waits with mean/min/max, per-dwell full-bus denials, abandonment causes, and home-district comparison. Existing data stays tied to stable route versions.
 - Manual save/load is local and browser-owned. The current schema is `version: 11`, `rules: "bellwether-2027-09-v11"` after slice 12. Version 10 and older files are rejected explicitly with result 3; there is no migration layer.
+- Private development (slice 18): zoned vacant land attracts bounded permit applications driven by measured per-district demand; the player grants or refuses each one; a granted permit books a 0.0005 levy as ledger kind 12 and builds in place over 2–6 simulated days. Unzoned and civic-reserve land is never a site. Granting is `development_accept(id)`, refusing is `development_refuse(id)`, and P opens the Permits list. The authored plan keeps 10 vacant sites because `seedParking` now reserves a deterministic share of them.
+- Save schema is now `version: 13`, `rules: "bellwether-2027-11-v13"` after slice 18. Version 12 and older files are rejected explicitly with result 3; there is still no migration layer.
 
 ## Completed work relevant to the recent slices
 
@@ -55,6 +139,7 @@ Use Zig for rules and measurements, JavaScript for WebGL/input/reports. Compile 
 - **Street types, parking and learned travel (slice 10):** per-segment street class, proportional free-flow speeds, signal and crosswalk compliance for walkers and cyclists, seeded bicycle and car parking with hard slot counts and banded kerbside prices (municipal ledger kind 11), expectation-based parking choice, and a tiny per-resident learned trip-time and parking-availability model. Schema v9. See `docs/street-types-parking-learning-slice.md`.
 - **Traffic signals and crosswalks:** player-placed per-junction signals with one branch green at a time, set-back heads, click-to-edit green and amber in simulation seconds, and placement snapping from the traffic panel. Schema v10. See `docs/traffic-signals-slice.md`.
 - **Traffic signals, part two:** per-light off time, a three-position flashing-yellow switch with a daily window, a coordination map with per-link delays, bulk edits scoped to every light / one street / one junction, and a dispatcher hook for police and fire preemption. Schema v11. See `docs/traffic-signals-slice.md`.
+- **Development proposals and permits (slice 18, numbered item 10):** a bounded private development queue in `src/simulation/development.zig` driven by measured per-district demand over zoned vacant land; player grant/refuse; a 0.0005 levy booked as ledger kind 12; in-place redevelopment over 2-6 simulated days that enrols a dwelling or appends an employer; the parking pass now reserves a share of each district's vacant lots. ABI group 31 plus group 0 fields 70-78 and group 16 field 7; commands `development_accept`/`development_refuse`; P opens the Permits panel. Schema v13. See `docs/development-proposals-slice.md`.
 - **Bus staffing and fleet investment (slice 4):** `operators.zig` holds a depot capacity, a recruited day and night roster and eight tracked units per operator. Units carry condition, a maintenance state and the physical bus occupying them. Recruiting a day driver costs £150, a night endorsement £260 and requires a day-qualified driver already on the roster; dismissal pays £60. A bus costs £520, sells for 55% of its condition-scaled value, wears only while a service bus is moving, dwelling or held in traffic, and enters a £160/240-second repair when exhausted. Clearing buses hold their unit until every rider has left, so they physically block replacement dispatch. Quotes and acceptance read the same live owned/serviceable/committed split and the recruited cohorts. Save schema is version 3. See `docs/operator-workforce-slice.md` for rules, verification and limits. Browser verification of the new Fleet & staff panel was limited to served-markup, module parse, scalar-ABI contract and served-WASM identity checks because no headless browser was available.
 
 ## Completed slice 4 — bus staffing and fleet investment
@@ -369,6 +454,8 @@ Do not add physical building construction, property development permits, valuati
 - `src/simulation/persistence.zig`: explicit typed JSON snapshot, bounded validation/commit. Every persistent field added since slice 4 is represented and validated, and the identifier is bumped and older files rejected at each change; the current contract is v11.
 - `src/main.zig`: validated exports and scalar ABI. Preserve field numbers. Existing groups include 10 fields 32–40, 13/17 agreement fields, 14 operator accounts/drivers, 18/19 stop/passenger observations, 20/21 agreement stop results and group 22 district passenger outcomes.
 - `src/scene/city.zig`: `validStop`, `stopPoint`, `sidewalk`, graph/routing data.
+- `src/simulation/development.zig`: the bounded private development queue — measured demand, site search over zoned vacant lots, lodging, lapse, the permit decision, the levy and in-place construction. `construct` is the only place a lot's use changes; there is no cached per-kind table to refresh.
+- `web/planning.js`: roads, zoning and now the Permits mode. The permit buttons only report back what Zig accepted.
 - `src/render/scene.zig`: kerbside stop markers drawn for all active lines; selected lines add a larger highlight. Keep finite vertex output.
 - `web/transport.js`: routes/map gestures, stop-address filtering, kerbside projections, passenger and stop reports. `web/agreements.js`: quotes, accounts, coverage, current/closed delivery. `web/reports.js`: municipal ledger. `web/index.html` owns the report controls.
 - `Makefile`, `docker/watch.sh`: build the WASM with disposable local/global Zig caches. Verify the served `/build/city.wasm` hash or behavior after a rebuild; a failed build retains the last good artifact.
@@ -380,6 +467,8 @@ Never iterate the large resident array by value; it previously exhausted the WAS
 Slice 8's probe (24 checks, 0 failures) covered init skill/wage consistency, jobseekers and vacancies, hiring on a rollover, unemployment transition, employer totals against live links, wage conservation, employer cash floors, household balance conservation, skill-mismatch refusal, arrears and firing with crew preservation, paid-vs-posted income, v7 save/load of every new field, walking bounds and rider sanity; the served `/build/city.wasm` matched the fresh Docker build (`d03289a4…`).
 
 Slices 9–12 each passed a Docker Compose Zig 0.14.1 ReleaseSafe build and startup with a JavaScript syntax check and a focused simulation probe run outside the repository: slice 9 covered housing moves, displacement, affordability and rent/arrears conservation; slice 10 street classes, parking slots, banded fees and learned mode choice; slice 11 one-branch-green-at-a-time across 29 junctions, head setback and pedestrians waiting at marked crossings; slice 12 manual flashing, the daily window, emergency alerts, bulk edits, coordination links and the v11 save round trip. Where a slice changed the browser panel, verification used served markup, a module parse, a scalar-ABI contract and served-WASM identity instead of a rendered screenshot, because this environment has no browser and lacks WebGL.
+
+Slice 18's probe (0 failures) covered the authored-town baseline, the empty eligible-site set before zoning, per-district demand, lodgement on the engine's own chosen site, the levy against both cash and the kind-12 ledger entry, refusal and lapse with no money moved, a completed dwelling and a completed workplace, the zoning rule that unzoned and civic land never attracts an application, a v13 round trip, staged round trips at seven points, a v12 file rejected with result 3, and a further simulated day at 1,126 peak cars. The served `/build/city.wasm` sha256 matched the freshly built `/output/city.wasm` byte for byte, and the Permits panel was verified through served markup, the served modules and `node --check`.
 
 Current completed checks include Docker ReleaseSafe builds, passenger wait/capacity/abandonment accounting, save/load of in-progress waits, route-edit attribution, passenger/rider conservation, operator account identities, off-hours/timeout abandonment, kerbside stop validity, old/new movement comparisons, the slice-4 fleet and staffing batch (94 focused checks, 0 failures, plus a scalar-ABI panel contract and a served-asset identity check), and the slice-5 enforcement probe (0 failures: cure/cap/waiver/suspension/expiry/cancel/schema-v4 save-load/tamper rejection/passenger conservation, plus a served-WASM hash match). This environment has no browser and lacks WebGL, so report population is verified through the scalar ABI, served markup and served-asset hashes rather than a rendered screenshot.
 
@@ -398,7 +487,7 @@ The numbers below keep the original order so requests such as “work on slice 5
 7. **Households and household budgets — complete:** shared income, essential expenses and financial pressure.
 8. **Employment and hiring — complete:** vacancies, unemployment, skills, wages and business staffing. See `docs/employment-hiring-slice.md`.
 9. **Housing and occupancy — complete:** renting, ownership, affordability, moves and displacement. See `docs/housing-occupancy-slice.md`.
-10. **Development proposals and permits — next candidate:** private construction responding to zoning and demand. This is the next entry in this list, but the user names the next slice.
+10. **Development proposals and permits — complete:** private construction responding to zoning and demand. See `docs/development-proposals-slice.md`. Item 11 is now the next entry in this list, but the user names the next slice.
 11. **Physical building construction:** access, crews, materials, terrain and foundation costs.
 12. **Property valuation and sunlight:** obstruction assessment and development trade-offs.
 13. **Parks and public spaces:** access, maintenance and neighbourhood benefits.
@@ -433,4 +522,4 @@ Timetables, transfers and automatic route optimisation need separate transport s
 
 ## Continuation instruction
 
-Slices 1–14 are committed, the slice 15/16 dense-town batch and the slice 17 repair are committed, and the worktree is clean, so this kickoff authorizes no new slice by itself. If the user names the next slice, confirm which numbering they mean when the request is ambiguous, then for that slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the following slice. Preserve existing work and do not stop at a plan. Do not add a permanent test suite or expand into the proposed sequence without authorization. Finish each slice with what changed, what was verified and remaining limitations.
+Slices 1–14 are committed, the slice 15/16 dense-town batch and the slice 17 repair are committed, and slice 18 (numbered item 10) is complete, verified and documented in the uncommitted worktree. This kickoff authorizes no new slice by itself. If the user names the next slice, confirm which numbering they mean when the request is ambiguous, then for that slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the following slice. Preserve existing work and do not stop at a plan. Do not add a permanent test suite or expand into the proposed sequence without authorization. Finish each slice with what changed, what was verified and remaining limitations.

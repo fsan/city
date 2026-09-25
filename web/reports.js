@@ -425,6 +425,7 @@ export function createReports(game, ui, transport) {
     "Bus service agreement",
     "Road construction",
     "Service credit",
+    "Development levy",
   ];
   function ledgerValues(limit) {
     return Array.from({ length: limit }, (_, id) => {

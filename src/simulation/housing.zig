@@ -43,15 +43,26 @@ pub fn init() void {
     failed_moves_today = 0;
     for (city.lots(), 0..) |*building, i| {
         if (!city.isHome(building.kind)) continue;
-        const value = @max(1, building.value);
-        units[i].present = true;
-        units[i].tenure = if (i % 5 == 0) .rented else .owned;
-        units[i].rent = @max(5, @round(value * 0.000045 * 100) / 100);
-        units[i].ownership_cost = @max(3, @round(value * 0.000022 * 100) / 100);
+        enroll(i);
         units[i].occupants = @intCast(building.occupants);
-        units[i].application = -1;
-        units[i].move_state = .idle;
     }
+}
+
+// Slice 18: the same enrolment `init` performs on an authored home, exposed so
+// a private development that completes a new dwelling enters the housing roll
+// with identical rent and ownership-cost formulas instead of a second set. The
+// new unit starts empty, so the ordinary move search can find it.
+pub fn enroll(index: usize) void {
+    if (index >= city.lot_count or !city.isHome(city.buildings[index].kind)) return;
+    const value = @max(1, city.buildings[index].value);
+    units[index] = .{};
+    units[index].present = true;
+    units[index].tenure = if (index % 5 == 0) .rented else .owned;
+    units[index].rent = @max(5, @round(value * 0.000045 * 100) / 100);
+    units[index].ownership_cost = @max(3, @round(value * 0.000022 * 100) / 100);
+    units[index].occupants = 0;
+    units[index].application = -1;
+    units[index].move_state = .idle;
 }
 
 pub fn valid(index: usize) bool {

@@ -15,6 +15,7 @@ const housing = game.housing;
 const parking = game.parking;
 const travel = game.travel;
 const signals = game.transport.signals;
+const development = game.development;
 
 // JSON fields, not native struct bytes. Bump version/rules when changing this contract.
 pub const capacity = 16 * 1024 * 1024;
@@ -113,6 +114,23 @@ const Services = struct {
     history_count: usize,
     next_number: usize,
 };
+// Slice 18: the bounded private-development queue. The proposals are stored as
+// their own JSON records and validated field by field, exactly like the
+// agreement rings; `demand` is derived and therefore never saved.
+const Development = struct {
+    proposals: []const development.Proposal,
+    count: u32,
+    next_number: u32,
+    lodged_total: u32,
+    approved_total: u32,
+    refused_total: u32,
+    lapsed_total: u32,
+    built_total: u32,
+    levies_collected: f64,
+    lodged_today: u32,
+    building: usize,
+    cursor: u8,
+};
 const State = struct {
     format: []const u8,
     version: u32,
@@ -135,6 +153,7 @@ const State = struct {
     parked: Parked,
     treasury: Treasury,
     services: Services,
+    development: Development,
     trust: []const f32,
     history: []const game.Sample,
     history_count: usize,
@@ -144,8 +163,8 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 12,
-        .rules = "bellwether-2027-09-v12",
+        .version = 13,
+        .rules = "bellwether-2027-11-v13",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = city.lots(), .parcels = parcels.storage[0..parcels.count] },
@@ -167,6 +186,7 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
         .mobility = .{ .vehicles = &transport.vehicles, .lines = &transport.lines, .accounts = &operators.accounts, .observations = &transport.observations, .previous_observations = &transport.previous_observations, .lanes = lane_values[0..city.road_count], .occupancy = transport.occupancy[0..city.road_count], .queues = transport.queues[0..city.road_count], .congestion = transport.congestion[0..city.road_count], .movement = transport.movement[0..city.road_count], .fare_cap = transport.fare_cap, .subsidy = transport.subsidy, .subsidy_total = transport.subsidy_total, .junctions = signals.junctions[0..signals.count], .placed_total = signals.placed_total, .removed_total = signals.removed_total },
         .treasury = .{ .cash = finance.cash, .reserved = finance.reserved, .residential_rate = finance.residential_rate, .commercial_rate = finance.commercial_rate, .funding = finance.funding, .active_funding = finance.active_funding, .maintenance_paid = finance.maintenance_paid, .collected = finance.collected, .spent = finance.spent, .arrears = &finance.arrears, .entry_count = finance.entry_count, .entries = finance.entries[0..@min(finance.entry_count, finance.entries.len)], .periods = finance.periods[0..@min(finance.period_count, finance.periods.len)], .period_count = finance.period_count, .period_opening = finance.period_opening, .period_receipts = finance.period_receipts, .period_expenses = finance.period_expenses, .period_entries = finance.period_entries, .period_week = finance.period_week },
         .services = .{ .orders = contracts.orders[0..contracts.count], .next_review = contracts.next_review, .current = &agreements.agreements, .history = agreements.history[0..@min(agreements.history_count, agreements.history.len)], .history_count = agreements.history_count, .next_number = agreements.next_number },
+        .development = .{ .proposals = development.storage[0..@min(@as(usize, development.count), development.storage.len)], .count = development.count, .next_number = development.next_number, .lodged_total = development.lodged_total, .approved_total = development.approved_total, .refused_total = development.refused_total, .lapsed_total = development.lapsed_total, .built_total = development.built_total, .levies_collected = development.levies_collected, .lodged_today = development.lodged_today, .building = development.building, .cursor = development.cursor },
         .trust = &game.trust,
         .history = game.history[0..@min(game.history_count, game.history.len)],
         .history_count = game.history_count,
@@ -431,6 +451,31 @@ fn validate(s: *const State) bool {
             @intFromEnum(unit.move_state) > 4) return false;
         if (town.buildings[i].occupants == 0 and unit.application != -1) return false;
     }
+    // Slice 18 development proposals: every applicant names a real authored
+    // vacant lot, its numbers stay inside the rules, and the queue never
+    // exceeds its own bounds. Nothing here creates money: the levy is only
+    // ever the value that was recorded when the permit was granted.
+    const d = &s.development;
+    if (d.proposals.len != @min(@as(usize, d.count), development.max_proposals)) return false;
+    if (d.next_number == 0 or d.next_number != d.count + 1 or d.lodged_total != d.count) return false;
+    if (d.approved_total + d.refused_total + d.lapsed_total > d.count or d.built_total > d.approved_total) return false;
+    if (d.building > d.approved_total - d.built_total or d.building > development.max_pending) return false;
+    if (d.levies_collected < 0 or d.lodged_today > development.max_lodged_per_day or d.cursor >= city.district_count) return false;
+    var open_applications: usize = 0;
+    for (d.proposals) |*p| {
+        if (p.number == 0 or p.number >= d.next_number) return false;
+        if (p.parcel >= town.parcels.len or p.building >= town.buildings.len or p.parcel != p.building) return false;
+        if (p.district >= city.district_count or p.zone < 1 or p.zone > 4) return false;
+        if (@intFromEnum(p.decision) > 4 or @intFromEnum(p.reason) > 6) return false;
+        if (p.kind > @intFromEnum(city.Kind.plaza)) return false;
+        if (p.height < 0 or p.value < 0 or p.capacity > city.population) return false;
+        if (p.levy < 0 or p.levy > p.value * development.levy_rate + 0.011) return false;
+        if (!between(p.offered, 160, c.elapsed) or p.deadline < p.offered or p.decided < 0 or p.complete < 0) return false;
+        if (p.decided > c.elapsed or p.complete > c.elapsed + 6 * development.days + 0.001) return false;
+        if (!std.math.isFinite(p.pressure) or p.pressure < 0 or p.pressure > 1000) return false;
+        if (p.decision == .offered) open_applications += 1;
+    }
+    if (open_applications > development.max_pending) return false;
     // Slice 10 parking: every facility is bounded, occupancy never exceeds the
     // slot count, and the aggregate counters stay ordered.
     if (s.parked.attempts > 1000000000 or s.parked.successes > s.parked.attempts or s.parked.fallbacks > s.parked.attempts or
@@ -604,12 +649,14 @@ fn validate(s: *const State) bool {
     const first = f.entry_count - f.entries.len;
     for (first..f.entry_count) |i| {
         const e = f.entries[i % 1024];
-        if (!between(e.time, 0, c.elapsed) or e.kind > 11 or e.balance < 0) return false;
+        if (!between(e.time, 0, c.elapsed) or e.kind > 12 or e.balance < 0) return false;
         switch (e.kind) {
             1, 2 => if (e.party < 0 or !index(e.party, town.buildings.len) or e.order != -1) return false,
             5, 6 => if (e.party < 0 or !index(e.party, companies.len) or e.order < 0 or !index(e.order, services.orders.len)) return false,
             8, 10 => if (e.party < 0 or !index(e.party, 3) or e.order < 1 or e.order >= services.next_number) return false,
             11 => if (e.party != -1 or e.order != -1 or e.amount < 0) return false,
+            // Slice 18: the development levy names its own application number.
+            12 => if (e.party != -1 or e.order < 1 or e.order >= @as(i32, @intCast(d.next_number)) or e.amount < 0) return false,
             9 => if (e.party < 0 or !index(e.party, town.street_count) or e.order != -1) return false,
             else => if (e.party != -1 or e.order != -1) return false,
         }
@@ -720,6 +767,21 @@ fn commit(s: *const State) void {
     agreements.history_count = s.services.history_count;
     @memcpy(agreements.history[0..s.services.history.len], s.services.history);
     agreements.next_number = s.services.next_number;
+    const d = &s.development;
+    development.storage = @splat(.{});
+    @memcpy(development.storage[0..d.proposals.len], d.proposals);
+    development.count = d.count;
+    development.next_number = d.next_number;
+    development.lodged_total = d.lodged_total;
+    development.approved_total = d.approved_total;
+    development.refused_total = d.refused_total;
+    development.lapsed_total = d.lapsed_total;
+    development.built_total = d.built_total;
+    development.levies_collected = d.levies_collected;
+    development.lodged_today = d.lodged_today;
+    development.building = d.building;
+    development.cursor = d.cursor;
+    development.measure();
     game.elapsed = s.clock.elapsed;
     game.next_sample = s.clock.next_sample;
     game.next_routes = s.clock.next_routes;
@@ -744,7 +806,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 12 and std.mem.eql(u8, rules, "bellwether-2027-09-v12");
+    return version == 13 and std.mem.eql(u8, rules, "bellwether-2027-11-v13");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

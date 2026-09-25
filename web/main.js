@@ -41,6 +41,7 @@ function start(renderer) {
     reports.update();
     transport?.update();
     operators?.update();
+    planning?.refresh();
   };
   const speed = (value) => {
     game.set_speed(value);

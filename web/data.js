@@ -17,6 +17,18 @@ export const kinds = [
   "Playground",
   "Plaza",
 ];
+// Slice 18: the development permit queue speaks in the same words the panel
+// shows, so a decision is never described by a bare number.
+export const decisionNames = ["Offered", "Approved", "Refused", "Lapsed", "Built"];
+export const refusalNames = [
+  "",
+  "No eligible site",
+  "Not zoned for development",
+  "No measured demand",
+  "Site already built on",
+  "Refused by the authority",
+  "Lapsed undecided",
+];
 export const streetClasses = ["Lane", "Street", "Avenue"];
 export const parkingKinds = ["Bicycle park", "Car park", "Kerbside"];
 export const parkingBands = ["free", "band 1", "band 2", "band 3", "band 4 (cap)"];
