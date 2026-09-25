@@ -11,3 +11,5 @@ regularity-target-slice.md records optional agreement interval targets and diagn
 
 `save-load-slice.md` documents manual local persistence, validation, browser ownership and focused verification. `passenger-outcomes-slice.md` records measured wait starts/completions, capacity denials, abandonment causes and district comparison.
 - [Street types, parking and learned travel](street-types-parking-learning-slice.md)
+- [City plans](city-plans-slice.md)
+- [Road-surface rendering follow-up](road-surface-rendering-followup-slice.md)
