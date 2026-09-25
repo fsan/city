@@ -124,8 +124,10 @@ fn deckAt(x: f32, z: f32) ?f32 {
         const squared = dx * dx + dz * dz;
         if (squared < 0.01) continue;
         const t = ((x - s.ax) * dx + (z - s.az) * dz) / squared;
-        if (t < -0.02 or t > 1.02) continue;
-        if (hypot(x - (s.ax + dx * t), z - (s.az + dz * t)) > 3.2) continue;
+        const along = t * @sqrt(squared);
+        const span = @sqrt(squared);
+        if (along < -8 or along > span + 8) continue;
+        if (hypot(x - (s.ax + dx * t), z - (s.az + dz * t)) > 4.3) continue;
         return s.level;
     }
     return null;

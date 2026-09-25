@@ -309,7 +309,7 @@ pub fn ribbon(a: city.Vec, b: city.Vec, half: f32, lateral: f32, offset: f32, co
     const nz = (b.x - a.x) / length;
     // A strip that runs beside the river is cut into short pieces so it follows
     // the carved bank rather than spanning the dip in one flat quad.
-    const strips: usize = if (nearRiver(@min(a.x, b.x), @min(a.z, b.z), @abs(b.x - a.x), @abs(b.z - a.z))) @max(1, @as(usize, @intFromFloat(@ceil(length / 8)))) else 1;
+    const strips: usize = if (nearRiver(@min(a.x, b.x), @min(a.z, b.z), @abs(b.x - a.x), @abs(b.z - a.z))) @max(1, @as(usize, @intFromFloat(@ceil(length / 4)))) else 1;
     var i: usize = 0;
     while (i < strips) : (i += 1) {
         const t0 = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(strips));
@@ -320,6 +320,63 @@ pub fn ribbon(a: city.Vec, b: city.Vec, half: f32, lateral: f32, offset: f32, co
         terrainFace(&points, offset, color);
     }
 }
+// Road joins. A road is a strip with a perpendicular end edge, so two roads
+// meeting at a bend or junction leave a wedge between those end edges and the
+// ground below shows through it. Each node therefore fills one triangle per
+// neighbouring pair of roads: the base corners are those two roads' own edge
+// corners, so the triangle fills exactly the wedge and never paints outside the
+// carriageway.
+fn junctionFans(half: f32, offset: f32, color: Color) void {
+    var away: [24]f32 = undefined;
+    var normal_x: [24]f32 = undefined;
+    var normal_z: [24]f32 = undefined;
+    for (0..city.node_count) |node| {
+        const node_x = city.nodes[node].x;
+        const node_z = city.nodes[node].z;
+        var arms: usize = 0;
+        var road_index: usize = 0;
+        while (road_index < city.road_count and arms < away.len) : (road_index += 1) {
+            const r = city.roads[road_index];
+            if (r.a != node and r.b != node) continue;
+            const other = if (r.a == node) r.b else r.a;
+            const dx = city.nodes[other].x - node_x;
+            const dz = city.nodes[other].z - node_z;
+            const len = city.hypot(dx, dz);
+            if (len < 0.001) continue;
+            normal_x[arms] = -dz / len;
+            normal_z[arms] = dx / len;
+            away[arms] = std.math.atan2(dz, dx);
+            arms += 1;
+        }
+        if (arms < 2) continue;
+        // Order the roads by the bearing they leave the node at.
+        var i: usize = 1;
+        while (i < arms) : (i += 1) {
+            const key_away = away[i];
+            const key_x = normal_x[i];
+            const key_z = normal_z[i];
+            var j: usize = i;
+            while (j > 0 and away[j - 1] > key_away) : (j -= 1) {
+                away[j] = away[j - 1];
+                normal_x[j] = normal_x[j - 1];
+                normal_z[j] = normal_z[j - 1];
+            }
+            away[j] = key_away;
+            normal_x[j] = key_x;
+            normal_z[j] = key_z;
+        }
+        var k: usize = 0;
+        while (k < arms) : (k += 1) {
+            const next = (k + 1) % arms;
+            terrainFace(&[_]city.Vec{
+                .{ .x = node_x, .z = node_z },
+                .{ .x = node_x + normal_x[k] * half, .z = node_z + normal_z[k] * half },
+                .{ .x = node_x - normal_x[next] * half, .z = node_z - normal_z[next] * half },
+            }, offset, color);
+        }
+    }
+}
+
 fn vehicleBox(x: f32, z: f32, length: f32, wide: f32, h: f32, base: f32, ux: f32, uz: f32, color: Color) void {
     var p: [8]Point = undefined;
     for (0..8) |i| {
@@ -461,18 +518,20 @@ pub fn draw(w: f32, h: f32) void {
         const colors = [_]Color{ .{ 0.54, 0.55, 0.48 }, .{ 0.3, 0.61, 0.39 }, .{ 0.3, 0.48, 0.78 }, .{ 0.76, 0.62, 0.29 }, .{ 0.61, 0.43, 0.68 }, .{ 0.31, 0.67, 0.66 } };
         groundQuad(p.x - 0.45, p.z - 0.45, p.width + 0.9, p.depth + 0.9, 0.07, if (game.parcels.selected == @as(i32, @intCast(id))) .{ 1, 0.85, 0.35 } else colors[p.zone]);
     };
+    junctionFans(2.7, 0.22, .{ 0.49, 0.49, 0.45 });
+    junctionFans(1.75, 0.26, .{ 0.23, 0.25, 0.25 });
     for (city.roads, 0..) |r, id| {
         const a = city.Vec{ .x = city.nodes[r.a].x, .z = city.nodes[r.a].z };
         const b = city.Vec{ .x = city.nodes[r.b].x, .z = city.nodes[r.b].z };
-        ribbon(a, b, 2.7, 0, 0.08, .{ 0.49, 0.49, 0.45 });
+        ribbon(a, b, 2.7, 0, 0.22, .{ 0.49, 0.49, 0.45 });
         const color: Color = if (r.works) .{ 0.66, 0.46, 0.18 } else if (overlay == 2) streetColor(100 * (1 - transport.congestion[id])) else if (overlay == 3) streetColor(100 * (1 - @min(1, @as(f32, @floatFromInt(game.residents.pedestrians[id])) / @max(1, r.length * 0.15)))) else if (overlay == 1) streetColor(r.condition) else .{ 0.23, 0.25, 0.25 };
-        ribbon(a, b, 1.75, 0, 0.12, color);
-        if (transport.lanes[id] != 0) ribbon(a, b, 0.15, 1.4, 0.16, if (transport.lanes[id] == 1) .{ 0.3, 0.55, 0.8 } else .{ 0.35, 0.65, 0.35 });
+        ribbon(a, b, 1.75, 0, 0.26, color);
+        if (transport.lanes[id] != 0) ribbon(a, b, 0.15, 1.4, 0.3, if (transport.lanes[id] == 1) .{ 0.3, 0.55, 0.8 } else .{ 0.35, 0.65, 0.35 });
         const length = city.hypot(b.x - a.x, b.z - a.z);
         const ux = (b.x - a.x) / length;
         const uz = (b.z - a.z) / length;
         var d: f32 = 1;
-        while (d + 1 < length) : (d += 3.2) ribbon(.{ .x = a.x + ux * d, .z = a.z + uz * d }, .{ .x = a.x + ux * (d + 1), .z = a.z + uz * (d + 1) }, 0.05, 0, 0.17, .{ 0.65, 0.63, 0.51 });
+        while (d + 1 < length) : (d += 3.2) ribbon(.{ .x = a.x + ux * d, .z = a.z + uz * d }, .{ .x = a.x + ux * (d + 1), .z = a.z + uz * (d + 1) }, 0.05, 0, 0.31, .{ 0.65, 0.63, 0.51 });
         if (r.crosswalk and length > 5) for (0..2) |end| {
             const n = if (end == 0) r.a else r.b;
             if (city.degree(n) < 3) continue;
@@ -480,7 +539,7 @@ pub fn draw(w: f32, h: f32) void {
             const c = city.Vec{ .x = a.x + ux * t, .z = a.z + uz * t };
             for (0..7) |stripe| {
                 const off = -1.5 + @as(f32, @floatFromInt(stripe)) * 0.5;
-                ribbon(.{ .x = c.x - ux * 0.5, .z = c.z - uz * 0.5 }, .{ .x = c.x + ux * 0.5, .z = c.z + uz * 0.5 }, 0.14, off, 0.2, .{ 0.88, 0.86, 0.74 });
+                ribbon(.{ .x = c.x - ux * 0.5, .z = c.z - uz * 0.5 }, .{ .x = c.x + ux * 0.5, .z = c.z + uz * 0.5 }, 0.14, off, 0.34, .{ 0.88, 0.86, 0.74 });
             }
         };
     }
