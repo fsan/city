@@ -49,8 +49,8 @@ const kerb_half: f32 = 2.7;
 const surface_half: f32 = 1.75;
 const kerb_color: Color = .{ 0.49, 0.49, 0.45 };
 pub fn reset() void {
-    camera_x = city.size_x / 2;
-    camera_z = city.size_z / 2;
+    camera_x = city.origin_x + city.size_x / 2;
+    camera_z = city.origin_z + city.size_z / 2;
     zoom = 1;
     angle = std.math.pi / 4.0;
 }
@@ -95,8 +95,8 @@ fn box(x: f32, z: f32, w: f32, d: f32, h: f32, base: f32, color: Color) void {
     quad(e, a, at, et, shade(color, 0.65 + 0.25 * @max(0, -@sin(sun))));
 }
 pub fn pan(dx: f32, dy: f32) void {
-    camera_x = std.math.clamp(camera_x + (dx * @cos(angle) + dy * @sin(angle) / 0.5773503) / scale(), -20, city.size_x + 20);
-    camera_z = std.math.clamp(camera_z + (-dx * @sin(angle) + dy * @cos(angle) / 0.5773503) / scale(), -20, city.size_z + 20);
+    camera_x = std.math.clamp(camera_x + (dx * @cos(angle) + dy * @sin(angle) / 0.5773503) / scale(), city.origin_x - 20, city.origin_x + city.size_x + 20);
+    camera_z = std.math.clamp(camera_z + (-dx * @sin(angle) + dy * @cos(angle) / 0.5773503) / scale(), city.origin_z - 20, city.origin_z + city.size_z + 20);
 }
 fn streetColor(condition: f32) Color {
     const amount = condition / 100;
@@ -594,8 +594,8 @@ pub fn draw(w: f32, h: f32) void {
     // own roads instead of rescanning the whole road list once per node.
     city.buildIncidence();
     for (0..city.rows) |row| for (0..city.cols) |col| {
-        const x = @as(f32, @floatFromInt(col)) * city.spacing;
-        const z = @as(f32, @floatFromInt(row)) * city.spacing;
+        const x = city.origin_x + @as(f32, @floatFromInt(col)) * city.spacing;
+        const z = city.origin_z + @as(f32, @floatFromInt(row)) * city.spacing;
         groundQuad(x, z, city.spacing, city.spacing, 0, .{ 0.36, 0.40, 0.32 });
     };
     riverSurface();
@@ -603,14 +603,14 @@ pub fn draw(w: f32, h: f32) void {
     bridgeDecks();
     // Visible edges communicate the plateau heights without a terrain art dependency.
     for (0..city.cols) |i| {
-        const x = @as(f32, @floatFromInt(i)) * city.spacing;
-        quad(.{ x, -2, 0 }, .{ x + city.spacing, -2, 0 }, .{ x + city.spacing, city.elevation(x + city.spacing, 0), 0 }, .{ x, city.elevation(x, 0), 0 }, .{ 0.32, 0.31, 0.27 });
-        quad(.{ x, -2, city.size_z }, .{ x + city.spacing, -2, city.size_z }, .{ x + city.spacing, city.elevation(x + city.spacing, city.size_z), city.size_z }, .{ x, city.elevation(x, city.size_z), city.size_z }, .{ 0.32, 0.31, 0.27 });
+        const x = city.origin_x + @as(f32, @floatFromInt(i)) * city.spacing;
+        quad(.{ x, -2, city.origin_z }, .{ x + city.spacing, -2, city.origin_z }, .{ x + city.spacing, city.elevation(x + city.spacing, city.origin_z), city.origin_z }, .{ x, city.elevation(x, city.origin_z), city.origin_z }, .{ 0.32, 0.31, 0.27 });
+        quad(.{ x, -2, city.origin_z + city.size_z }, .{ x + city.spacing, -2, city.origin_z + city.size_z }, .{ x + city.spacing, city.elevation(x + city.spacing, city.origin_z + city.size_z), city.origin_z + city.size_z }, .{ x, city.elevation(x, city.origin_z + city.size_z), city.origin_z + city.size_z }, .{ 0.32, 0.31, 0.27 });
     }
     for (0..city.rows) |i| {
-        const z = @as(f32, @floatFromInt(i)) * city.spacing;
-        quad(.{ 0, -2, z }, .{ 0, -2, z + city.spacing }, .{ 0, city.elevation(0, z + city.spacing), z + city.spacing }, .{ 0, city.elevation(0, z), z }, .{ 0.28, 0.28, 0.25 });
-        quad(.{ city.size_x, -2, z }, .{ city.size_x, -2, z + city.spacing }, .{ city.size_x, city.elevation(city.size_x, z + city.spacing), z + city.spacing }, .{ city.size_x, city.elevation(city.size_x, z), z }, .{ 0.28, 0.28, 0.25 });
+        const z = city.origin_z + @as(f32, @floatFromInt(i)) * city.spacing;
+        quad(.{ city.origin_x, -2, z }, .{ city.origin_x, -2, z + city.spacing }, .{ city.origin_x, city.elevation(city.origin_x, z + city.spacing), z + city.spacing }, .{ city.origin_x, city.elevation(city.origin_x, z), z }, .{ 0.28, 0.28, 0.25 });
+        quad(.{ city.origin_x + city.size_x, -2, z }, .{ city.origin_x + city.size_x, -2, z + city.spacing }, .{ city.origin_x + city.size_x, city.elevation(city.origin_x + city.size_x, z + city.spacing), z + city.spacing }, .{ city.origin_x + city.size_x, city.elevation(city.origin_x + city.size_x, z), z }, .{ 0.28, 0.28, 0.25 });
     }
     if (game.parcels.visible) for (game.parcels.storage[0..game.parcels.count], 0..) |p, id| {
         const colors = [_]Color{ .{ 0.54, 0.55, 0.48 }, .{ 0.3, 0.61, 0.39 }, .{ 0.3, 0.48, 0.78 }, .{ 0.76, 0.62, 0.29 }, .{ 0.61, 0.43, 0.68 }, .{ 0.31, 0.67, 0.66 } };
@@ -931,8 +931,8 @@ pub fn zoomAt(amount: f32, x: f32, y: f32) void {
     const change = 1 / old_scale - 1 / scale();
     const across = (x - width / 2) * change;
     const back = (y - height / 2) * change / 0.5773503;
-    camera_x = std.math.clamp(camera_x + across * @cos(angle) + back * @sin(angle), -20, city.size_x + 20);
-    camera_z = std.math.clamp(camera_z - across * @sin(angle) + back * @cos(angle), -20, city.size_z + 20);
+    camera_x = std.math.clamp(camera_x + across * @cos(angle) + back * @sin(angle), city.origin_x - 20, city.origin_x + city.size_x + 20);
+    camera_z = std.math.clamp(camera_z - across * @sin(angle) + back * @cos(angle), city.origin_z - 20, city.origin_z + city.size_z + 20);
 }
 
 pub fn projectWorld(x: f32, y: f32, z: f32, axis: u32) f32 {

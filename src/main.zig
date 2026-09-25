@@ -13,6 +13,16 @@ const travel = game.travel;
 var speed: f32 = 1;
 var resume_speed: f32 = 1;
 var accumulator: f32 = 0;
+// Choose a city plan before `init` lays the town out. 0 Bellwether, 1 the
+// smaller default, 2 the development town that switches every feature on.
+export fn set_city(value: u32) void {
+    city.setPlan(@enumFromInt(@min(value, city.planCount() - 1)));
+}
+
+export fn city_name() [*]const u8 {
+    return city.planName(city.plan).ptr;
+}
+
 export fn init() void {
     city.init();
     game.init();

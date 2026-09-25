@@ -5,13 +5,74 @@ pub const River = @import("river.zig");
 // slice of Rome. It is six times the area of the old 520 x 440 lattice, so an
 // outer home-to-centre trip is 600-1,000 m rather than 150-300 m, and a river
 // with four bridges splits the two banks.
-pub const cols = 33;
-pub const rows = 26;
-pub const spacing: f32 = 40;
-pub const size_x: f32 = 1320;
-pub const size_z: f32 = 1040;
+// The authored plan is one 1,320 x 1,040 m board, and a plan is a *window* into
+// it: the same streets, river, bridges and lots are laid out every time, and the
+// plan decides how much of that board a city actually occupies. That is what
+// lets a smaller default city keep the river and the bridges the authored plan
+// is built around, without maintaining a second hand-drawn layout.
+pub const Plan = enum(u32) { bellwether, compact, development };
+// The compact window is the default: the full board is a long walk end to end,
+// and the reported problem was that the town is too big to develop at the start.
+pub var plan: Plan = .compact;
+pub var origin_x: f32 = 0;
+pub var origin_z: f32 = 0;
+pub var cols: usize = 33;
+pub var rows: usize = 26;
+pub var spacing: f32 = 40;
+pub var size_x: f32 = 1320;
+pub var size_z: f32 = 1040;
+// The residents array and the district trust array are sized from these, so they
+// stay fixed: every plan seeds the same population and the same districts.
 pub const population = 3840;
 pub const district_count = 12;
+
+pub fn planCount() usize {
+    return @typeInfo(Plan).@"enum".fields.len;
+}
+
+pub fn planName(value: Plan) []const u8 {
+    return switch (value) {
+        .bellwether => "Bellwether",
+        .compact => "Camden Quarter",
+        .development => "Integration Yard",
+    };
+}
+
+pub fn insideWindow(x: f32, z: f32, margin: f32) bool {
+    return x >= origin_x + margin and z >= origin_z + margin and x <= origin_x + size_x - margin and z <= origin_z + size_z - margin;
+}
+
+pub fn developmentPlan() bool {
+    return plan == .development;
+}
+
+// Choose the window the next `init` lays out. `development` is the whole board
+// with every authored feature switched on, so a development session exercises
+// the integrations between them (river, bridges, parks, depots, parking, works).
+pub fn setPlan(value: Plan) void {
+    plan = value;
+    switch (value) {
+        .bellwether, .development => {
+            origin_x = 0;
+            origin_z = 0;
+            size_x = 1320;
+            size_z = 1040;
+            cols = 33;
+            rows = 26;
+        },
+        .compact => {
+            // The river runs north-south near x 600-712, so the compact window
+            // stays centred on it and keeps the crossings and both banks.
+            origin_x = 330;
+            origin_z = 0;
+            size_x = 660;
+            size_z = 1040;
+            cols = 17;
+            rows = 26;
+        },
+    }
+    spacing = 40;
+}
 // Slice 16 lifted the ceiling that used to cap this. `rebuildRoutes` is no
 // longer O(nodes^3) (it is one Dijkstra per source over an adjacency list), and
 // the snapshot no longer carries the all-pairs tables, so neither the frame
@@ -203,16 +264,16 @@ pub fn inDowntown(x: f32, z: f32) bool {
 // 0 at the centre of the plan, 1 in the outer suburbs. Drives how dense the
 // local streets and the buildings are.
 fn coreFactor(x: f32, z: f32) f32 {
-    const dx = (x - size_x * 0.5) / (size_x * 0.5);
-    const dz = (z - size_z * 0.5) / (size_z * 0.5);
+    const dx = (x - (origin_x + size_x * 0.5)) / (size_x * 0.5);
+    const dz = (z - (origin_z + size_z * 0.5)) / (size_z * 0.5);
     return std.math.clamp(1 - @sqrt(dx * dx + dz * dz) / 1.05, 0, 1);
 }
 
 pub fn addNode(x: f32, z: f32, street: usize) usize {
     const id = node_count;
     if (id >= max_nodes) return if (node_count == 0) 0 else node_count - 1;
-    const px = std.math.clamp(x, 2, size_x - 2);
-    const pz = std.math.clamp(z, 2, size_z - 2);
+    const px = std.math.clamp(x, origin_x + 2, origin_x + size_x - 2);
+    const pz = std.math.clamp(z, origin_z + 2, origin_z + size_z - 2);
     var number: usize = 1;
     if (street < street_count_default) {
         number = @intFromFloat(@max(1, @round(if (street % 2 == 0) x else z)));
@@ -401,7 +462,7 @@ pub fn stopPoint(n: usize) Vec {
 pub fn validStop(n: usize) bool {
     if (n >= node_count or degree(n) == 0) return false;
     const p = stopPoint(n);
-    if (p.x < 0 or p.x > size_x or p.z < 0 or p.z > size_z) return false;
+    if (!insideWindow(p.x, p.z, 0)) return false;
     if (inWater(p.x, p.z)) return false;
     for (buildings) |b| if (insideBuilding(p.x, p.z, b)) return false;
     for (roads) |r| if ((r.a == n or r.b == n) and r.pedestrians) return true;
@@ -454,7 +515,7 @@ fn chainJitter(street: usize, class: u8, from: Vec, to: Vec, step: f32, seed: u3
         const amount: f32 = if (edge) 0 else wobble;
         const x = from.x + (to.x - from.x) * t + jitter(seed +% @as(u32, @intCast(k)) * 7, amount);
         const z = from.z + (to.z - from.z) * t + jitter(seed +% @as(u32, @intCast(k)) * 13 + 5, amount);
-        if (x < 8 or z < 8 or x > size_x - 8 or z > size_z - 8 or inWater(x, z)) {
+        if (!insideWindow(x, z, 8) or inWater(x, z)) {
             previous = null;
             continue;
         }
@@ -781,12 +842,12 @@ fn seedStreets() void {
     var seed: u32 = 100;
     for (0..11) |k| {
         const z = 90 + @as(f32, @floatFromInt(k)) * 86 + jitter(seed +% @as(u32, @intCast(k)) * 31, 9);
-        chainJitter(7, 0, .{ .x = 60, .z = z }, .{ .x = size_x - 60, .z = z }, 74, seed +% @as(u32, @intCast(k)) * 3, 2.5);
+        chainJitter(7, 0, .{ .x = origin_x + 60, .z = z }, .{ .x = origin_x + size_x - 60, .z = z }, 74, seed +% @as(u32, @intCast(k)) * 3, 2.5);
         seed +%= 7;
     }
     for (0..14) |k| {
         const x = 90 + @as(f32, @floatFromInt(k)) * 88 + jitter(seed +% @as(u32, @intCast(k)) * 17, 10);
-        chainJitter(8, 0, .{ .x = x, .z = 50 }, .{ .x = x + jitter(seed +% @as(u32, @intCast(k)), 24), .z = size_z - 50 }, 78, seed +% @as(u32, @intCast(k)) * 5, 2.5);
+        chainJitter(8, 0, .{ .x = x, .z = origin_z + 50 }, .{ .x = x + jitter(seed +% @as(u32, @intCast(k)), 24), .z = origin_z + size_z - 50 }, 78, seed +% @as(u32, @intCast(k)) * 5, 2.5);
         seed +%= 11;
     }
     // A couple of long diagonals for variety, and the outer ring.
@@ -835,7 +896,7 @@ fn accessStreets() void {
                 const depth = access_depth * (0.75 + hash01(seed) * 0.5);
                 const ex = jx + nx * side * depth;
                 const ez = jz + nz * side * depth;
-                if (ex < 8 or ez < 8 or ex > size_x - 8 or ez > size_z - 8) continue;
+                if (!insideWindow(ex, ez, 8)) continue;
                 if (inWater(ex, ez) or inWater((jx + ex) / 2, (jz + ez) / 2)) continue;
                 // Reuse the avenue node if the lane happens to start on one,
                 // otherwise split the avenue so the lane has a junction.
@@ -867,7 +928,7 @@ fn riverside(street: usize, class: u8, side: f32, setback: f32, step: f32) void 
         const lateral = side * (s.half_width + setback);
         const x = s.x - s.dz / length * lateral + jitter(seed +% @as(u32, @intCast(k)) * 3, 4);
         const z = s.z + s.dx / length * lateral + jitter(seed +% @as(u32, @intCast(k)) * 11 + 2, 4);
-        if (x < 8 or z < 8 or x > size_x - 8 or z > size_z - 8 or inWater(x, z)) {
+        if (!insideWindow(x, z, 8) or inWater(x, z)) {
             previous = null;
             continue;
         }
@@ -885,10 +946,10 @@ fn riverside(street: usize, class: u8, side: f32, setback: f32, step: f32) void 
 
 fn ring(street: usize, class: u8, inset: f32) void {
     const corners = [_]Vec{
-        .{ .x = inset, .z = inset },
-        .{ .x = size_x - inset, .z = inset },
-        .{ .x = size_x - inset, .z = size_z - inset },
-        .{ .x = inset, .z = size_z - inset },
+        .{ .x = origin_x + inset, .z = origin_z + inset },
+        .{ .x = origin_x + size_x - inset, .z = origin_z + inset },
+        .{ .x = origin_x + size_x - inset, .z = origin_z + size_z - inset },
+        .{ .x = origin_x + inset, .z = origin_z + size_z - inset },
     };
     for (0..4) |i| chain(street, class, corners[i], corners[(i + 1) % 4], 95, 300 +% @as(u32, @intCast(i)));
 }
@@ -1081,7 +1142,7 @@ fn frontageSweep(first_free: usize, share: f64) usize {
                 const cz = here_z + nz * side * back;
                 const x = cx - width / 2;
                 const z = cz - depth / 2;
-                if (x < 3 or z < 3 or x + width > size_x - 3 or z + depth > size_z - 3) continue;
+                if (!insideWindow(x, z, 3) or !insideWindow(x + width, z + depth, 3)) continue;
                 if (inWaterForBuilding(x, z) or inWaterForBuilding(x + width, z + depth)) continue;
                 if (!clearOfBuildings(x, z, width, depth, placed)) continue;
                 if (!clearOfRoads(x, z, width, depth, rid)) continue;
@@ -1171,7 +1232,7 @@ fn seedBuildings(first_free: usize) usize {
                     const z = nodes[n].z + (b.x - a.x) / span * offset * side + 3.1;
                     const width: f32 = 6.2;
                     const depth: f32 = 7;
-                    if (x < 3 or z < 3 or x + width > size_x - 3 or z + depth > size_z - 3) continue;
+                    if (!insideWindow(x, z, 3) or !insideWindow(x + width, z + depth, 3)) continue;
                     if (inWaterForBuilding(x, z) or inWaterForBuilding(x + width, z + depth)) continue;
                     if (!clearOfBuildings(x, z, width, depth, placed)) continue;
                     if (!clearOfRoads(x, z, width, depth, road)) continue;
@@ -1273,7 +1334,7 @@ const LandSite = struct { x: f32, z: f32, w: f32, d: f32 };
 const park_clearance: f32 = 5.5;
 
 fn parkClear(x: f32, z: f32, w: f32, d: f32) bool {
-    if (x < 4 or z < 4 or x + w > size_x - 4 or z + d > size_z - 4) return false;
+    if (!insideWindow(x, z, 4) or !insideWindow(x + w, z + d, 4)) return false;
     if (inWaterForBuilding(x, z) or inWaterForBuilding(x + w, z) or inWaterForBuilding(x, z + d) or
         inWaterForBuilding(x + w, z + d) or inWaterForBuilding(x + w / 2, z + d / 2)) return false;
     const samples = [_]Vec{

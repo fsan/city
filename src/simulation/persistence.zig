@@ -306,7 +306,7 @@ fn validate(s: *const State) bool {
     if (!between(c.elapsed, 160, 1e9) or !between(c.speed, 0, 16) or !between(c.resume_speed, 0.001, 16) or !between(c.accumulator, 0, @as(f32, 1.0 / 30.0)) or
         !between(c.next_sample, c.elapsed, c.elapsed + 30.1) or !between(c.next_routes, c.elapsed, c.elapsed + 60.1) or !between(c.next_operating, c.elapsed, c.elapsed + 30.1) or
         !between(c.next_week, c.elapsed, c.elapsed + calendar.seconds_per_week + 0.1) or
-        !between(s.camera.zoom, 0.5, 12) or !between(s.camera.x, -100, city.size_x + 100) or !between(s.camera.z, -100, city.size_z + 100) or
+        !between(s.camera.zoom, 0.5, 12) or !between(s.camera.x, city.origin_x - 100, city.origin_x + city.size_x + 100) or !between(s.camera.z, city.origin_z - 100, city.origin_z + city.size_z + 100) or
         n < 2 or n > city.max_nodes or roads.len == 0 or roads.len > city.max_roads or town.street_count < 14 or town.street_count > city.max_roads + 14 or
         town.buildings.len != city.lot_count or town.parcels.len > parcels.max_parcels or town.parcels.len < city.lot_count or
         people.len != city.population or companies.len == 0 or companies.len > city.lot_count or
@@ -332,7 +332,7 @@ fn validate(s: *const State) bool {
         if (d.completed > d.wait_starts or d.abandoned > d.wait_starts - d.completed or d.abandoned_after_capacity > d.abandoned or d.wait_total < 0 or (d.completed == 0 and d.wait_total != 0)) return false;
     }
     for (&edges) |*row| @memset(row, -1);
-    for (town.nodes) |node| if (!between(node.x, 0, city.size_x) or !between(node.z, 0, city.size_z) or node.street >= town.street_count or !near(node.y, city.elevation(node.x, node.z))) return false;
+    for (town.nodes) |node| if (!city.insideWindow(node.x, node.z, 0) or node.street >= town.street_count or !near(node.y, city.elevation(node.x, node.z))) return false;
     for (roads, 0..) |road, i| {
         if (road.a >= n or road.b >= n or road.a == road.b or road.district >= 12 or road.street >= town.street_count or !between(road.condition, 0, 100) or !between(road.length, 0.01, 1000) or !between(road.slope, 0, 10) or edges[road.a][road.b] >= 0 or m.lanes[i] > 2 or !between(m.congestion[i], 0, 1) or m.queues[i] > m.vehicles.len or m.occupancy[i] > m.vehicles.len) return false;
         const a = town.nodes[road.a];

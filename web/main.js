@@ -19,6 +19,15 @@ try {
   );
   game = result.instance.exports;
   const renderer = createRenderer(canvas);
+  // The plan has to be chosen before `init` lays the town out, so a change
+  // stores the choice and reloads rather than starting a second frame loop.
+  const plan = Number(localStorage.getItem("city-plan") ?? "1");
+  $("city-plan").value = String(plan);
+  $("city-plan").onchange = () => {
+    localStorage.setItem("city-plan", $("city-plan").value);
+    location.reload();
+  };
+  game.set_city(plan);
   game.init();
   $("loading").hidden = true;
   start(renderer);
