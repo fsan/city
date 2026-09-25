@@ -100,8 +100,11 @@ baseline the slice-17 note records (820 lots of 900 storage, 1,328 nodes of
 
 ## Limits
 
-- Construction is deliberately abstract: no crews, no materials, no terrain
-  grading and no foundation cost. Numbered item 11 owns those.
+- Numbered item 11 now gives approved permits a physical construction path in
+  [physical-construction-slice.md](physical-construction-slice.md): measured
+  access and terrain, a travelling contractor crew, staged materials and
+  explicit grading/foundation costs. Those costs remain bounded abstractions;
+  heavy equipment, supplier firms and engineering design are still absent.
 - A proposal never redevelops an occupied or already built lot, so the authored
   town's standing buildings are permanent in this batch.
 - Demand is a structural ratio of residents to dwellings and premises, not a

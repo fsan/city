@@ -247,10 +247,11 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             67 => @floatFromInt(game.parking.kerbside_used),
             68 => @floatFromInt(game.residents.batches_applied),
             69 => @floatFromInt(game.residents.batches_dropped),
-            // Slice 18 development proposals and permits. 70-73 are the live
+            // Slice 18/19 development proposals and permits. 70-73 are the live
             // queue, 74-77 what has happened so far, and 78 the levy the
-            // municipal ledger has actually received.
-            70...78 => game.development.read0(field - 70),
+            // municipal ledger has actually received. 79-85 are the physical
+            // construction account and live crew/material counts.
+            70...85 => game.development.read0(field - 70),
             else => -1,
         },
         1 => {

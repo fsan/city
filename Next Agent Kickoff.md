@@ -1,19 +1,23 @@
-# Next agent kickoff — slice 18 complete in the worktree; awaiting the next slice
+# Next agent kickoff — slice 19 (numbered item 11) complete in the worktree; item 12 is next
 
-Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 at `60a000a`; slice 5 at `4e29f2f`; slice 6 at `cfa432d`; slice 7 at `dcc2577`; slice 8 at `e71fa0b`. Slices 9 (housing and occupancy) and 10 (street types, parking and learned travel) are complete and committed at `fd1a3a4`. Two further batches are also committed: player-placed traffic signals and crosswalks at `935cfb6`, and per-light timing, flashing yellow, coordination and bulk editing at `92d1846`; their own note labels those two batches slices 11 and 12. The worktree is clean, so nothing is left to commit before the next slice. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, explicit bus fleet and staffing commitments, and cure-first transport contract enforcement.
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Read this note before editing. Slices 1–18 and the dense-town/signals batches remain as recorded below; do not reset, rewrite history or push.
 
-**Slice 17 is complete and committed.** The committed dense-town batch
-(slice 15/16, commit `56f948c`) built and rendered but was internally
-inconsistent: the street wall placed 391 of its 820 target lots, only 7 of 12
-park anchors found a clear rectangle, Garden Ward had no green space, and
-`persistence.load` returned 4 for its own freshly written v12 file. Slice 17
-repairs and completes it — measured street-wall calibration, a per-district
-park search, deck heights registered before their nodes and refreshed by
-`city.refreshElevations`, no duplicate graph edges, and the snapshot validator
-using `city.isHome` so apartments round-trip. See
-`docs/dense-town-slice.md` for the rules, the measured table and the limits,
-including the one open defect: saving *after* the renderer has drawn a frame
-still returns 4, while saving immediately after `init` returns 0.
+**Slice 19 (numbered item 11, physical building construction) is complete, built, probed and documented in the worktree; it is not committed.** The batch gives an approved private-development permit a physical construction path instead of the abstract item-10 timer:
+
+- `src/simulation/development.zig` now measures road access and terrain slope across the proposed footprint, computes access, grading, foundation, material and labour costs, and gives each proposal a private construction budget. A site beyond the access limit or above the slope limit is refused.
+- An approved job reserves one free four-person contractor crew. The crew uses the ordinary resident movement path and an existing work-order field (`work_order_base + application number`) outside the road-contract index range. The job phases are mobilising, delivering materials, building, blocked and complete.
+- Materials are staged over the construction window and paid from the private budget as they arrive. Progress advances only in proportion to delivered materials. The municipal ledger still records only the levy as kind 12; there is no hidden municipal construction cost.
+- Completion still redevelops the authored lot in place through the existing `housing.enroll` / `residents.addEmployer` paths. Refusals and blocks carry their own reason codes. A visible site/material marker and the amber crew colour make the job inspectable.
+- Schema moves to **v14 / `bellwether-2027-12-v14`**; v13 and older files are rejected with result 3. Group 31 fields 0–19 are unchanged; fields 20–36 carry access, slope, access/grade/foundation/material/labour costs, private budget/spend, material requirement/delivery, contractor, crew, phase, blocked reason and progress. Group 0 fields 79–85 carry construction spend, material delivered, crew counts, blocked jobs and committed private budget.
+- `web/planning.js` and `web/index.html` show access/terrain/cost estimates for open applications and phase, progress, materials and private spend for approved or completed jobs. `docs/physical-construction-slice.md` is the slice note.
+
+**Verified.** The focused ReleaseSafe probe outside the repository reports `checks failed: 0`: the dense town remains 820 lots / 1,328 nodes / 1,624 roads with 10 vacant sites; the first application lands on parcel 29 with access 1, slope 0.000, a £416,000.00 private budget, a £17,308.80 estimate and 111.3 material units; granting it assigns company 5, a four-person crew and work order 1000001, moves the £1,300.00 levy as ledger kind 12 and starts £5,624.00 of private groundwork; all four crew arrive after 13,632 fixed steps; the dwelling completes in place with £17,619.39 private spend, 111.30/111.30 materials and progress 1.00; the v14 round trip returns 0 at 7,749,309 bytes with the built count and private spend preserved; a vacant lot moved beyond the access limit attracts no application; and a v13 file returns 3. Docker ReleaseSafe builds and `node --check` pass, and the served `/build/city.wasm` matches the published `/output/city.wasm` byte for byte during the final publication check. Independent Zig builds can carry different metadata, so publication is checked as served-versus-published rather than by comparing two independent build hashes.
+
+**Limits.** Access, grading, foundation, material and labour costs are bounded policy numbers, not tendered or market prices. Construction crews are the existing contractor rosters; supplier firms, heavy equipment, foundation engineering, regional trade and parcel subdivision remain future work. The proposal ring remains 24 records, at most 8 pending and at most 2 new applications per day. Demand remains a structural ratio rather than a price model. The old slice-17 save-after-render defect remains a separate open issue.
+
+**Authorized goal:** the user's "finish the next missing slice" authorized item 11, and that slice is now implemented, built, probed and documented in the worktree. No further slice is authorized. **Numbered item 12, property valuation and sunlight, is the next candidate**, but it must not start until the user names it. Confirm the numbering if the request says only "slice 12", because the traffic-signal note also uses that label. Each new slice still needs its own short note, Docker ReleaseSafe build, focused simulation checks, browser/report verification where applicable, documentation and a refreshed kickoff before the following slice starts.
+
+Slice 19 is uncommitted. `git status` should show modified `src/main.zig`, `src/simulation/development.zig`, `src/simulation/game.zig`, `src/simulation/persistence.zig`, `src/render/scene.zig`, `web/data.js`, `web/index.html`, `web/planning.js`, `docs/abi.md`, `docs/city-planning.md`, `docs/development-proposals-slice.md`, `docs/README.md`, `Next Agent Kickoff.md`, and new `docs/physical-construction-slice.md`. Do not commit, reset, rewrite history or push without a request.
 
 **Slice 18 is complete in the worktree (not yet committed).** It is the next
 entry in the numbered list below — development proposals and permits, private
@@ -523,3 +527,22 @@ Timetables, transfers and automatic route optimisation need separate transport s
 ## Continuation instruction
 
 Slices 1–14 are committed, the slice 15/16 dense-town batch and the slice 17 repair are committed, and slice 18 (numbered item 10) is complete, verified and documented in the uncommitted worktree. This kickoff authorizes no new slice by itself. If the user names the next slice, confirm which numbering they mean when the request is ambiguous, then for that slice: inspect the actual code, write a short slice note, implement the bounded batch, run Docker ReleaseSafe build/startup, run focused simulation checks outside the repository, verify browser/report behavior where applicable, update documentation and refresh this kickoff before starting the following slice. Preserve existing work and do not stop at a plan. Do not add a permanent test suite or expand into the proposed sequence without authorization. Finish each slice with what changed, what was verified and remaining limitations.
+
+## Historical state before slice 19
+
+### Historical pre-slice-19 kickoff
+
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Slices 1–3 are complete and committed at `704a918`; slice 4 at `60a000a`; slice 5 at `4e29f2f`; slice 6 at `cfa432d`; slice 7 at `dcc2577`; slice 8 at `e71fa0b`. Slices 9 (housing and occupancy) and 10 (street types, parking and learned travel) are complete and committed at `fd1a3a4`. Two further batches are also committed: player-placed traffic signals and crosswalks at `935cfb6`, and per-light timing, flashing yellow, coordination and bulk editing at `92d1846`; their own note labels those two batches slices 11 and 12. The worktree is clean, so nothing is left to commit before the next slice. Those batches added optional agreement regularity targets, manual local save/load, measured passenger service outcomes, kerbside bus-stop placement/markers, smoother inter-segment vehicle movement, explicit bus fleet and staffing commitments, and cure-first transport contract enforcement.
+
+**Slice 17 is complete and committed.** The committed dense-town batch
+(slice 15/16, commit `56f948c`) built and rendered but was internally
+inconsistent: the street wall placed 391 of its 820 target lots, only 7 of 12
+park anchors found a clear rectangle, Garden Ward had no green space, and
+`persistence.load` returned 4 for its own freshly written v12 file. Slice 17
+repairs and completes it — measured street-wall calibration, a per-district
+park search, deck heights registered before their nodes and refreshed by
+`city.refreshElevations`, no duplicate graph edges, and the snapshot validator
+using `city.isHome` so apartments round-trip. See
+`docs/dense-town-slice.md` for the rules, the measured table and the limits,
+including the one open defect: saving *after* the renderer has drawn a frame
+still returns 4, while saving immediately after `init` returns 0.

@@ -118,38 +118,91 @@ Group 15 fields 0–5: road preview error, price, length, parcel count, selected
 
 Commands: `road_begin(curved)`, `road_point(index,x,z)`, `road_screen_point(index,x,y)`, `road_build()`, `road_cancel()`, `zoning_show(enabled)`, `zoning_pick(screenX,screenY)`, `zoning_apply(parcel,zone,wholeBlock)`. Overlay 3 is pedestrian density.
 
-## Development proposals and permits (slice 18)
+## Development proposals and permits (slice 18; physical construction slice 19)
 
 Private development responds to the zoning the player has applied and to demand
 the live simulation has actually generated. A proposal always targets an
 authored lot whose kind is vacant (7) and whose parcel is zoned residential,
-commercial, industrial or mixed; the lot is redeveloped in place, so it keeps
+commercial, industrial or mixed. The lot is redeveloped in place, so it keeps
 its identity, position, frontage, node, street and address number.
 
-Group 31 reads one application by newest-first index. Fields: 0 application
-number (one-based), 1 parcel, 2 building (the authored lot), 3 district, 4 zone,
-5 proposed kind (see `web/data.js`), 6 height, 7 assessed value, 8 capacity,
-9 levy in pounds, 10 offered time, 11 decision deadline, 12 decided time,
-13 expected completion time, 14 decision (0 offered, 1 approved, 2 refused,
-3 lapsed, 4 built), 15 reason (0 none, 1 no eligible site, 2 not zoned,
-3 no measured demand, 4 site already built on, 5 refused by the authority,
-6 lapsed undecided), 16 the measured pressure that justified the application,
-17 applications ever lodged, 18 currently pending, 19 retained records.
-Out-of-range indexes return -1.
+An approved job is now physical. Its site is measured for road access and
+terrain slope, and its private construction budget pays for access, grading,
+foundations, staged materials and a contractor crew. The crew uses the ordinary
+resident movement path and an existing road-contract-style work order outside
+the road-order index range; the municipal ledger records only the development
+levy as kind 12.
 
-Group 0 fields 70-78 are the running totals: 70 pending applications, 71 permits
-under construction, 72 completed buildings, 73 applications refused, 74 lapsed,
-75 ever lodged, 76 development levies received, 77 zoned vacant sites that are
-eligible right now, 78 applications lodged today. Group 16 field 7 is the
-pending application on that parcel, newest first, or -1.
+Group 31 reads one application by newest-first index. Fields 0–19 preserve the
+slice-18 contract:
+
+| Field | Value |
+| --- | --- |
+| 0 | Application number, one-based |
+| 1 | Parcel |
+| 2 | Authored lot/building |
+| 3 | District |
+| 4 | Zone |
+| 5 | Proposed kind (see `web/data.js`) |
+| 6 | Proposed height |
+| 7 | Assessed value |
+| 8 | Capacity |
+| 9 | Development levy |
+| 10 | Offered time |
+| 11 | Decision deadline |
+| 12 | Decided time, 0 while offered |
+| 13 | Expected or actual completion time |
+| 14 | Decision: 0 offered, 1 approved, 2 refused, 3 lapsed, 4 built |
+| 15 | Final refusal/lapse reason |
+| 16 | Measured pressure justifying the application |
+| 17 | Applications ever lodged |
+| 18 | Currently pending applications |
+| 19 | Retained records |
+
+Fields 20–36 are the physical construction account:
+
+| Field | Value |
+| --- | --- |
+| 20 | Access state: 0 unavailable, 1 direct frontage, 2 paid access |
+| 21 | Measured terrain slope across the proposed footprint |
+| 22 | Access cost |
+| 23 | Grading cost |
+| 24 | Foundation cost |
+| 25 | Material cost |
+| 26 | Estimated labour cost |
+| 27 | Private applicant budget |
+| 28 | Private amount spent so far |
+| 29 | Material units required |
+| 30 | Material units delivered |
+| 31 | Assigned contractor company, -1 when none |
+| 32 | Crew size |
+| 33 | Physical phase: 0 none, 1 mobilising, 2 delivering, 3 building, 4 blocked, 5 complete |
+| 34 | Current block/refusal reason |
+| 35 | Construction progress, 0–1 |
+| 36 | Construction work order, -1 when none |
+
+Out-of-range application indexes return -1.
+
+Group 0 fields 70–85 are the running totals: 70 pending applications, 71
+physical jobs, 72 completed buildings, 73 applications refused, 74 lapsed,
+75 ever lodged, 76 development levies received, 77 zoned vacant sites, 78
+applications lodged today, 79 private construction spend, 80 material units
+delivered, 81 crews mobilising, 82 crews delivering/building, 83 blocked jobs,
+84 private budget committed. Group 16 field 7 is the pending application on that
+parcel, newest first, or -1. Group 3 field 7 and group 4 field 5 can carry a
+construction work order outside the road-order index range while a crew is
+travelling or working.
 
 Commands: `development_accept(id)` grants the permit, records the levy in the
-municipal ledger as kind 12 under the application's own number and starts a
-bounded 2-6 day build; it returns false and retires the application with reason
-4 when the site is no longer vacant. `development_refuse(id)` retires the
-application with reason 5. Both return false for an application that has already
-been decided. The levy is the only money this batch moves; construction is the
-applicant's own cost.
+municipal ledger as kind 12 under the application's own number, finds a free
+four-person contractor crew, assigns the site’s private budget and starts
+physical work. It returns false and retires the application when access,
+terrain, funds or the site itself fail; if no contractor crew is free the
+application remains open with blocked reason 10. `development_refuse(id)`
+retires the application with reason 5. Both return false for an application
+that has already been decided. The levy is the only municipal money movement;
+all construction costs are the applicant's private budget paid to the selected
+contractor.
 
 ## Agreement review additions
 
@@ -461,8 +514,9 @@ Commands: `road_class(value)` sets the class (0-2) used by the next
 `road_begin`; `parking_rebuild()` re-seeds facilities after a road is built and
 reposts kerbside prices.
 
-Save schema is version 13, rules `bellwether-2027-11-v13`; version 12 and older are
-rejected with result 3. The bounded development queue, its counters and its
-district rotation are serialized and validated field by field. Parking facilities, occupancy, prices, aggregate
+Save schema is version 14, rules `bellwether-2027-12-v14`; version 13 and older are
+rejected with result 3. The bounded development queue, its physical
+construction account, counters and district rotation are serialized and
+validated field by field. Parking facilities, occupancy, prices, aggregate
 availability, movement, counters and every learned resident field are
 serialized and validated.

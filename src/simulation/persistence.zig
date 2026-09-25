@@ -130,6 +130,8 @@ const Development = struct {
     lodged_today: u32,
     building: usize,
     cursor: u8,
+    construction_spent_total: f64,
+    materials_delivered_total: f64,
 };
 const State = struct {
     format: []const u8,
@@ -158,13 +160,40 @@ const State = struct {
     history: []const game.Sample,
     history_count: usize,
 };
+// Slice 19: a work order is either a road-contract index (0..contracts.count)
+// or a construction work order outside that range. These helpers validate the
+// parsed snapshot, never the live module, because validation precedes commit.
+fn parsedJob(s: *const State, order: i32) ?*const development.Proposal {
+    const number = development.jobNumber(order) orelse return null;
+    for (s.development.proposals) |*p| if (p.number == number) return p;
+    return null;
+}
+fn parsedWorkOrder(s: *const State, order: i32) bool {
+    const p = parsedJob(s, order) orelse return false;
+    return p.decision == .approved and p.company >= 0 and p.phase != .complete and p.phase != .none;
+}
+fn parsedCrew(s: *const State, order: i32, person: usize) bool {
+    const p = parsedJob(s, order) orelse return false;
+    if (p.decision != .approved) return false;
+    for (p.crew[0..@as(usize, p.crew_count)]) |id| if (id == person) return true;
+    return false;
+}
+fn parsedCompany(s: *const State, order: i32) i32 {
+    const p = parsedJob(s, order) orelse return -1;
+    if (p.decision != .approved) return -1;
+    return p.company;
+}
+fn validWorkRef(s: *const State, order: i32, road_orders: usize) bool {
+    if (index(order, road_orders)) return true;
+    return parsedWorkOrder(s, order);
+}
 var lane_values: [city.max_roads]u32 = undefined;
 fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 13,
-        .rules = "bellwether-2027-11-v13",
+        .version = 14,
+        .rules = "bellwether-2027-12-v14",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = city.lots(), .parcels = parcels.storage[0..parcels.count] },
@@ -186,7 +215,7 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
         .mobility = .{ .vehicles = &transport.vehicles, .lines = &transport.lines, .accounts = &operators.accounts, .observations = &transport.observations, .previous_observations = &transport.previous_observations, .lanes = lane_values[0..city.road_count], .occupancy = transport.occupancy[0..city.road_count], .queues = transport.queues[0..city.road_count], .congestion = transport.congestion[0..city.road_count], .movement = transport.movement[0..city.road_count], .fare_cap = transport.fare_cap, .subsidy = transport.subsidy, .subsidy_total = transport.subsidy_total, .junctions = signals.junctions[0..signals.count], .placed_total = signals.placed_total, .removed_total = signals.removed_total },
         .treasury = .{ .cash = finance.cash, .reserved = finance.reserved, .residential_rate = finance.residential_rate, .commercial_rate = finance.commercial_rate, .funding = finance.funding, .active_funding = finance.active_funding, .maintenance_paid = finance.maintenance_paid, .collected = finance.collected, .spent = finance.spent, .arrears = &finance.arrears, .entry_count = finance.entry_count, .entries = finance.entries[0..@min(finance.entry_count, finance.entries.len)], .periods = finance.periods[0..@min(finance.period_count, finance.periods.len)], .period_count = finance.period_count, .period_opening = finance.period_opening, .period_receipts = finance.period_receipts, .period_expenses = finance.period_expenses, .period_entries = finance.period_entries, .period_week = finance.period_week },
         .services = .{ .orders = contracts.orders[0..contracts.count], .next_review = contracts.next_review, .current = &agreements.agreements, .history = agreements.history[0..@min(agreements.history_count, agreements.history.len)], .history_count = agreements.history_count, .next_number = agreements.next_number },
-        .development = .{ .proposals = development.storage[0..@min(@as(usize, development.count), development.storage.len)], .count = development.count, .next_number = development.next_number, .lodged_total = development.lodged_total, .approved_total = development.approved_total, .refused_total = development.refused_total, .lapsed_total = development.lapsed_total, .built_total = development.built_total, .levies_collected = development.levies_collected, .lodged_today = development.lodged_today, .building = development.building, .cursor = development.cursor },
+        .development = .{ .proposals = development.storage[0..@min(@as(usize, development.count), development.storage.len)], .count = development.count, .next_number = development.next_number, .lodged_total = development.lodged_total, .approved_total = development.approved_total, .refused_total = development.refused_total, .lapsed_total = development.lapsed_total, .built_total = development.built_total, .levies_collected = development.levies_collected, .lodged_today = development.lodged_today, .building = development.building, .cursor = development.cursor, .construction_spent_total = development.construction_spent_total, .materials_delivered_total = development.materials_delivered_total },
         .trust = &game.trust,
         .history = game.history[0..@min(game.history_count, game.history.len)],
         .history_count = game.history_count,
@@ -352,10 +381,10 @@ fn validate(s: *const State) bool {
     var riders: [transport.vehicles.len]usize = @splat(0);
     var employees: [city.buildings.len]usize = @splat(0);
     var occupants: [city.buildings.len]usize = @splat(0);
-    for (people) |*p| {
+    for (people, 0..) |*p, person_index| {
         if (p.phase > 3 or p.mode > 3 or p.bus_stage > 2 or p.shift > 2 or p.routine > 5 or p.skill > 2 or p.node >= n or p.next >= n or p.destination >= n or p.origin >= n or p.car_node >= n or p.bike_node >= n or p.boarding >= n or p.exit_node >= n or
             p.home >= town.buildings.len or p.current_building >= town.buildings.len or p.origin_building >= town.buildings.len or p.destination_building >= town.buildings.len or
-            !index(p.employer, companies.len) or !index(p.order, services.orders.len) or !index(p.bus_line, 8) or !index(p.bus, m.vehicles.len) or p.wallet < 0 or p.income < 0 or p.bus_wait < 0 or p.travel < 0 or p.last_trip < 0 or
+            !index(p.employer, companies.len) or !validWorkRef(s, p.order, services.orders.len) or !index(p.bus_line, 8) or !index(p.bus, m.vehicles.len) or p.wallet < 0 or p.income < 0 or p.bus_wait < 0 or p.travel < 0 or p.last_trip < 0 or
             !between(p.bus_wait_start, -1, c.elapsed) or p.bus_full_mask > 7 or
             p.plan_mode > 3 or p.parked_vehicle > 2 or p.depart_bucket >= travel.bucket_count or
             p.plan_facility < -1 or p.park_facility < -1 or p.plan_facility >= @as(i32, @intCast(parking.max_facilities)) or p.park_facility >= @as(i32, @intCast(parking.max_facilities)) or
@@ -375,6 +404,7 @@ fn validate(s: *const State) bool {
         if (p.node != p.next and edges[p.node][p.next] < 0) return false;
         if (p.bus_stage == 1 and p.bus < 0) return false;
         if (p.order >= 0 and (!p.crew or p.employer < 0 or companies[@intCast(p.employer)].order != p.order)) return false;
+        if (p.order >= development.work_order_base and !parsedCrew(s, p.order, person_index)) return false;
         // Slice 8: an employed resident's posted wage is exactly their employer's
         // posted wage; a jobseeker has no wage at all.
         if (p.employer >= 0) {
@@ -390,7 +420,7 @@ fn validate(s: *const State) bool {
     }
     var employed: usize = 0;
     for (companies, 0..) |*company, i| {
-        if (company.building >= town.buildings.len or company.cash < 0 or company.costs < 0 or company.margin < 1 or company.labour <= 0 or company.crew_count > 4 or company.employees != employees[i] or company.employees > company.capacity or !index(company.order, services.orders.len) or town.buildings[company.building].employer != @as(i32, @intCast(i)) or company.wage <= 0 or company.wage > 1000 or company.skill_required > 2 or company.wage_arrears < 0 or company.wage_arrears > @as(f64, @floatFromInt(company.employees)) * company.wage + 0.001 or !between(company.staffing_pressure, 0, 1)) return false;
+        if (company.building >= town.buildings.len or company.cash < 0 or company.costs < 0 or company.margin < 1 or company.labour <= 0 or company.crew_count > 4 or company.employees != employees[i] or company.employees > company.capacity or !validWorkRef(s, company.order, services.orders.len) or town.buildings[company.building].employer != @as(i32, @intCast(i)) or company.wage <= 0 or company.wage > 1000 or company.skill_required > 2 or company.wage_arrears < 0 or company.wage_arrears > @as(f64, @floatFromInt(company.employees)) * company.wage + 0.001 or !between(company.staffing_pressure, 0, 1)) return false;
         if (company.capacity != town.buildings[company.building].capacity) return false;
         employed += employees[i];
         for (company.crew[0..company.crew_count], 0..) |id, k| {
@@ -461,21 +491,48 @@ fn validate(s: *const State) bool {
     if (d.approved_total + d.refused_total + d.lapsed_total > d.count or d.built_total > d.approved_total) return false;
     if (d.building > d.approved_total - d.built_total or d.building > development.max_pending) return false;
     if (d.levies_collected < 0 or d.lodged_today > development.max_lodged_per_day or d.cursor >= city.district_count) return false;
+    if (!between(d.construction_spent_total, 0, 1e15) or !between(d.materials_delivered_total, 0, 1e15)) return false;
     var open_applications: usize = 0;
+    var active_jobs: usize = 0;
+    var active_spend: f64 = 0;
     for (d.proposals) |*p| {
         if (p.number == 0 or p.number >= d.next_number) return false;
         if (p.parcel >= town.parcels.len or p.building >= town.buildings.len or p.parcel != p.building) return false;
         if (p.district >= city.district_count or p.zone < 1 or p.zone > 4) return false;
-        if (@intFromEnum(p.decision) > 4 or @intFromEnum(p.reason) > 6) return false;
+        if (@intFromEnum(p.decision) > 4 or @intFromEnum(p.reason) > 12 or @intFromEnum(p.phase) > 5 or @intFromEnum(p.blocked) > 12) return false;
         if (p.kind > @intFromEnum(city.Kind.plaza)) return false;
-        if (p.height < 0 or p.value < 0 or p.capacity > city.population) return false;
+        if (!std.math.isFinite(p.height) or p.height < 0 or !std.math.isFinite(p.value) or p.value < 0 or p.capacity > city.population) return false;
         if (p.levy < 0 or p.levy > p.value * development.levy_rate + 0.011) return false;
-        if (!between(p.offered, 160, c.elapsed) or p.deadline < p.offered or p.decided < 0 or p.complete < 0) return false;
-        if (p.decided > c.elapsed or p.complete > c.elapsed + 6 * development.days + 0.001) return false;
-        if (!std.math.isFinite(p.pressure) or p.pressure < 0 or p.pressure > 1000) return false;
-        if (p.decision == .offered) open_applications += 1;
+        if (!between(p.offered, 160, c.elapsed) or p.deadline < p.offered or !std.math.isFinite(p.pressure) or p.pressure < 0 or p.pressure > 1000) return false;
+        if (p.access > 2 or !std.math.isFinite(p.slope) or p.slope < 0 or p.crew_count > 4) return false;
+        if (p.access_cost < 0 or p.grade_cost < 0 or p.foundation_cost < 0 or p.materials_cost < 0 or p.labour_cost < 0 or
+            p.budget < 0 or p.spent < 0 or p.materials_required < 0 or p.materials_delivered < 0 or
+            p.spent > p.budget + 0.011 or p.materials_delivered > p.materials_required + 0.001 or
+            !between(p.progress, 0, 1)) return false;
+        if (!index(p.company, companies.len)) return false;
+        if (p.decision == .offered) {
+            open_applications += 1;
+            if (p.decided != 0 or p.complete != 0 or p.phase != .none or p.company != -1 or p.crew_count != 0 or p.spent != 0 or p.materials_delivered != 0 or p.progress != 0) return false;
+        } else if (p.decision == .approved) {
+            active_jobs += 1;
+            if (p.decided < p.offered or p.decided > c.elapsed or p.complete < p.decided or p.complete > c.elapsed + 20 * development.days + 0.001) return false;
+            if (p.company < 0 or p.crew_count != 4 or p.phase == .none or p.phase == .complete) return false;
+            if (!parsedWorkOrder(s, development.workOrder(p.number))) return false;
+            for (p.crew[0..@as(usize, p.crew_count)], 0..) |id, k| {
+                if (id >= people.len or !people[id].crew or people[id].order != development.workOrder(p.number)) return false;
+                for (p.crew[0..k]) |old| if (old == id) return false;
+            }
+            active_spend += p.spent;
+        } else if (p.decision == .built) {
+            if (p.decided < p.offered or p.decided > c.elapsed or p.complete < p.decided or p.complete > c.elapsed + 0.001) return false;
+            if (p.phase != .complete or p.progress < 1 or p.materials_delivered + 0.001 < p.materials_required) return false;
+            if (p.company != -1 or p.crew_count != 0) return false;
+        } else {
+            if (p.decided < p.offered or p.decided > c.elapsed or p.complete != 0 or p.phase != .none or p.company != -1 or p.crew_count != 0 or p.spent != 0 or p.materials_delivered != 0 or p.progress != 0) return false;
+        }
     }
-    if (open_applications > development.max_pending) return false;
+    if (open_applications > development.max_pending or active_jobs != d.building) return false;
+    if (active_spend > d.construction_spent_total + 0.011) return false;
     // Slice 10 parking: every facility is bounded, occupancy never exceeds the
     // slot count, and the aggregate counters stay ordered.
     if (s.parked.attempts > 1000000000 or s.parked.successes > s.parked.attempts or s.parked.fallbacks > s.parked.attempts or
@@ -611,8 +668,12 @@ fn validate(s: *const State) bool {
         if (road.works != working) return false;
     }
     for (companies, 0..) |company, i| if (company.order >= 0) {
-        const o = services.orders[@intCast(company.order)];
-        if (!contracts.active(o) or o.company != @as(i32, @intCast(i))) return false;
+        if (company.order >= development.work_order_base) {
+            if (!parsedWorkOrder(s, company.order) or parsedCompany(s, company.order) != @as(i32, @intCast(i))) return false;
+        } else {
+            const o = services.orders[@intCast(company.order)];
+            if (!contracts.active(o) or o.company != @as(i32, @intCast(i))) return false;
+        }
     };
     for (services.current, 0..) |*a, i| {
         if (!validAgreement(a, s, false) or (a.status > 0 and a.line != i)) return false;
@@ -781,6 +842,8 @@ fn commit(s: *const State) void {
     development.lodged_today = d.lodged_today;
     development.building = d.building;
     development.cursor = d.cursor;
+    development.construction_spent_total = d.construction_spent_total;
+    development.materials_delivered_total = d.materials_delivered_total;
     development.measure();
     game.elapsed = s.clock.elapsed;
     game.next_sample = s.clock.next_sample;
@@ -806,7 +869,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 13 and std.mem.eql(u8, rules, "bellwether-2027-11-v13");
+    return version == 14 and std.mem.eql(u8, rules, "bellwether-2027-12-v14");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

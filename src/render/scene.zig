@@ -742,6 +742,22 @@ pub fn draw(w: f32, h: f32) void {
             }
         }
     }
+    // Slice 19: approved private-development jobs are visible as a bounded site
+    // marker with a material pile that grows as deliveries arrive. The job's lot
+    // stays vacant in the authored data until completion, so this is presentation
+    // only and does not create a second building record.
+    for (game.development.storage[0..game.development.retainedCount()]) |job| {
+        if (job.decision != .approved) continue;
+        if (job.building >= city.lot_count) continue;
+        const b = city.buildings[job.building];
+        const blocked = job.phase == .blocked;
+        const accent: Color = if (blocked) .{ 0.86, 0.26, 0.18 } else .{ 0.94, 0.66, 0.18 };
+        const base = city.elevation(b.x + b.width / 2, b.z + b.depth / 2) + pavement_kerb;
+        box(b.x, b.z, b.width, b.depth, 0.14, base, .{ 0.48, 0.43, 0.32 });
+        const delivered: f32 = if (job.materials_required > 0) @floatCast(@min(1, job.materials_delivered / job.materials_required)) else 0;
+        box(b.x + 0.45, b.z + 0.45, @max(1, b.width * 0.42), @max(1, b.depth * 0.42), 0.22 + delivered * 1.35, base + 0.14, .{ 0.57, 0.52, 0.40 });
+        box(b.x + b.width * 0.28, b.z + b.depth * 0.28, 0.32, 0.32, 1.8 + @min(3, job.height * 0.18), base + 0.14, accent);
+    }
     if (selected_person >= 0) {
         const p = game.residents.people[@intCast(selected_person)];
         for ([_]usize{ p.origin, p.destination }, 0..) |endpoint, k| {

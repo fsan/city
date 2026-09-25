@@ -42,6 +42,8 @@ pub fn init() void {
     development.init();
     roadworks.reset();
     parcels.init();
+    // Measure the first demand and buildability snapshot after zoning exists.
+    development.measure();
     for (&trust, 0..) |*value, i| value.* = 20 + city.condition(i) * 0.65;
 }
 pub fn update(dt: f32) void {
@@ -73,7 +75,7 @@ pub fn update(dt: f32) void {
     }
     // Bounded construction: a permit granted earlier completes on its own
     // schedule, and the check costs nothing while nothing is being built.
-    development.update(elapsed);
+    development.update(dt, elapsed);
     if (elapsed >= next_operating) {
         finance.operating(elapsed);
         next_operating = elapsed + 30;

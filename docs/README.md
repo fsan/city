@@ -13,3 +13,4 @@ regularity-target-slice.md records optional agreement interval targets and diagn
 - [Street types, parking and learned travel](street-types-parking-learning-slice.md)
 - [City plans](city-plans-slice.md)
 - [Road-surface rendering follow-up](road-surface-rendering-followup-slice.md)
+- [Physical building construction](physical-construction-slice.md)

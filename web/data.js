@@ -28,7 +28,16 @@ export const refusalNames = [
   "Site already built on",
   "Refused by the authority",
   "Lapsed undecided",
+  "No road access",
+  "Terrain too steep",
+  "Insufficient applicant funds",
+  "No contractor crew available",
+  "Construction budget exhausted",
+  "Contractor crew lost",
 ];
+// Slice 19: the physical stage of an approved private development job.
+export const phaseNames = ["Not started", "Mobilising", "Delivering materials", "Building", "Blocked", "Complete"];
+export const accessNames = ["No access", "Direct frontage", "Paid access"];
 export const streetClasses = ["Lane", "Street", "Avenue"];
 export const parkingKinds = ["Bicycle park", "Car park", "Kerbside"];
 export const parkingBands = ["free", "band 1", "band 2", "band 3", "band 4 (cap)"];
