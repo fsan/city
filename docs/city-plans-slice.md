@@ -1,8 +1,7 @@
 # City plans: a window into the authored board
 
-**Status: in progress.** The plan mechanism and the smaller default city are
-implemented and served; the development plan and its feature forcing are not
-finished yet.
+**Status: complete.** The plan mechanism, the smaller default city and the
+development city are implemented, served and checked in the browser.
 
 ## What was wrong
 
@@ -39,7 +38,7 @@ Windows:
 |------|--------|------|-----|
 | `bellwether` | 0, 0 | 1,320 x 1,040 | the whole authored board |
 | `compact` | 330, 0 | 660 x 1,040 | the default: the river and its bridges, both banks, a shorter walk |
-| `development` | 0, 0 | 1,320 x 1,040 | the whole board with every feature switched on (not finished) |
+| `development` | 0, 0 | 1,320 x 1,040 | the whole board, every feature switched on |
 
 The window is chosen before `init()` lays the town out: `set_city(plan)` in
 `src/main.zig`, called from `web/main.js` from the stored choice, with a plan
@@ -55,16 +54,33 @@ whole with its bridges, and the plan selector shows Camden Quarter with
 Bellwether and Integration Yard available. `node --check` passes on
 `web/main.js`.
 
-## Still to do
+## The development city
 
-- The `development` plan must actually switch every authored feature on, so a
-  development session exercises the integrations between them: all four
-  bridges, a park in every district, a depot, kerbside parking and a work
-  order. Today it shares the `bellwether` window and seeds the same plan.
+`development` keeps the whole board and switches every authored feature on in
+place, so one session exercises the features and the integrations between them.
+Everything it does is an ordinary authored record, so the snapshot, the
+renderer and every report agree by construction:
+
+- `forceAllFeatures` gives every district green space, taking the largest
+  vacant lot where the authored search found none, so no ward is without a
+  park.
+- It guarantees one depot to staff, so the operator, employment and contract
+  paths have somewhere to run.
+- Every junction arm carries a crosswalk, so the crossing paint, the signals
+  and the pedestrian overlay all meet at the same corners.
+- Two streets within 220 m of the centre carry an active work order, so the
+  works surface, the works colours and the junction join all render live.
+
+Verified in the served page: the whole board with the river and its four
+bridges, parks visible in every district and the works strip along a central
+street.
+
+## Limits carried forward
+
 - The population stays 3,840 under every plan, because the residents array is
-  sized from `city.population`; a smaller plan is therefore denser, not
+  sized from `city.population`; the smaller plan is therefore denser, not
   emptier. A plan that should hold fewer people needs a runtime population
   target and a residents init that honours it.
 - Save/load does not record the plan yet: a snapshot reloads into whatever plan
-  the page selected. That is acceptable while plans are a development device,
-  but a saved town should carry its plan before this is called finished.
+  the page selected, and its node positions are validated against the live
+  window. A saved town should carry its plan.

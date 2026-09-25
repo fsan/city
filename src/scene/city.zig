@@ -801,6 +801,7 @@ pub fn init() void {
         r.crosswalk = (degree(r.a) >= 3 or degree(r.b) >= 3) and i % 3 == 0;
     }
     seedParking();
+    if (developmentPlan()) forceAllFeatures();
     for (lots()) |*b| {
         for (lots()) |other| {
             if (other.z > b.z and other.z - b.z < 35 and @abs(other.x - b.x) < 9) b.sun = @max(0.35, b.sun - @max(0, other.height - b.height * 0.5) / 45);
@@ -809,6 +810,87 @@ pub fn init() void {
     }
     refreshElevations();
     rebuildRoutes();
+}
+
+// The development plan's job is to exercise every feature and the integrations
+// between them in one town, so it does not wait for a player to build anything:
+// every district gets green space, the town gets a depot to staff and a work
+// order on a central street, and the roads carry a crosswalk at every junction
+// arm so the crossing paint, the signals and the walkers all have somewhere to
+// meet. Everything it does is an ordinary authored record, so the snapshot,
+// the renderer and every report agree by construction.
+fn forceAllFeatures() void {
+    // One park per district, taken from the largest vacant lot when the district
+    // has none. The authored parks stay where they are.
+    for (0..district_count) |district| {
+        var has_park = false;
+        for (lots()) |b| {
+            if (b.district == district and (b.kind == .park or b.kind == .playground or b.kind == .plaza)) {
+                has_park = true;
+                break;
+            }
+        }
+        if (has_park) continue;
+        var best: ?usize = null;
+        var best_area: f32 = 0;
+        for (lots(), 0..) |b, index| {
+            if (b.district != district or b.kind != .vacant) continue;
+            const area = b.width * b.depth;
+            if (area > best_area) {
+                best_area = area;
+                best = index;
+            }
+        }
+        if (best) |index| {
+            const b = &buildings[index];
+            b.kind = .park;
+            b.capacity = 0;
+            b.value = lotValue(.park);
+        }
+    }
+    // A depot to staff and a works crew to pay, so the operator and contract
+    // paths have something live to run in a development session.
+    var has_depot = false;
+    for (lots()) |b| if (b.kind == .depot) {
+        has_depot = true;
+        break;
+    };
+    if (!has_depot) {
+        var best: ?usize = null;
+        var best_area: f32 = 0;
+        for (lots(), 0..) |b, index| {
+            if (b.kind != .vacant) continue;
+            const area = b.width * b.depth;
+            if (area > best_area) {
+                best_area = area;
+                best = index;
+            }
+        }
+        if (best) |index| {
+            const b = &buildings[index];
+            b.kind = .depot;
+            b.capacity = lotCapacity(.depot);
+            b.value = lotValue(.depot);
+        }
+    }
+    // A crosswalk on every junction arm, and one work order on a street near the
+    // centre so the works surface, the works colours and the join pass all run.
+    var works_marked: usize = 0;
+    const centre_x = origin_x + size_x * 0.5;
+    const centre_z = origin_z + size_z * 0.5;
+    for (roads, 0..) |*r, i| {
+        if (degree(r.a) >= 3 or degree(r.b) >= 3) r.crosswalk = true;
+        if (works_marked < 2 and i % 7 == 3) {
+            const a = nodes[r.a];
+            const b = nodes[r.b];
+            const mid_x = (a.x + b.x) * 0.5;
+            const mid_z = (a.z + b.z) * 0.5;
+            if (hypot(mid_x - centre_x, mid_z - centre_z) < 220) {
+                r.works = true;
+                works_marked += 1;
+            }
+        }
+    }
 }
 
 // The street plan, modelled on the attached slice of Rome: a riverside road on
