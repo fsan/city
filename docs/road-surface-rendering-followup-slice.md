@@ -1,54 +1,51 @@
-# Road-surface rendering follow-up (slice draft)
+# Road-surface rendering follow-up: per-road joins, one pavement plane
 
-The road-surface batch is committed: `2520208` fixed the junction wedges, the
-pavement lift and the bridge deck corridor, and `bae8db9` records the rules in
-`docs/scene.md`. Vertex output is 886,452 of the 1.4 M budget, the ReleaseSafe
-build passes, and the served page was checked in a browser at four zoom levels.
+**Status: complete.** The four leftovers of `2520208` are drawn and verified;
+`docs/scene.md` carries the rules.
 
-Four things that batch did not finish, in the order they matter.
+## What was wrong and what changed
 
-## 1. An overlay does not reach junctions
+1. **An overlay stopped at the junction.** `junctionFans` painted the surface
+   join in one neutral dark colour, so `O` (streets), `G` (traffic) and `F`
+   (pedestrian) recoloured the streets while every junction kept base pavement,
+   and a work order's orange never reached the join. Each wedge is now split on
+   the bisector of its road pair and each half takes that road's own colour and
+   layer, through the same `surfaceColor`/`surfaceOffset` the street strip uses.
+2. **Actors sat below the pavement.** A vehicle started at
+   `city.elevation + 0.2` and a resident quad at `p.y`, up to 0.14 m under the
+   carriageway and off by a different amount on a deck. One shared offset is now
+   named with the road layers, and cars, buses, residents, cyclists and crew
+   quads are drawn at `@max(standing, city.elevation + 0.26)`. `city.elevation`
+   itself is untouched: it is the surface the simulation walks on.
+3. **The works ribbon went under the paint, and the other ribbons left wedges.**
+   The layer order is now stated where the offsets live - kerb 0.22, carriageway
+   0.26, lane 0.30, centre dash 0.31, crossing 0.34, works 0.38, selection ribbon
+   0.40 - so an active or drafted work order covers the dash and crossing instead
+   of being cut by them. Route, stop and drafted-crew ribbons are mitered at a
+   turn with the same wedge fill the roads use.
+4. **The join pass was quadratic.** It scanned every road for every node once per
+   layer, about 2.2 M comparisons a layer. A node-incidence list is built once a
+   frame in `city.buildIncidence`, so a frame pays O(nodes + roads) once.
 
-`junctionFans(1.75, 0.26, ...)` paints the surface join in one neutral colour,
-so with the streets (`O`), traffic (`G`) or pedestrian (`F`) overlay on, the
-streets recolour while the junctions stay base pavement. An active work order is
-the same: `r.works` draws `.{ 0.66, 0.46, 0.18 }` per segment, but the junction
-under it keeps the neutral colour. This is the most visible leftover of the fix,
-because the whole point of the fan is that a junction reads as the roads meeting
-there.
+## Verification
 
-## 2. Actors were not lifted with the pavement
+Host rasteriser of the renderer's own vertex stream (harness in `src/`, built in
+the compiler container, deleted before committing): a degree-8 junction under
+the base, streets, traffic, pedestrian and active-works views; a selected
+resident's route; a bridge deck carrying a car, a bus and walkers; and a curved
+work order drafted during the session and then committed as roads so the join
+pass ran over a topology that changed mid-session. The work-order frame shows
+the orange reaching the join, and the curve draws as one ribbon rather than
+breaking at its bends. Frame output is about 1,009,000 vertices of the 1.4 M
+budget, drawn in 21-23 ms on the harness.
 
-Road layers now sit 0.22 (kerb), 0.26 (surface), 0.30 (lane), 0.31 (dashes) and
-0.34 (crossing) above the ground. The vehicle body still starts at
-`city.elevation(x, z) + 0.2` and the resident quad still spans `p.y` to
-`p.y + 0.9`, so a car or a walker can be drawn up to 0.14 m below the pavement
-it is standing on, and the error differs between land and a deck. One pavement
-offset shared by the road layers and the actors would settle it. `city.elevation`
-itself should not change: the simulation is entitled to the ground height.
+ReleaseSafe Docker build (`city.wasm` 4,143,261 bytes) and the served page in a
+browser: the streets overlay recolours the network through the junctions and the
+canvas zooms with a wheel over it.
 
-## 3. The works ribbon now sits under the dashes and the crossing
+## Limits carried forward
 
-Works are drawn at 0.30, centre dashes at 0.31 and crossings at 0.34, so orange
-work-order surface is cut by dash and crossing geometry. Decide the intended
-order and make it explicit next to the offsets.
-
-## 4. The join pass costs a full scan a frame
-
-`junctionFans` loops every node and every road inside it, once per layer:
-1,328 nodes against 1,624 roads is about 2.2 M iterations per layer. A node
-incidence list built once, or the existing `degree` helpers, would make it
-O(roads).
-
-## Verification for the follow-up
-
-- Host rasteriser of the renderer's own vertex stream: a junction under each
-  overlay, a bridge deck carrying vehicles, and a road drawn by the player during
-  the session (the harness pattern that worked: put the harness inside `src/`,
-  build it in the compiler container with
-  `zig build-exe -OReleaseSafe -Mroot=src/<harness>.zig`, delete it afterwards).
-- ReleaseSafe Docker build, then the served page in a browser. The in-app
-  browser zooms the game with a wheel over the canvas, which `tab.scroll` on the
-  canvas element produces.
-- Keep the rendering paragraph in `docs/scene.md` in step with the offsets and
-  the join rule.
+- The kerb fan is still one uniform colour, which is intended: the kerb band is
+  a single surface either side of the coloured carriageway.
+- Geometry is still rebuilt each frame; cached static world meshes and GPU camera
+  transforms remain the next rendering optimisations.

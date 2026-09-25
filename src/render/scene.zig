@@ -20,6 +20,34 @@ pub var overlay: u32 = 0;
 const transport = game.transport;
 const Color = [3]f32;
 const Point = [3]f32;
+
+// Pavement lift. `city.elevation` is the surface the simulation walks on - the
+// carved ground, or a bridge deck inside its corridor - and it stays that. Every
+// layer the player reads as the street steps up from it by one of these
+// offsets, and the value is the layer's own: the pavement has to clear the
+// coarse ground mesh's chord error, which is 40 m away from the river and 4 m
+// beside it, or the carved bank rises through the road between samples. The
+// list is the stacking order, lowest first.
+//
+//   kerb     0.22  the outer band, and anything standing on the verge
+//   surface  0.26  the carriageway itself, and every actor standing on it
+//   lane     0.30  bus- and cycle-lane paint
+//   dash     0.31  the centre line
+//   crossing 0.34  zebra bars, paint on the carriageway
+//   works    0.38  an active or drafted work order, over all road paint
+//   ribbon   0.40  selection ribbons: routes, stops and a drafted crew
+const pavement_kerb: f32 = 0.22;
+const pavement_surface: f32 = 0.26;
+const pavement_lane: f32 = 0.30;
+const pavement_dash: f32 = 0.31;
+const pavement_crossing: f32 = 0.34;
+const pavement_works: f32 = 0.38;
+const pavement_ribbon: f32 = 0.40;
+// Street widths: the kerb band is the full carriageway, the surface is the dark
+// strip inside it.
+const kerb_half: f32 = 2.7;
+const surface_half: f32 = 1.75;
+const kerb_color: Color = .{ 0.49, 0.49, 0.45 };
 pub fn reset() void {
     camera_x = city.size_x / 2;
     camera_z = city.size_z / 2;
@@ -73,6 +101,31 @@ pub fn pan(dx: f32, dy: f32) void {
 fn streetColor(condition: f32) Color {
     const amount = condition / 100;
     return .{ 0.8 - amount * 0.6, 0.25 + amount * 0.4, 0.2 + amount * 0.25 };
+}
+
+// The carriageway surface a street takes: an active work order's orange wins
+// over the overlays, then the condition, traffic and pedestrian views, then the
+// base pavement. The junction join paints itself with the same function, so a
+// junction can never keep a colour the streets around it have left.
+fn surfaceColor(r: city.Road, id: usize) Color {
+    if (r.works) return .{ 0.66, 0.46, 0.18 };
+    if (overlay == 2) return streetColor(100 * (1 - transport.congestion[id]));
+    if (overlay == 3) return streetColor(100 * (1 - @min(1, @as(f32, @floatFromInt(game.residents.pedestrians[id])) / @max(1, r.length * 0.15))));
+    if (overlay == 1) return streetColor(r.condition);
+    return .{ 0.23, 0.25, 0.25 };
+}
+
+// A work order replaces the carriageway, so its surface is drawn over the lane,
+// dash and crossing paint rather than under it.
+fn surfaceOffset(r: city.Road) f32 {
+    return if (r.works) pavement_works else pavement_surface;
+}
+
+// The pavement plane an actor stands on. The simulation keeps its own height
+// (`p.y`, `city.elevation`); the drawn body never starts below the carriageway
+// it stands on, on land or on a bridge deck.
+fn actorPlane(x: f32, z: f32, standing: f32) f32 {
+    return @max(standing, city.elevation(x, z) + pavement_surface);
 }
 // The terrain's own creases: the ends of the ramps authored in `city.terrain`.
 // A triangle that spans one is drawn as a straight edge across a corner the
@@ -323,21 +376,32 @@ pub fn ribbon(a: city.Vec, b: city.Vec, half: f32, lateral: f32, offset: f32, co
 // Road joins. A road is a strip with a perpendicular end edge, so two roads
 // meeting at a bend or junction leave a wedge between those end edges and the
 // ground below shows through it. Each node therefore fills one triangle per
-// neighbouring pair of roads: the base corners are those two roads' own edge
-// corners, so the triangle fills exactly the wedge and never paints outside the
-// carriageway.
-fn junctionFans(half: f32, offset: f32, color: Color) void {
+// neighbouring pair of roads, from those two roads' own edge corners and their
+// bearings around the node, so the wedge is covered and nothing is painted
+// outside the carriageway.
+//
+// The wedge belongs to both roads, so the triangle is split on the bisector of
+// the pair and each half takes the colour and the layer of the road that
+// borders it. That is what carries an overlay, and a work order's orange, right
+// through a junction instead of stopping at the street. With `per_road` false
+// the whole join is one colour and one layer, which is what the kerb band
+// wants, and `uniform_offset`/`uniform_color` are what it uses then.
+//
+// The incident roads come from `city.incident`, built once a frame in
+// `city.buildIncidence`: the pass used to scan every road for every node once
+// per layer, which is about 2.2 M comparisons a layer on this town.
+fn junctionFans(half: f32, uniform_offset: f32, uniform_color: Color, per_road: bool) void {
     var away: [24]f32 = undefined;
     var normal_x: [24]f32 = undefined;
     var normal_z: [24]f32 = undefined;
+    var road_id: [24]usize = undefined;
     for (0..city.node_count) |node| {
         const node_x = city.nodes[node].x;
         const node_z = city.nodes[node].z;
         var arms: usize = 0;
-        var road_index: usize = 0;
-        while (road_index < city.road_count and arms < away.len) : (road_index += 1) {
+        for (city.incident(node)) |road_index| {
+            if (arms >= away.len) break;
             const r = city.roads[road_index];
-            if (r.a != node and r.b != node) continue;
             const other = if (r.a == node) r.b else r.a;
             const dx = city.nodes[other].x - node_x;
             const dz = city.nodes[other].z - node_z;
@@ -346,6 +410,7 @@ fn junctionFans(half: f32, offset: f32, color: Color) void {
             normal_x[arms] = -dz / len;
             normal_z[arms] = dx / len;
             away[arms] = std.math.atan2(dz, dx);
+            road_id[arms] = road_index;
             arms += 1;
         }
         if (arms < 2) continue;
@@ -355,26 +420,56 @@ fn junctionFans(half: f32, offset: f32, color: Color) void {
             const key_away = away[i];
             const key_x = normal_x[i];
             const key_z = normal_z[i];
+            const key_id = road_id[i];
             var j: usize = i;
             while (j > 0 and away[j - 1] > key_away) : (j -= 1) {
                 away[j] = away[j - 1];
                 normal_x[j] = normal_x[j - 1];
                 normal_z[j] = normal_z[j - 1];
+                road_id[j] = road_id[j - 1];
             }
             away[j] = key_away;
             normal_x[j] = key_x;
             normal_z[j] = key_z;
+            road_id[j] = key_id;
         }
         var k: usize = 0;
         while (k < arms) : (k += 1) {
             const next = (k + 1) % arms;
-            terrainFace(&[_]city.Vec{
-                .{ .x = node_x, .z = node_z },
-                .{ .x = node_x + normal_x[k] * half, .z = node_z + normal_z[k] * half },
-                .{ .x = node_x - normal_x[next] * half, .z = node_z - normal_z[next] * half },
-            }, offset, color);
+            const centre = city.Vec{ .x = node_x, .z = node_z };
+            const corner = city.Vec{ .x = node_x + normal_x[k] * half, .z = node_z + normal_z[k] * half };
+            const opposite = city.Vec{ .x = node_x - normal_x[next] * half, .z = node_z - normal_z[next] * half };
+            if (!per_road) {
+                terrainFace(&[_]city.Vec{ centre, corner, opposite }, uniform_offset, uniform_color);
+                continue;
+            }
+            const mid = city.Vec{ .x = (corner.x + opposite.x) / 2, .z = (corner.z + opposite.z) / 2 };
+            const left = city.roads[road_id[k]];
+            const right = city.roads[road_id[next]];
+            terrainFace(&[_]city.Vec{ centre, corner, mid }, surfaceOffset(left), surfaceColor(left, road_id[k]));
+            terrainFace(&[_]city.Vec{ centre, mid, opposite }, surfaceOffset(right), surfaceColor(right, road_id[next]));
         }
     }
+}
+
+// Where a ribbon chain turns at a node, its own two perpendicular end edges
+// leave the wedge two roads leave. The quad between them is painted in the
+// ribbon's colour and layer, so a selected route, a stop chain or a drafted
+// work order reads around a junction instead of breaking at it.
+fn ribbonJoin(from: city.Vec, node: city.Vec, to: city.Vec, half: f32, lateral: f32, offset: f32, color: Color) void {
+    const in_len = city.hypot(node.x - from.x, node.z - from.z);
+    const out_len = city.hypot(to.x - node.x, to.z - node.z);
+    if (in_len < 0.001 or out_len < 0.001) return;
+    const in_x = -(node.z - from.z) / in_len;
+    const in_z = (node.x - from.x) / in_len;
+    const out_x = -(to.z - node.z) / out_len;
+    const out_z = (to.x - node.x) / out_len;
+    terrainFace(&[_]city.Vec{
+        .{ .x = node.x + in_x * (lateral + half), .z = node.z + in_z * (lateral + half) },
+        .{ .x = node.x + in_x * (lateral - half), .z = node.z + in_z * (lateral - half) },
+        .{ .x = node.x + out_x * (lateral - half), .z = node.z + out_z * (lateral - half) },
+        .{ .x = node.x + out_x * (lateral + half), .z = node.z + out_z * (lateral + half) },
+    }, offset, color);
 }
 
 fn vehicleBox(x: f32, z: f32, length: f32, wide: f32, h: f32, base: f32, ux: f32, uz: f32, color: Color) void {
@@ -495,6 +590,9 @@ pub fn draw(w: f32, h: f32) void {
     width = w;
     height = h;
     count = 0;
+    // One bucket pass over the roads, so the joins below can walk each node's
+    // own roads instead of rescanning the whole road list once per node.
+    city.buildIncidence();
     for (0..city.rows) |row| for (0..city.cols) |col| {
         const x = @as(f32, @floatFromInt(col)) * city.spacing;
         const z = @as(f32, @floatFromInt(row)) * city.spacing;
@@ -518,20 +616,19 @@ pub fn draw(w: f32, h: f32) void {
         const colors = [_]Color{ .{ 0.54, 0.55, 0.48 }, .{ 0.3, 0.61, 0.39 }, .{ 0.3, 0.48, 0.78 }, .{ 0.76, 0.62, 0.29 }, .{ 0.61, 0.43, 0.68 }, .{ 0.31, 0.67, 0.66 } };
         groundQuad(p.x - 0.45, p.z - 0.45, p.width + 0.9, p.depth + 0.9, 0.07, if (game.parcels.selected == @as(i32, @intCast(id))) .{ 1, 0.85, 0.35 } else colors[p.zone]);
     };
-    junctionFans(2.7, 0.22, .{ 0.49, 0.49, 0.45 });
-    junctionFans(1.75, 0.26, .{ 0.23, 0.25, 0.25 });
+    junctionFans(kerb_half, pavement_kerb, kerb_color, false);
+    junctionFans(surface_half, pavement_surface, kerb_color, true);
     for (city.roads, 0..) |r, id| {
         const a = city.Vec{ .x = city.nodes[r.a].x, .z = city.nodes[r.a].z };
         const b = city.Vec{ .x = city.nodes[r.b].x, .z = city.nodes[r.b].z };
-        ribbon(a, b, 2.7, 0, 0.22, .{ 0.49, 0.49, 0.45 });
-        const color: Color = if (r.works) .{ 0.66, 0.46, 0.18 } else if (overlay == 2) streetColor(100 * (1 - transport.congestion[id])) else if (overlay == 3) streetColor(100 * (1 - @min(1, @as(f32, @floatFromInt(game.residents.pedestrians[id])) / @max(1, r.length * 0.15)))) else if (overlay == 1) streetColor(r.condition) else .{ 0.23, 0.25, 0.25 };
-        ribbon(a, b, 1.75, 0, 0.26, color);
-        if (transport.lanes[id] != 0) ribbon(a, b, 0.15, 1.4, 0.3, if (transport.lanes[id] == 1) .{ 0.3, 0.55, 0.8 } else .{ 0.35, 0.65, 0.35 });
+        ribbon(a, b, kerb_half, 0, pavement_kerb, kerb_color);
+        ribbon(a, b, surface_half, 0, surfaceOffset(r), surfaceColor(r, id));
+        if (transport.lanes[id] != 0) ribbon(a, b, 0.15, 1.4, pavement_lane, if (transport.lanes[id] == 1) .{ 0.3, 0.55, 0.8 } else .{ 0.35, 0.65, 0.35 });
         const length = city.hypot(b.x - a.x, b.z - a.z);
         const ux = (b.x - a.x) / length;
         const uz = (b.z - a.z) / length;
         var d: f32 = 1;
-        while (d + 1 < length) : (d += 3.2) ribbon(.{ .x = a.x + ux * d, .z = a.z + uz * d }, .{ .x = a.x + ux * (d + 1), .z = a.z + uz * (d + 1) }, 0.05, 0, 0.31, .{ 0.65, 0.63, 0.51 });
+        while (d + 1 < length) : (d += 3.2) ribbon(.{ .x = a.x + ux * d, .z = a.z + uz * d }, .{ .x = a.x + ux * (d + 1), .z = a.z + uz * (d + 1) }, 0.05, 0, pavement_dash, .{ 0.65, 0.63, 0.51 });
         if (r.crosswalk and length > 5) for (0..2) |end| {
             const n = if (end == 0) r.a else r.b;
             if (city.degree(n) < 3) continue;
@@ -539,7 +636,7 @@ pub fn draw(w: f32, h: f32) void {
             const c = city.Vec{ .x = a.x + ux * t, .z = a.z + uz * t };
             for (0..7) |stripe| {
                 const off = -1.5 + @as(f32, @floatFromInt(stripe)) * 0.5;
-                ribbon(.{ .x = c.x - ux * 0.5, .z = c.z - uz * 0.5 }, .{ .x = c.x + ux * 0.5, .z = c.z + uz * 0.5 }, 0.14, off, 0.34, .{ 0.88, 0.86, 0.74 });
+                ribbon(.{ .x = c.x - ux * 0.5, .z = c.z - uz * 0.5 }, .{ .x = c.x + ux * 0.5, .z = c.z + uz * 0.5 }, 0.14, off, pavement_crossing, .{ 0.88, 0.86, 0.74 });
             }
         };
     }
@@ -551,20 +648,22 @@ pub fn draw(w: f32, h: f32) void {
             if (arm < 0) continue;
             const road_id: usize = @intCast(arm);
             const p = transport.signals.headPosition(junction.node, road_id) orelse continue;
-            const y = city.elevation(p.x, p.z);
+            const y = city.elevation(p.x, p.z) + pavement_kerb;
             const state = transport.signals.armState(&junction, slot, game.elapsed);
             const selected_head = selected_signal == @as(i32, @intCast(signal_index(junction_index, slot)));
-            box(p.x - 0.08, p.z - 0.08, 0.16, 0.16, 1.7, y + 0.1, .{ 0.25, 0.27, 0.25 });
-            box(p.x - 0.19, p.z - 0.19, 0.38, 0.38, 0.66, y + 1.7, if (selected_head) .{ 0.95, 0.8, 0.35 } else .{ 0.12, 0.14, 0.13 });
+            box(p.x - 0.08, p.z - 0.08, 0.16, 0.16, 1.7, y, .{ 0.25, 0.27, 0.25 });
+            box(p.x - 0.19, p.z - 0.19, 0.38, 0.38, 0.66, y + 1.6, if (selected_head) .{ 0.95, 0.8, 0.35 } else .{ 0.12, 0.14, 0.13 });
             const lamp = switch (state) {
                 .green => Color{ 0.26, 0.9, 0.4 },
                 .yellow, .flash => Color{ 0.95, 0.78, 0.2 },
                 .red => Color{ 1, 0.24, 0.12 },
             };
+            // The pole now starts at the pavement, so the head keeps the
+            // absolute height it had when its base was 0.12 m lower.
             const lit = switch (state) {
-                .green => @as(f32, 1.78),
-                .yellow, .flash => @as(f32, 1.94),
-                .red => @as(f32, 2.10),
+                .green => @as(f32, 1.66),
+                .yellow, .flash => @as(f32, 1.82),
+                .red => @as(f32, 1.98),
             };
             // Slice 12: a flashing head is lit for half of every blink, which is
             // what tells the player at a glance that the junction is on caution
@@ -608,7 +707,7 @@ pub fn draw(w: f32, h: f32) void {
             continue;
         }
         const entry = city.frontage(b);
-        ribbon(entry, .{ .x = b.entry_x, .z = b.entry_z }, 0.4, 0, 0.2, .{ 0.55, 0.53, 0.47 });
+        ribbon(entry, .{ .x = b.entry_x, .z = b.entry_z }, 0.4, 0, pavement_kerb, .{ 0.55, 0.53, 0.47 });
         const direction: f32 = if (b.entry_z == b.z) -1 else 1;
         const count_steps: usize = 6;
         for (0..count_steps) |step| {
@@ -658,14 +757,18 @@ pub fn draw(w: f32, h: f32) void {
         }
         var node = p.next;
         var steps: usize = 0;
+        var previous: city.Vec = undefined;
         while (node != p.destination and steps < city.node_count and p.bus < 0) : (steps += 1) {
             const next = if ((p.mode == 0 or p.mode == 3) and @mod(selected_person, 5) != 0) city.walk_next[node][p.destination] else city.next_node[node][p.destination];
             const a = city.nodes[node];
             const b = city.nodes[next];
-            ribbon(.{ .x = a.x, .z = a.z }, .{ .x = b.x, .z = b.z }, 0.15, 2.3, 0.24, .{ 0.95, 0.76, 0.3 });
+            const from = city.Vec{ .x = a.x, .z = a.z };
+            if (steps > 0) ribbonJoin(previous, from, .{ .x = b.x, .z = b.z }, 0.15, 2.3, pavement_ribbon, .{ 0.95, 0.76, 0.3 });
+            ribbon(from, .{ .x = b.x, .z = b.z }, 0.15, 2.3, pavement_ribbon, .{ 0.95, 0.76, 0.3 });
+            previous = from;
             node = next;
         }
-        const y = p.y;
+        const y = actorPlane(p.x, p.z, p.y);
         box(p.x - 0.3, p.z - 0.3, 0.6, 0.6, 0.12, y + 0.2, .{ 1, 0.82, 0.25 });
     }
     // Every active line has visible kerbside stop markers, not only the selected line.
@@ -674,7 +777,7 @@ pub fn draw(w: f32, h: f32) void {
         for (line.stops[0..line.count]) |stop| {
             if (!city.validStop(stop)) continue;
             const p = city.stopPoint(stop);
-            const base = city.elevation(p.x, p.z) + 0.2;
+            const base = city.elevation(p.x, p.z) + pavement_kerb;
             const accent: Color = if (transport.selected == line_id) .{ 1, 0.78, 0.24 } else .{ 0.72, 0.5, 0.18 };
             box(p.x - 0.08, p.z - 0.08, 0.16, 0.16, 1.35, base, .{ 0.32, 0.36, 0.38 });
             box(p.x - 0.45, p.z - 0.12, 0.9, 0.24, 0.45, base + 1.35, accent);
@@ -684,23 +787,31 @@ pub fn draw(w: f32, h: f32) void {
         const stops = if (transport.editing) transport.draft[0..transport.draft_count] else transport.lines[@intCast(transport.selected)].stops[0..transport.lines[@intCast(transport.selected)].count];
         for (stops, 0..) |stop, index| {
             const p = city.stopPoint(stop);
-            box(p.x - 0.7, p.z - 0.7, 1.4, 1.4, 0.25, city.elevation(p.x, p.z) + 0.2, .{ 0.95, 0.72, 0.23 });
+            box(p.x - 0.7, p.z - 0.7, 1.4, 1.4, 0.25, city.elevation(p.x, p.z) + pavement_kerb, .{ 0.95, 0.72, 0.23 });
             var node = stop;
             var steps: usize = 0;
+            var previous: city.Vec = undefined;
             const destination = stops[(index + 1) % stops.len];
             while (node != destination and steps < city.node_count) : (steps += 1) {
                 const next = city.next_node[node][destination];
                 const a = city.nodes[node];
                 const b = city.nodes[next];
-                ribbon(.{ .x = a.x, .z = a.z }, .{ .x = b.x, .z = b.z }, 0.17, 0, 0.24, .{ 0.98, 0.72, 0.22 });
+                const from = city.Vec{ .x = a.x, .z = a.z };
+                if (steps > 0) ribbonJoin(previous, from, .{ .x = b.x, .z = b.z }, 0.17, 0, pavement_ribbon, .{ 0.98, 0.72, 0.22 });
+                ribbon(from, .{ .x = b.x, .z = b.z }, 0.17, 0, pavement_ribbon, .{ 0.98, 0.72, 0.22 });
+                previous = from;
                 node = next;
             }
         }
     }
     if (game.roadworks.active and game.roadworks.count > 1) {
         const color: Color = if (game.roadworks.error_code == 0) .{ 0.35, 0.8, 0.65 } else .{ 0.95, 0.28, 0.24 };
-        for (game.roadworks.points[0 .. game.roadworks.count - 1], 0..) |a, i| ribbon(a, game.roadworks.points[i + 1], 2.7, 0, 0.3, color);
-        for (game.roadworks.knots[0..game.roadworks.knot_count]) |p| box(p.x - 0.4, p.z - 0.4, 0.8, 0.8, 1.3, city.elevation(p.x, p.z) + 0.2, color);
+        for (game.roadworks.points[0 .. game.roadworks.count - 1], 0..) |a, i| {
+            const b = game.roadworks.points[i + 1];
+            if (i > 0) ribbonJoin(game.roadworks.points[i - 1], a, b, kerb_half, 0, pavement_works, color);
+            ribbon(a, b, kerb_half, 0, pavement_works, color);
+        }
+        for (game.roadworks.knots[0..game.roadworks.knot_count]) |p| box(p.x - 0.4, p.z - 0.4, 0.8, 0.8, 1.3, city.elevation(p.x, p.z) + pavement_works, color);
     }
     for (&transport.vehicles, 0..) |v, vehicle_id| {
         if (!v.active) continue;
@@ -713,7 +824,7 @@ pub fn draw(w: f32, h: f32) void {
         const color: Color = if (v.line >= 0) .{ 0.78, 0.48, 0.17 } else carColor(vehicle_id);
         var y: f32 = -1e9;
         for ([_]f32{ -1, 1 }) |front| for ([_]f32{ -1, 1 }) |side| {
-            y = @max(y, city.elevation(v.x + ux * length / 2 * front - uz * 0.325 * side, v.z + uz * length / 2 * front + ux * 0.325 * side) + 0.2);
+            y = @max(y, city.elevation(v.x + ux * length / 2 * front - uz * 0.325 * side, v.z + uz * length / 2 * front + ux * 0.325 * side) + pavement_surface);
         };
         const body: f32 = if (v.line >= 0) 0.95 else 0.55;
         vehicleBox(v.x, v.z, length, 0.65, body, y, ux, uz, color);
@@ -721,10 +832,11 @@ pub fn draw(w: f32, h: f32) void {
     }
     for (&game.residents.people, 0..) |p, i| {
         if (p.phase == 3 or (p.mode == 2 and p.phase == 1) or p.bus >= 0) continue;
-        if (p.mode == 1) box(p.x - 0.35, p.z - 0.15, 0.7, 0.3, 0.25, p.y, .{ 0.16, 0.20, 0.18 });
+        const plane = actorPlane(p.x, p.z, p.y);
+        if (p.mode == 1) box(p.x - 0.35, p.z - 0.15, 0.7, 0.3, 0.25, plane, .{ 0.16, 0.20, 0.18 });
         const dx = @cos(angle) * 0.16;
         const dz = -@sin(angle) * 0.16;
-        const y = p.y;
+        const y = plane;
         const colors = [_]Color{ .{ 0.70, 0.62, 0.44 }, .{ 0.65, 0.68, 0.62 }, .{ 0.53, 0.38, 0.30 }, .{ 0.34, 0.44, 0.51 } };
         const color: Color = if (p.order >= 0) .{ 1, 0.66, 0.15 } else colors[i % 4];
         quad(.{ p.x - dx, y, p.z - dz }, .{ p.x + dx, y, p.z + dz }, .{ p.x + dx, y + 0.9, p.z + dz }, .{ p.x - dx, y + 0.9, p.z - dz }, color);

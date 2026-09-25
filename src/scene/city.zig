@@ -330,6 +330,38 @@ pub fn degree(n: usize) usize {
     return total;
 }
 
+// Node incidence: the roads meeting each node, in road-creation order, as one
+// CSR pair of arrays. The renderer's join pass needs every node's own roads and
+// used to scan the whole road list once per node per layer, which is about
+// 2.2 M comparisons a layer on the authored town. One bucket pass rebuilds this
+// in O(nodes + roads), so a frame pays that once instead. It is rebuilt rather
+// than cached because `build` in `roads.zig` adds and splits roads mid-session
+// and a restored snapshot can carry a revision number the renderer has already
+// seen.
+pub var incidence_start: [max_nodes + 1]usize = undefined;
+pub var incidence_road: [max_roads * 2]usize = undefined;
+
+pub fn buildIncidence() void {
+    @memset(incidence_start[0 .. node_count + 1], 0);
+    for (roads[0..road_count]) |r| {
+        incidence_start[r.a + 1] += 1;
+        incidence_start[r.b + 1] += 1;
+    }
+    for (0..node_count) |n| incidence_start[n + 1] += incidence_start[n];
+    var cursor: [max_nodes]usize = undefined;
+    @memcpy(cursor[0..node_count], incidence_start[0..node_count]);
+    for (roads[0..road_count], 0..) |r, id| {
+        incidence_road[cursor[r.a]] = id;
+        cursor[r.a] += 1;
+        incidence_road[cursor[r.b]] = id;
+        cursor[r.b] += 1;
+    }
+}
+
+pub fn incident(node: usize) []const usize {
+    return incidence_road[incidence_start[node]..incidence_start[node + 1]];
+}
+
 pub fn horizontal(a: usize, b: usize) bool {
     return @abs(nodes[a].x - nodes[b].x) >= @abs(nodes[a].z - nodes[b].z);
 }
