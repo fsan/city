@@ -14,3 +14,6 @@ regularity-target-slice.md records optional agreement interval targets and diagn
 - [City plans](city-plans-slice.md)
 - [Road-surface rendering follow-up](road-surface-rendering-followup-slice.md)
 - [Physical building construction](physical-construction-slice.md)
+- [Property valuation and sunlight](property-valuation-slice.md)
+- [Parks and public spaces](parks-public-spaces-slice.md)
+- [UI navigation batch](ui-navigation-slice.md)

@@ -103,6 +103,13 @@ fn streetColor(condition: f32) Color {
     return .{ 0.8 - amount * 0.6, 0.25 + amount * 0.4, 0.2 + amount * 0.25 };
 }
 
+// Park condition overlay: the same 0-100 measure the panel reports, mapped to
+// a brown-to-green ramp so a neglected green space reads as a worn surface.
+fn parkColor(condition: f32) Color {
+    const amount = std.math.clamp(condition / 100.0, 0, 1);
+    return .{ 0.80 - amount * 0.49, 0.34 + amount * 0.16, 0.24 + amount * 0.08 };
+}
+
 // The carriageway surface a street takes: an active work order's orange wins
 // over the overlays, then the condition, traffic and pedestrian views, then the
 // base pavement. The junction join paints itself with the same function, so a
@@ -700,6 +707,10 @@ pub fn draw(w: f32, h: f32) void {
         // from its own identity, so a large park reads as trees and bushes in
         // grass without carrying a second list of positions in the save file.
         if (b.kind == .park or b.kind == .playground or b.kind == .plaza) {
+            if (overlay == 4) {
+                groundQuad(b.x, b.z, b.width, b.depth, 0.06, parkColor(game.parks.conditionAtLot(i)));
+                continue;
+            }
             groundQuad(b.x, b.z, b.width, b.depth, 0.06, color);
             vegetation(b, i);
             if (b.kind == .playground) playground(b);

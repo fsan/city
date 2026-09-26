@@ -25,10 +25,11 @@ Zig edits rebuild automatically; refresh the page after a successful build. HTML
 
 ## Play
 
-- N: draw straight or curved roads. Z: parcel/block zoning. F: pedestrian density. See `docs/city-planning.md`.
+- The STREETS & LAND USE panel holds four tools. N: draw straight or curved roads. Z: parcel/block zoning. P: private development permits for zoned vacant sites. G: parks, playgrounds and plazas, their maintenance funding and converting a civic reserve into new public space. See `docs/city-planning.md`, `docs/development-proposals-slice.md` and `docs/parks-public-spaces-slice.md`.
+- Planning tools claim N (roads), Z (zoning), P (permits) and G (parks) plus Enter and Escape. Elsewhere C opens City Reports, B the Treasury, J Public Works, T the Transport Authority, I the inspector and H controls. Map overlays: O street condition, F pedestrian density, V traffic intensity, K park condition.
 - Drag or WASD / arrow keys: pan. Wheel: zoom. Q/E: rotate. R: recenter.
 - Click a building, pedestrian or car: open the inspector. Selected trips mark their origin blue and destination amber. Right-click the map: contextual tools.
-- P: reports, B: treasury, J: public works, I: inspector, H: controls. O: street overlay. T: transport, G: traffic queues.
+- C: reports, B: treasury, J: public works, I: inspector, H: controls. O: street overlay. T: transport authority, V: traffic queues, K: park condition map. In-game Help (H) lists every binding.
 - Escape discards an active route draft, otherwise closes a menu or the top window. Drag window headers to arrange reports.
 - The bottom Management menu opens report submenus. All windows can be closed for a full city view.
 - Space: pause/resume; 1/2/3: 1×/4×/16×. Time controls are in the top HUD.
@@ -60,7 +61,9 @@ The management loop supports specific property taxes, a cash ledger, operating d
 
 The renderer batches geometry into one depth-tested draw call. NPCs use six vertices each. Static geometry currently rebuilds each frame; caching / GPU camera projection / instancing are future profiling-led optimisations. The buffer holds 600,000 vertices (about 435,000 in the current smoke check in this slice).
 
-The map now spans 1,320 × 1,040 metres with low-rise suburbs and room within blocks for future construction. Daylight shading and ground shadows are illustrative; property assessments use a simple neighbouring-height exposure proxy.
+The map now spans 1,320 × 1,040 metres with low-rise suburbs and room within blocks for future construction. Daylight shading and ground shadows are illustrative; property assessments are measured, not tabulated: a lot's value follows the sunlight its own footprint receives under one published fixed sun position and a bounded road-access factor, and a new building that shades its neighbours pays them the measured assessed-value loss privately while the municipal ledger still records only the development levy.
+
+Public space is measured too: every park, playground and plaza has a condition maintained from a municipal budget paid as ledger kind 13, a walking catchment drawn from the same graph residents use, and a bounded amenity value that lifts its neighbours' assessment and district trust. A civic-reserve parcel can be converted into new public space for a municipal cost (kind 14). See [parks and public spaces](docs/parks-public-spaces-slice.md).
 
 No complete household finances, intersection collision physics, elections, full service simulation, procedural generation or backend authority yet. Manual versioned save/load is available (town format version 7); see `docs/save-load-slice.md`. Routines are shortened and all residents are adult placeholders. Refreshed tabs restart the town. Contracts retain 64 orders per session; the ledger retains 1,024 entries and history retains 96 samples.
 

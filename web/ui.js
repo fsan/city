@@ -216,6 +216,59 @@ export function createInterface(actions) {
     if (event.target !== $("city")) actions.clearInput();
   });
   document.addEventListener("focusin", () => actions.clearInput());
+  // Wheel on a numeric control steps it inside its min/max and fires input so
+  // live quotes and drafts react as if typed. Only game UI inputs, nested
+  // under windows or the planning panel — the canvas wheel zoom is untouched.
+  document.addEventListener(
+    "wheel",
+    (event) => {
+      const input = event.target;
+      if (
+        !(input instanceof HTMLInputElement) ||
+        input.type !== "number" ||
+        input.disabled
+      )
+        return;
+      if (!input.closest(".game-window, #planning-panel, .toolbar")) return;
+      event.preventDefault();
+      const step = Number(input.step) || 1;
+      const direction = event.deltaY < 0 ? 1 : -1;
+      const decimals = (String(input.step).split(".")[1] || "").length;
+      let value =
+        (input.value === "" ? Number(input.min) || 0 : Number(input.value)) +
+        direction * step;
+      if (input.min !== "") value = Math.max(Number(input.min), value);
+      if (input.max !== "") value = Math.min(Number(input.max), value);
+      value = Number(value.toFixed(Math.max(0, decimals)));
+      if (String(value) === input.value) return;
+      input.value = String(value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      actions.clearInput();
+    },
+    { passive: false },
+  );
+  // Wheel cycles a select only while it has focus, so scrolling a window past
+  // a dropdown never changes city policy by accident.
+  document.addEventListener(
+    "wheel",
+    (event) => {
+      const select = event.target;
+      if (!(select instanceof HTMLSelectElement) || select.disabled) return;
+      if (!select.closest(".game-window, #planning-panel, .toolbar")) return;
+      if (document.activeElement !== select) return;
+      const options = [...select.options];
+      if (options.length < 2) return;
+      event.preventDefault();
+      const direction = event.deltaY > 0 ? 1 : -1;
+      const next =
+        (select.selectedIndex + direction + options.length) % options.length;
+      if (next === select.selectedIndex) return;
+      select.selectedIndex = next;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      actions.clearInput();
+    },
+    { passive: false },
+  );
   for (const panel of windows) {
     const name = panel.id.replace("-window", "");
     panel.addEventListener("pointerdown", (event) => {

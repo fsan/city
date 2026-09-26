@@ -14,6 +14,7 @@ pub const housing = @import("housing.zig");
 pub const parking = @import("parking.zig");
 pub const development = @import("development.zig");
 pub const travel = @import("travel.zig");
+pub const parks = @import("parks.zig");
 pub var elapsed: f64 = 160;
 pub var trust: [city.district_count]f32 = undefined;
 pub const Sample = struct { time: f64, cash: f64, reserved: f64, walking: usize, condition: f32 };
@@ -35,10 +36,16 @@ pub fn init() void {
     finance.init(elapsed);
     finance.operating(elapsed);
     contracts.init();
+    // Slice 20 repair: the development plan marks a works surface while the
+    // authored town is laid out, but the contract register that must own a
+    // works flag is reset here. A road with no live order may not claim works
+    // (the snapshot validator enforces the pairing), so clear the orphan.
+    for (city.roads) |*r| r.works = false;
     agreements.init();
     employment.init();
     housing.init();
     parking.init();
+    parks.init();
     development.init();
     roadworks.reset();
     parcels.init();
@@ -68,6 +75,9 @@ pub fn update(dt: f32) void {
         parking.daily();
         parking.refreshPrices(&transport.movement);
         residents.daily();
+        // Slice 13: park condition and amenity are measured on the settled
+        // rollover, after the day's visits have been counted.
+        parks.daily();
         // Slice 18: private developers read the day's settled town - occupied
         // homes, staffed premises and the zoning the player has applied - so a
         // proposal is only ever lodged against measured demand.
@@ -76,8 +86,17 @@ pub fn update(dt: f32) void {
     // Bounded construction: a permit granted earlier completes on its own
     // schedule, and the check costs nothing while nothing is being built.
     development.update(dt, elapsed);
+    parks.update(dt);
     if (elapsed >= next_operating) {
         finance.operating(elapsed);
+        const parks_due = parks.instalmentDue();
+        if (parks_due > 0) {
+            const parks_paid = @min(parks_due, finance.available());
+            if (parks_paid > 0) {
+                finance.record(elapsed, -parks_paid, 13, -1, -1);
+                parks.applyPayment(parks_paid);
+            }
+        }
         next_operating = elapsed + 30;
     }
     if (elapsed >= next_week) {
@@ -88,7 +107,7 @@ pub fn update(dt: f32) void {
         const gain: f32 = @floatCast(@as(f64, @floatFromInt(finance.active_funding)) * 0.03 * finance.maintenance_paid - 0.025);
         r.condition = std.math.clamp(r.condition + gain * dt, 5, 100);
     }
-    for (&trust, 0..) |*value, i| value.* += (20 + city.condition(i) * 0.65 - value.*) * dt / 120;
+    for (&trust, 0..) |*value, i| value.* += (20 + city.condition(i) * 0.65 + parks.districtBenefit(i) * 6 - value.*) * dt / 120;
     transport.subsidy_available = finance.available();
     transport.subsidy_due = 0;
     // Finish or fund routine fleet maintenance before dispatch decides.

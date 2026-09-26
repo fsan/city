@@ -24,7 +24,7 @@
         <button
           class="hud-metric"
           data-open="reports"
-          title="Population report (P)"
+          title="Population report (C)"
         >
           <small>POPULATION</small
           ><strong id="population">3,840 residents</strong>
@@ -129,6 +129,26 @@
             Housing
           </button>
           <button
+            id="households-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="households-report"
+            data-report="households"
+            tabindex="-1"
+          >
+            Households
+          </button>
+          <button
+            id="parking-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="parking-report"
+            data-report="parking"
+            tabindex="-1"
+          >
+            Parking
+          </button>
+          <button
             id="history-tab"
             role="tab"
             aria-selected="false"
@@ -154,7 +174,7 @@
             <div class="report-heading">
               <div>
                 <small>MUNICIPAL REGISTER</small>
-                <h3>Bellwether at a glance</h3>
+                <h3>Bellwether at a glance <span class="info-tip" tabindex="0" role="button" aria-label="About this overview" data-tip="Employment comes from actual assignments and employer capacity. All residents are adults for now; children, healthcare outcomes and elections are not modelled yet.">?</span></h3>
               </div>
               <span class="live-label">LIVE</span>
             </div>
@@ -180,11 +200,6 @@
               </thead>
               <tbody id="land-use"></tbody>
             </table>
-            <p class="note">
-              Employment comes from actual assignments and employer capacity.
-              All residents are adults in this slice; households, children,
-              healthcare outcomes and elections are not modelled yet.
-            </p>
           </div>
           <div
             id="districts-report"
@@ -192,8 +207,8 @@
             aria-labelledby="districts-tab"
             hidden
           >
-            <h3>Local conditions</h3>
-            <table>
+            <h3>Local conditions <span class="info-tip" tabindex="0" role="button" aria-label="About local conditions" data-tip="Street condition is the mean of local segments, and trust also reads the measured park amenity in that neighbourhood. Click a neighbourhood to filter its residents, employers and streets.">?</span></h3>
+            <div class="table-scroll tall"><table>
               <thead>
                 <tr>
                   <th>Neighbourhood</th>
@@ -204,12 +219,7 @@
                 </tr>
               </thead>
               <tbody id="district-rows"></tbody>
-            </table>
-            <p class="note">
-              Street condition is the mean of local segments. Trust currently
-              responds to street condition only. Click a neighbourhood to filter
-              its residents, employers and streets.
-            </p>
+            </table></div>
           </div>
           <div
             id="mobility-report"
@@ -217,11 +227,7 @@
             aria-labelledby="mobility-tab"
             hidden
           >
-            <h3>Streets & access</h3>
-            <p>
-              Routes favour shorter, better-maintained streets and gentler
-              slopes. Click a segment to inspect it or offer repairs.
-            </p>
+            <h3>Streets & access <span class="info-tip" tabindex="0" role="button" aria-label="About streets" data-tip="Routes favour shorter, better-maintained streets and gentler slopes. Click a segment to inspect it or offer repairs.">?</span></h3>
             <div class="pager">
               <button id="street-prev">← Previous</button
               ><span id="street-page"></span
@@ -263,7 +269,7 @@
               ><span id="people-page"></span
               ><button id="people-next">Next →</button>
             </div>
-            <table>
+            <div class="table-scroll tall"><table>
               <thead>
                 <tr>
                   <th>Resident</th>
@@ -274,7 +280,7 @@
                 </tr>
               </thead>
               <tbody id="people-rows"></tbody>
-            </table>
+            </table></div>
           </div>
           <div
             id="companies-report"
@@ -282,23 +288,25 @@
             aria-labelledby="companies-tab"
             hidden
           >
-            <h3>Local employers</h3>
+            <h3>Local employers <span class="info-tip" tabindex="0" role="button" aria-label="About hiring" data-tip="Each employer posts a daily wage and a minimum skill. Once a day, qualified jobseekers fill up to 64 posts preferring the closest home-to-work trip. An employer with unpaid wage arrears dismisses up to two ordinary staff, and pays only the wages its cash covers.">?</span></h3>
             <label class="filter-label"
               ><input id="contractors-only" type="checkbox" /> Street
               contractors only</label
             >
-            <table>
+            <div class="table-scroll tall"><table>
               <thead>
                 <tr>
                   <th>Company</th>
                   <th>Staff / jobs</th>
+                  <th>Open posts</th>
+                  <th>Wage · skill</th>
                   <th>Cash</th>
                   <th>Capability</th>
                   <th>Order</th>
                 </tr>
               </thead>
               <tbody id="company-rows"></tbody>
-            </table>
+            </table></div>
           </div>
           <div
             id="housing-report"
@@ -306,14 +314,14 @@
             aria-labelledby="housing-tab"
             hidden
           >
-            <h3>Housing &amp; occupancy</h3>
+            <h3>Housing &amp; occupancy <span class="info-tip" tabindex="0" role="button" aria-label="About housing rules" data-tip="Housing charges are paid from household balances after essentials. Shortfalls become explicit unit arrears. Moves use actual travel to the new address, and a move is accepted only into a vacant unit with a lower charge and a shorter home-to-work route.">?</span></h3>
             <p id="housing-summary"></p>
             <div class="stat-grid">
               <div><small>Units</small><strong id="housing-units">—</strong></div>
               <div><small>Occupied</small><strong id="housing-occupied">—</strong></div>
               <div><small>Vacant</small><strong id="housing-vacant">—</strong></div>
             </div>
-            <table>
+            <div class="table-scroll tall"><table>
               <thead>
                 <tr>
                   <th>Unit</th>
@@ -327,13 +335,54 @@
                 </tr>
               </thead>
               <tbody id="housing-rows"></tbody>
-            </table>
-            <p class="note">
-              Housing charges are paid from household balances after essentials.
-              Shortfalls become explicit unit arrears. Moves use actual travel to
-              the new address, and a move is accepted only into a vacant unit
-              with a lower charge and a shorter home-to-work route.
-            </p>
+            </table></div>
+          </div>
+          <div
+            id="households-report"
+            role="tabpanel"
+            aria-labelledby="households-tab"
+            hidden
+          >
+            <h3>Household budgets <span class="info-tip" tabindex="0" role="button" aria-label="About household budgets" data-tip="One household per home. Members share a balance and a daily budget; fares, car running costs and purchases draw on it. Essential expenses are billed daily and any shortfall is recorded as explicit arrears, never hidden debt. Income is the posted wage of employed members; last-day pay is actually credited wages.">?</span></h3>
+            <p id="households-summary"></p>
+            <div class="table-scroll tall"><table>
+              <thead>
+                <tr>
+                  <th>Household</th>
+                  <th>District</th>
+                  <th>Members</th>
+                  <th>Balance</th>
+                  <th>Income / day</th>
+                  <th>Essentials / day</th>
+                  <th>Arrears</th>
+                  <th>Last pay</th>
+                </tr>
+              </thead>
+              <tbody id="household-rows"></tbody>
+            </table></div>
+          </div>
+          <div
+            id="parking-report"
+            role="tabpanel"
+            aria-labelledby="parking-tab"
+            hidden
+          >
+            <h3>Parking facilities <span class="info-tip" tabindex="0" role="button" aria-label="About parking" data-tip="Bicycle parks and car parks are seeded where districts are busy; every space has a hard slot count. Travellers aim for the nearest place they expect to be free and fall back to the closest free space, then walk. Kerbside prices are banded by the movement actually observed on that segment. Availability shows what travellers have recently learned, one bucket per quarter-day.">?</span></h3>
+            <p id="parking-report-summary"></p>
+            <div class="table-scroll tall"><table>
+              <thead>
+                <tr>
+                  <th>Kind</th>
+                  <th>Location</th>
+                  <th>Slots</th>
+                  <th>Occupied</th>
+                  <th>Free</th>
+                  <th>Price</th>
+                  <th>Observed availability</th>
+                </tr>
+              </thead>
+              <tbody id="parking-rows"></tbody>
+            </table></div>
           </div>
           <div
             id="history-report"
@@ -341,12 +390,8 @@
             aria-labelledby="history-tab"
             hidden
           >
-            <h3>Recorded city history</h3>
-            <p>
-              Actual snapshots every 30 simulation seconds; most recent 96
-              retained. Citywide values, independent of neighbourhood filter.
-            </p>
-            <table>
+            <h3>Recorded city history <span class="info-tip" tabindex="0" role="button" aria-label="About the history table" data-tip="Actual snapshots every 30 simulation seconds; most recent 96 retained. Citywide values, independent of neighbourhood filter.">?</span></h3>
+            <div class="table-scroll tall"><table>
               <thead>
                 <tr>
                   <th>Time</th>
@@ -357,7 +402,7 @@
                 </tr>
               </thead>
               <tbody id="history-rows"></tbody>
-            </table>
+            </table></div>
           </div>
         </div>
         <div class="window-footer">
@@ -377,7 +422,29 @@
           <span class="window-number">02 / FINANCE</span
           ><button data-close="budget" aria-label="Close treasury">×</button>
         </header>
+        <div class="tabs" role="tablist" aria-label="Treasury sections">
+          <button
+            id="budget-policy-tab"
+            role="tab"
+            aria-selected="true"
+            aria-controls="budget-policy"
+            data-budget-tab="policy"
+          >
+            Policy
+          </button>
+          <button
+            id="budget-ledger-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="budget-ledger"
+            data-budget-tab="ledger"
+            tabindex="-1"
+          >
+            Ledger
+          </button>
+        </div>
         <div class="window-body">
+          <div id="budget-policy" role="tabpanel" aria-labelledby="budget-policy-tab">
           <div class="stat-grid">
             <div>
               <small>Cash</small><strong id="budget-reserves">—</strong>
@@ -390,12 +457,7 @@
               <small>Uncommitted funds</small><strong id="available">—</strong>
             </div>
           </div>
-          <h3>Property tax policy</h3>
-          <p>
-            Annual rates on assessed property values. Taxes are billed and
-            collected at midnight each day on a 360-day fiscal year. Changing a
-            draft does not change policy until applied.
-          </p>
+          <h3>Property tax policy <span class="info-tip" tabindex="0" role="button" aria-label="About tax policy" data-tip="Annual rates on assessed property values. Taxes are billed and collected at midnight each day on a 360-day fiscal year. Changing a draft does not change policy until applied.">?</span></h3>
           <table>
             <thead>
               <tr>
@@ -487,23 +549,14 @@
               </tr>
             </tbody>
           </table>
-          <p class="note">
-            Residential owners are assumed able to pay. Businesses pay from
-            cash; unpaid bills remain as arrears. A staffed non-contractor post
-            earns its posted wage plus a simplified £12 daily surplus; posts
-            that cannot pay post wage arrears and shed a bounded number of
-            ordinary staff. Other services cost £4,000/day. These are explicit
-            starting economic assumptions.
-          </p>
+          <div class="section-title">ECONOMIC ASSUMPTIONS <span class="info-tip" tabindex="0" role="button" aria-label="Starting economic assumptions" data-tip="Residential owners are assumed able to pay. Businesses pay from cash; unpaid bills remain as arrears. A staffed non-contractor post earns its posted wage plus a simplified 12 pounds daily surplus; posts that cannot pay post wage arrears and shed a bounded number of ordinary staff. Other services cost 4,000 pounds a day. These are explicit starting economic assumptions.">?</span></div>
+          </div>
+          <div id="budget-ledger" role="tabpanel" aria-labelledby="budget-ledger-tab" hidden>
           <div class="section-title">
-            TRANSACTION LEDGER
+            TRANSACTION LEDGER <span class="info-tip" tabindex="0" role="button" aria-label="About the ledger" data-tip="Latest 80 shown; up to 1,024 retained for export. Each row shows cash after that transaction.">?</span>
             <button id="export-ledger">Export retained ledger</button>
           </div>
-          <p class="fine">
-            Latest 80 shown; up to 1,024 retained for export. Each row shows
-            cash after that transaction.
-          </p>
-          <table>
+          <div class="table-scroll tall"><table>
             <thead>
               <tr>
                 <th>Time</th>
@@ -514,7 +567,8 @@
               </tr>
             </thead>
             <tbody id="ledger-rows"></tbody>
-          </table>
+          </table></div>
+          </div>
         </div>
         <div class="window-footer">
           TREASURY
@@ -537,12 +591,7 @@
           ><button data-close="works" aria-label="Close public works">×</button>
         </header>
         <div class="window-body">
-          <h3>Offer street repairs</h3>
-          <p>
-            Choose a street, improvement scope and offered payment. Firms need a
-            four-person crew, operating cash and a worthwhile margin. An offer
-            may remain unaccepted.
-          </p>
+          <h3>Offer street repairs <span class="info-tip" tabindex="0" role="button" aria-label="How offers work" data-tip="Choose a street, improvement scope and offered payment. Firms need a four-person crew, operating cash and a worthwhile margin. An offer may remain unaccepted.">?</span></h3>
           <label class="section-title" for="work-district">NEIGHBOURHOOD</label
           ><select id="work-district"></select>
           <label class="section-title" for="work-street">STREET SEGMENT</label
@@ -586,14 +635,7 @@
             </thead>
             <tbody id="quote-rows"></tbody>
           </table>
-          <p class="note">
-            The full offer is reserved immediately; no payment is made until
-            settlement. Crews travel from their actual location. Work advances
-            only with all four workers present. Completion pays the agreed
-            price. Cancel accepted work: 5% fee plus 95% × delivered fraction;
-            partial improvements remain.
-          </p>
-          <div class="section-title">WORK REGISTER</div>
+          <div class="section-title">WORK REGISTER <span class="info-tip" tabindex="0" role="button" aria-label="About the work register" data-tip="The full offer is reserved immediately; no payment is made until settlement. Crews travel from their actual location. Work advances only with all four workers present. Completion pays the agreed price. Cancel accepted work: 5 percent fee plus 95 percent times delivered fraction; partial improvements remain.">?</span></div>
           <table>
             <thead>
               <tr>
@@ -700,7 +742,7 @@
               </tr>
               <tr>
                 <td>Reports / treasury / works</td>
-                <td>P / B / J</td>
+                <td>C / B / J</td>
               </tr>
               <tr>
                 <td>Inspector / controls</td>
@@ -708,11 +750,15 @@
               </tr>
               <tr>
                 <td>Transport / traffic overlay</td>
-                <td>T / G</td>
+                <td>T / V</td>
               </tr>
               <tr>
-                <td>Street overlay</td>
-                <td>O</td>
+                <td>Street / pedestrian / park map</td>
+                <td>O / F / K</td>
+              </tr>
+              <tr>
+                <td>Planning (roads / zoning / permits / parks)</td>
+                <td>N / Z / P / G</td>
               </tr>
               <tr>
                 <td>Cancel route draft / close window or menu</td>
@@ -720,12 +766,8 @@
               </tr>
             </tbody>
           </table>
-          <p class="note">
-            Drag window title bars to arrange reports. Multiple windows can stay
-            open. Opening a report does not pause the city.
-          </p>
-          <h3>Save / load town</h3>
-          <p class="note">Save downloads a local town file. Load replaces this town only after validation; save first if you want to keep it. Simulation time, speed, journeys, accounts, repairs and agreement history are preserved. Unapplied drafts, selections and window positions are not saved. No autosave or cloud storage.</p>
+          <div class="tip-row"><span class="info-tip" tabindex="0" role="button" aria-label="About windows" data-tip="Drag a window title bar to arrange it. Multiple windows can stay open, and opening a report does not pause the city.">?</span> <small>Window controls</small></div>
+          <h3>Save / load town <span class="info-tip" tabindex="0" role="button" aria-label="About save and load" data-tip="Save downloads a local town file. Load replaces this town only after validation; save first if you want to keep it. Simulation time, speed, journeys, accounts, repairs and agreement history are preserved. Unapplied drafts, selections and window positions are not saved. No autosave or cloud storage.">?</span></h3>
           <button id="save-town">Save town file</button>
           <button id="load-town">Load town file</button>
           <input id="town-file" type="file" accept=".json,application/json" hidden>
@@ -742,7 +784,7 @@
           aria-expanded="false"
           aria-controls="reports-menu"
         >
-          City reports <kbd>P</kbd><span>›</span>
+          City reports <kbd>C</kbd><span>›</span>
         </button>
         <button data-open="budget">Treasury <kbd>B</kbd><span>↗</span></button>
         <button data-open="works">
@@ -761,7 +803,7 @@
         <button id="context-inspect">Inspect location <kbd>I</kbd></button
         ><button data-open="works">Public works <kbd>J</kbd></button
         ><button data-action="overlay">Street condition <kbd>O</kbd></button
-        ><button data-open="reports">City reports <kbd>P</kbd></button>
+        ><button data-open="reports">City reports <kbd>C</kbd></button>
       </div>
       <nav class="toolbar" aria-label="City tools">
         <button
@@ -777,7 +819,7 @@
           aria-controls="reports-window"
           aria-expanded="false"
         >
-          Reports <kbd>P</kbd></button
+          Reports <kbd>C</kbd></button
         ><button
           data-toggle="budget"
           aria-controls="budget-window"
@@ -807,9 +849,16 @@
         ><button
           id="traffic-overlay"
           aria-pressed="false"
-          title="Traffic map (G)"
+          title="Traffic map (V)"
         >
-          Traffic <kbd>G</kbd>
+          Traffic <kbd>V</kbd>
+        </button
+        ><button
+          id="park-overlay"
+          aria-pressed="false"
+          title="Park condition map (K)"
+        >
+          Parks <kbd>K</kbd>
         </button>
       </nav>
       <div class="status-line">
@@ -840,43 +889,67 @@
             ×
           </button>
         </header>
+        <div class="tabs" role="tablist" aria-label="Transport authority sections">
+          <button id="transport-lines-tab" role="tab" aria-selected="true" aria-controls="tpanel-lines" data-transport-tab="lines">Lines</button>
+          <button id="transport-agreements-tab" role="tab" aria-selected="false" aria-controls="tpanel-agreements" data-transport-tab="agreements" tabindex="-1">Agreements</button>
+          <button id="transport-fleet-tab" role="tab" aria-selected="false" aria-controls="tpanel-fleet" data-transport-tab="fleet" tabindex="-1">Fleet &amp; staff</button>
+          <button id="transport-stops-tab" role="tab" aria-selected="false" aria-controls="tpanel-stops" data-transport-tab="stops" tabindex="-1">Stops &amp; riders</button>
+          <button id="transport-streets-tab" role="tab" aria-selected="false" aria-controls="tpanel-streets" data-transport-tab="streets" tabindex="-1">Streets</button>
+          <button id="transport-signals-tab" role="tab" aria-selected="false" aria-controls="tpanel-signals" data-transport-tab="signals" tabindex="-1">Signals</button>
+        </div>
         <div class="window-body">
           <div id="transport-summary" class="note"></div>
-          <h3>Fares & support</h3>
-          <div class="transport-controls">
-            <label
-              >Fare cap £
-              <input
-                id="fare-cap"
-                type="number"
-                min="0"
-                max="10"
-                step="0.1"
-                value="2" /></label
-            ><label
-              >Subsidy per boarding £
-              <input
-                id="bus-subsidy"
-                type="number"
-                min="0"
-                max="10"
-                step="0.1"
-                value="1" /></label
-            ><button id="transport-policy">Apply policy</button>
+          <div id="tpanel-lines" role="tabpanel" aria-labelledby="transport-lines-tab">
+            <h3>Fares &amp; support <span class="info-tip" tabindex="0" role="button" aria-label="About fares and subsidies" data-tip="Operators charge up to 3 pounds within the cap. Subsidies come from uncommitted city funds. Operators share company working capital across their lines; buses cost 0.18 pounds per simulation second plus prepaid clearance. Service stops when cash runs out. Capacity: 24 seats; two buses initially; service agreements can require one to three.">?</span></h3>
+            <div class="transport-controls">
+              <label
+                >Fare cap £
+                <input
+                  id="fare-cap"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  value="2" /></label
+              ><label
+                >Subsidy per boarding £
+                <input
+                  id="bus-subsidy"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  value="1" /></label
+              ><button id="transport-policy">Apply policy</button>
+            </div>
+            <h3>Bus lines</h3>
+            <div class="transport-controls">
+              <select id="bus-line" aria-label="Bus line"></select
+              ><button id="line-new">New line</button
+              ><button id="line-remove">Remove line</button>
+            </div>
+            <div id="line-stats" class="note"></div>
+            <div id="bus-fleet" class="transport-controls"></div>
+            <div class="transport-controls">
+              <button id="line-edit">Edit route on map</button
+              ><button id="line-clear">Clear map selection</button>
+            </div>
+            <div id="route-form" hidden>
+              <h3>Ordered street stops · circular service <span class="info-tip" tabindex="0" role="button" aria-label="About route editing" data-tip="Two to sixteen unique stops. Closing the window keeps map editing active. Drag a gold stop to relocate it; drag a connecting route segment to insert a stop. Changes unload riders at the next junction before buses join the revised service.">?</span></h3>
+              <ol id="stop-list"></ol>
+              <label
+                >Street address
+                <select id="stop-address"></select
+              ></label>
+              <div class="transport-controls">
+                <button id="stop-add">Add address</button
+                ><button id="route-save">Apply route</button
+                ><button id="route-cancel">Discard changes</button>
+              </div>
+            </div>
           </div>
-          <p class="note">
-            Operators charge up to £3 within the cap. Subsidies come from
-            uncommitted city funds. Operators share company working capital across their lines; buses cost £0.18 per simulation second plus prepaid clearance. Service stops
-            when cash runs out. Capacity: 24 seats; two buses initially; service agreements can require one to three.
-          </p>
-          <h3>Bus lines</h3>
-          <div class="transport-controls">
-            <select id="bus-line" aria-label="Bus line"></select
-            ><button id="line-new">New line</button
-            ><button id="line-remove">Remove line</button>
-          </div>
-          <div id="line-stats" class="note"></div>
-          <details id="service-agreements"><summary>Bus operators &amp; service agreements</summary>
+          <div id="tpanel-agreements" role="tabpanel" aria-labelledby="transport-agreements-tab" hidden>
+            <h3>Bus operators &amp; service agreements</h3>
             <div class="service-form">
 
             <label>Operator <select id="service-operator"><option value="0">Bellwether Transit</option><option value="1">Ridgeway Passenger</option><option value="2">Community Bus</option></select></label>
@@ -886,16 +959,25 @@
             <label>Maximum interval (simulation seconds; 0 = off) <input id="service-interval" type="number" min="0" max="600" step="1" value="0"></label>
             <label>Maximum payment (£) <input id="service-price" type="number" min="0.01" max="1000000000" step="0.01" value="240"></label>
             </div>
-            <p class="note">Abstract driver cohorts: day 06:00–22:00, night 22:00–06:00. Operation costs £0.06 vehicle + £0.12 labour per bus-second; dispatch prepays £2 for eventual safe clearance and relief overtime. No advances: future public payments are earned through service. Compare fewer buses, daytime hours or another solvent operator if refused.</p>
+            <div class="section-title">DRAFT TERMS <span class="info-tip" tabindex="0" role="button" aria-label="About agreement terms" data-tip="Abstract driver cohorts: day 06:00-22:00, night 22:00-06:00. Operation costs 0.06 pounds vehicle + 0.12 pounds labour per bus-second; dispatch prepays 2 pounds for eventual safe clearance and relief overtime. No advances: future public payments are earned through service. Funds are reserved on offer, and offers need operating cost plus 15 percent margin. Compare fewer buses, daytime hours or another solvent operator if refused.">?</span></div>
             <p id="operator-receipts" class="note"></p>
-            <p class="note">Funds are reserved on offer. Payment follows movement and scheduled dwell; traffic delays reduce delivery. Offers need operating cost plus 15% margin.</p>
-            <table aria-label="Operator comparison for draft offer"><thead><tr><th>Operator</th><th>Buses for draft / owned</th><th>Minimum offer</th><th>Draft assessment</th></tr></thead><tbody id="service-comparison"></tbody></table>
+            <div class="table-scroll"><table aria-label="Operator comparison for draft offer"><thead><tr><th>Operator</th><th>Buses for draft / owned</th><th>Minimum offer</th><th>Draft assessment</th></tr></thead><tbody id="service-comparison"></tbody></table></div>
             <p id="service-target-help" class="note"></p>
             <p id="service-funding" class="note"></p>
             <button id="service-offer">Publish / revise offer</button><button id="service-cancel">Cancel remaining service</button>
             <p id="service-status" class="note"></p>
             <p id="service-delivery" class="note"></p>
-            <h3>Fleet &amp; staff investment</h3>
+            <h3>Agreement regularity review <span class="info-tip" tabindex="0" role="button" aria-label="About regularity targets" data-tip="Optional target: whole 30-600 simulation seconds between arrivals. Review only; no penalty or price change, and financial eligibility does not guarantee this interval is achievable. Only arrivals after acceptance count. Each coverage window allows one target-length grace period for its first arrival. Closed-hour pairs are omitted. The enforceable remedy uses delivered bus-seconds against the windowed target, never these intervals.">?</span></h3>
+            <div id="service-regularity"></div>
+            <div class="section-title">ENFORCEMENT &amp; OTHER REMEDIES <span class="info-tip" tabindex="0" role="button" aria-label="About enforcement and other remedies" data-tip="Enforceable remedy: delivery below 85 percent of the agreed windowed target after at least one whole day of expected service opens a 480-second cure; an unresolved shortfall then accrues a service credit at 0.18 pounds per missing bus-second, capped at 25 percent of the agreement price. Credits are paid only from operator cash above the 2.18 pounds dispatch floor; unpaid credit is waived, never debt. A route or service change suspends enforcement for that agreement, and regularity intervals stay review-only. Other remedies: inspect held buses and street allocation, edit the route, or cancel and re-offer. Cancellation pays earned pennies and releases the remainder; service continues privately. Route edits do not restart the agreement clock, and private services retain the last operator and hours.">?</span></div>
+            <h3>Closed agreement register <span class="info-tip" tabindex="0" role="button" aria-label="About closed agreements" data-tip="Last 64 closed records, newest first. Retained through later offers and line reuse in this session; restarting or refreshing clears history.">?</span></h3>
+            <label>Record <select id="service-history"></select></label>
+            <p id="service-history-detail" class="note"></p>
+            <p id="service-history-route" class="note"></p>
+            <div id="service-history-regularity"></div>
+          </div>
+          <div id="tpanel-fleet" role="tabpanel" aria-labelledby="transport-fleet-tab" hidden>
+            <h3>Fleet &amp; staff investment <span class="info-tip" tabindex="0" role="button" aria-label="About fleet and staff" data-tip="Buses wear only while a service bus is moving, dwelling or held in traffic; clearing earns nothing and causes no wear. An exhausted bus stops at the next stop, unloads and enters paid maintenance. A repair that cannot be funded leaves the unit unavailable instead of creating debt. Purchases, sales, recruitment, severance and maintenance are explicit cash movements inside the operator account.">?</span></h3>
             <label>Operator <select id="fleet-operator"><option value="0">Bellwether Transit</option><option value="1">Ridgeway Passenger</option><option value="2">Community Bus</option></select></label>
             <label>Owned bus <select id="fleet-unit"></select></label>
             <div class="transport-controls"><button id="fleet-buy">Buy bus</button><button id="fleet-sell">Sell selected</button><button id="fleet-maintain">Maintain selected</button></div>
@@ -904,114 +986,55 @@
             <p id="fleet-maintain-help" class="note"></p>
             <div class="transport-controls"><button id="staff-recruit-day">Recruit day driver</button><button id="staff-recruit-night">Train night driver</button><button id="staff-dismiss-day">Dismiss day driver</button><button id="staff-dismiss-night">Withdraw night driver</button></div>
             <p id="fleet-lifecycle" class="note"></p>
-            <p id="fleet-recruit" class="note"></p>
-            <p id="fleet-roster" class="note"></p>
             <p id="fleet-summary" class="note"></p>
             <p id="staff-reasons" class="note"></p>
             <p id="fleet-dispatch" class="note"></p>
-            <p class="note">Buses wear only while a service bus is moving, dwelling or held in traffic; clearing earns nothing and causes no wear. An exhausted bus stops at the next stop, unloads and enters paid maintenance. A repair that cannot be funded leaves the unit unavailable instead of creating debt. Purchases, sales, recruitment, severance and maintenance are explicit cash movements inside the operator's own account. <span id="operator-message"></span></p>
-            <h3>Agreement regularity review</h3>
-            <p class="note">Optional target: whole 30–600 simulation seconds between arrivals. Review only; no penalty or price change, and financial eligibility does not guarantee this interval is achievable. Only arrivals after acceptance count. Each coverage window allows one target-length grace period for its first arrival. Closed-hour pairs are omitted. Missing samples never mean success. The enforceable remedy above uses delivered bus-seconds against the windowed target, never these intervals.</p>
-            <div id="service-regularity"></div>
-            <p class="note">Enforceable remedy: delivery below 85% of the agreed windowed target after at least one whole day of expected service opens a 480-second cure; an unresolved shortfall then accrues a service credit at £0.18 per missing bus-second, capped at 25% of the agreement price. Credits are paid only from operator cash above the £2.18 dispatch floor; unpaid credit is recorded as waived, never as debt. A route or service change suspends enforcement for that agreement. Regularity intervals above remain review-only and never move money.</p>
-            <p class="note">Other remedies: inspect held buses and street allocation, edit the route, or cancel and re-offer. Cancellation pays earned pennies and releases the remainder; service continues privately. Route edits do not restart the agreement clock. Private services retain the last operator and hours. Cancel and re-offer to agree terms for the new route.</p>
-            <h3>Closed agreement register</h3>
-            <label>Record <select id="service-history"></select></label>
-            <p id="service-history-detail" class="note"></p>
-            <p id="service-history-route" class="note"></p>
-            <div id="service-history-regularity"></div>
-            <p class="note">Last 64 closed records, newest first. Retained through later offers and line reuse in this session; restarting or refreshing clears history.</p>
-          </details>
-          <div id="bus-fleet" class="transport-controls"></div>
-          <details id="stop-observations" open>
-            <summary>Observed stop arrivals &amp; regularity</summary>
-            <p class="note">Intervals are simulation seconds between actual bus arrivals, not resident waiting duration or promised coverage. Deployment is excluded. Daytime gaps crossing closed hours are omitted; the last eligible interval may be from an earlier day. No timetable or regularity penalty applies.</p>
+            <span id="operator-message"></span>
+          </div>
+          <div id="tpanel-stops" role="tabpanel" aria-labelledby="transport-stops-tab" hidden>
+            <h3>Observed stop arrivals &amp; regularity <span class="info-tip" tabindex="0" role="button" aria-label="About stop arrivals" data-tip="Intervals are simulation seconds between actual bus arrivals, not resident waiting duration or promised coverage. Deployment is excluded. Daytime gaps crossing closed hours are omitted; the last eligible interval may be from an earlier day. No timetable or regularity penalty applies.">?</span></h3>
             <label>Observation record <select id="stop-record"><option value="18">Current route / coverage</option><option value="19">Most recent retired route / coverage</option></select></label>
             <p id="stop-record-status" class="note"></p>
-            <div style="overflow-x:auto"><table><thead><tr><th>Stop · locate</th><th>Waiting now</th><th>Visits</th><th>Latest arrival</th><th>Intervals</th><th>Last eligible / mean</th><th>Min–max</th></tr></thead><tbody id="stop-observation-rows"></tbody></table></div>
-          </details>
-          <details id="passenger-outcomes" open>
-            <summary>Passenger waiting outcomes</summary>
-            <p class="note">Completed waits are actual boardings at the selected route version. Capacity denials count a full in-service bus once per waiting resident per dwell; a later boarding does not erase the denial. Abandonments use the simulation's identified causes. Current waiting is live and excluded from completed averages.</p>
+            <div class="table-scroll"><table><thead><tr><th>Stop · locate</th><th>Waiting now</th><th>Visits</th><th>Latest arrival</th><th>Intervals</th><th>Last eligible / mean</th><th>Min–max</th></tr></thead><tbody id="stop-observation-rows"></tbody></table></div>
+            <h3>Passenger waiting outcomes <span class="info-tip" tabindex="0" role="button" aria-label="About passenger waiting outcomes" data-tip="Completed waits are actual boardings at the selected route version. Capacity denials count a full in-service bus once per waiting resident per dwell; a later boarding does not erase the denial. Abandonments use the simulation's identified causes. Current waiting is live and excluded from completed averages.">?</span></h3>
             <p id="passenger-outcome-summary" class="note"></p>
-            <div style="overflow-x:auto"><table aria-label="Passenger waiting outcomes by stop"><thead><tr><th>Stop · locate</th><th>Waiting now</th><th>Completed waits</th><th>Mean completed</th><th>Range</th><th>Capacity denials</th><th>Abandoned</th></tr></thead><tbody id="passenger-outcome-rows"></tbody></table></div>
-          </details>
-          <details id="district-access" open>
-            <summary>District bus-wait comparison</summary>
-            <p class="note">Observed waits grouped by each rider's home district. This is not population-wide access and excludes trips that chose walking, cycling or driving. Abandoned-after-capacity is factual context, not proof that capacity alone caused the abandonment.</p>
-            <table aria-label="Observed bus waits by home district"><thead><tr><th>District</th><th>Observed waits</th><th>Completed</th><th>Mean completed</th><th>Capacity denials</th><th>Abandoned</th><th>Abandoned after capacity</th></tr></thead><tbody id="district-access-rows"></tbody></table>
-          </details>
-          <div class="transport-controls">
-            <button id="line-edit">Edit route on map</button
-            ><button id="line-clear">Clear map selection</button>
+            <div class="table-scroll"><table aria-label="Passenger waiting outcomes by stop"><thead><tr><th>Stop · locate</th><th>Waiting now</th><th>Completed waits</th><th>Mean completed</th><th>Range</th><th>Capacity denials</th><th>Abandoned</th></tr></thead><tbody id="passenger-outcome-rows"></tbody></table></div>
+            <h3>District bus-wait comparison <span class="info-tip" tabindex="0" role="button" aria-label="About district comparison" data-tip="Observed waits grouped by each rider's home district. This is not population-wide access and excludes trips that chose walking, cycling or driving. Abandoned-after-capacity is factual context, not proof that capacity alone caused the abandonment.">?</span></h3>
+            <div class="table-scroll"><table aria-label="Observed bus waits by home district"><thead><tr><th>District</th><th>Observed waits</th><th>Completed</th><th>Mean completed</th><th>Capacity denials</th><th>Abandoned</th><th>Abandoned after capacity</th></tr></thead><tbody id="district-access-rows"></tbody></table></div>
           </div>
-          <div id="route-form" hidden>
-            <h3>Ordered street stops · circular service</h3>
-            <ol id="stop-list"></ol>
+          <div id="tpanel-streets" role="tabpanel" aria-labelledby="transport-streets-tab" hidden>
+            <h3>Street allocation <span class="info-tip" tabindex="0" role="button" aria-label="About street allocation" data-tip="Bus lanes bypass general traffic queues. Cycle lanes improve cycling speed. Both allocations reduce car speed by 20 percent. Works, slopes and worn surfaces also slow traffic. V toggles the traffic map; click a street there to inspect it.">?</span></h3>
             <label
-              >Street address
-              <select id="stop-address"></select
+              >Street segment
+              <select id="traffic-road"></select
             ></label>
+            <div id="traffic-road-stats" class="note"></div>
             <div class="transport-controls">
-              <button id="stop-add">Add address</button
-              ><button id="route-save">Apply route</button
-              ><button id="route-cancel">Discard changes</button>
+              <select id="traffic-lane" aria-label="Street lane allocation">
+                <option value="0">Mixed traffic</option>
+                <option value="1">Dedicated bus lanes</option>
+                <option value="2">Protected cycle lanes</option></select
+              ><button id="lane-apply">Apply lanes</button
+              ><button id="road-locate">Locate street</button>
             </div>
-            <p class="note">
-              Two to sixteen unique stops. Closing the window keeps map editing
-              active. Drag a gold stop to relocate it; drag a connecting route
-              segment to insert a stop. Changes unload riders at the next
-              junction before buses join the revised service.
-            </p>
+            <h3>Parking and street types <span class="info-tip" tabindex="0" role="button" aria-label="About parking" data-tip="Bicycle parks and car parks are seeded where districts are busy; every space has a hard slot count. Cyclists and drivers aim for the nearest place they expect to be free, fall back to the closest free space, and walk the rest of the way. Streets and avenues sell kerbside car spaces at a price banded by the movement actually observed on that segment, capped at 1.20 pounds. Lanes never allow kerbside parking.">?</span></h3>
+            <div id="parking-summary" class="note"></div>
+            <h3>Current queues</h3>
+            <div id="traffic-hotspots"></div>
           </div>
-          <h3>Street allocation</h3>
-          <label
-            >Street segment
-            <select id="traffic-road"></select
-          ></label>
-          <div id="traffic-road-stats" class="note"></div>
-          <div class="transport-controls">
-            <select id="traffic-lane" aria-label="Street lane allocation">
-              <option value="0">Mixed traffic</option>
-              <option value="1">Dedicated bus lanes</option>
-              <option value="2">Protected cycle lanes</option></select
-            ><button id="lane-apply">Apply lanes</button
-            ><button id="road-locate">Locate street</button>
-          </div>
-          <p class="note">
-            Bus lanes bypass general traffic queues. Cycle lanes improve cycling
-            speed. Both allocations reduce car speed by 20%. Works, slopes and
-            worn surfaces also slow traffic. G toggles the traffic map; click a
-            street there to inspect it.
-          </p>
-          <h3>Parking and street types</h3>
-          <div id="parking-summary" class="note"></div>
-          <p class="note">
-            Bicycle parks and car parks are seeded where districts are busy;
-            every space has a hard slot count. Cyclists and drivers aim for the
-            nearest place they expect to be free, fall back to the closest free
-            space, and walk the rest of the way. Streets and avenues sell
-            kerbside car spaces at a price banded by the movement actually
-            observed on that segment, capped at £1.20. Lanes never allow
-            kerbside parking.
-          </p>
-          <h3>Traffic signals and crosswalks</h3>
-          <div class="transport-controls">
+          <div id="tpanel-signals" role="tabpanel" aria-labelledby="transport-signals-tab" hidden>
+            <h3>Traffic signals and crosswalks <span class="info-tip" tabindex="0" role="button" aria-label="About signal placement" data-tip="Arm a tool, then click the map. Placement snaps to the nearest junction arm. A light is set back from the corner and gives one branch green at a time.">?</span></h3>
+            <div class="transport-controls">
             <button id="signal-place" aria-pressed="false">Place traffic light</button>
             <button id="crosswalk-place" aria-pressed="false">Add crosswalk</button>
             <button id="crosswalk-remove" aria-pressed="false">Remove crosswalk</button>
-          </div>
-          <div class="transport-tabs" role="tablist" aria-label="Traffic light views">
+            </div>
+            <div class="transport-tabs" role="tablist" aria-label="Traffic light views">
             <button id="signal-tab-one" role="tab" aria-selected="true">Selected light</button>
             <button id="signal-tab-all" role="tab" aria-selected="false">All lights</button>
             <button id="signal-tab-map" role="tab" aria-selected="false">Coordination map</button>
-          </div>
+            </div>
           <div id="signal-view-one" role="tabpanel">
-          <p class="note">
-            Arm a tool, then click the map. Placement snaps to the nearest
-            junction arm. A light is set back from the corner and gives one
-            branch green at a time, as real life does.
-          </p>
           <div id="signal-inspector" hidden>
             <div id="signal-summary" class="note"></div>
             <label>Green time (simulation seconds)
@@ -1029,13 +1052,7 @@
             </div>
             <p class="note" id="signal-clock"></p>
             <div class="note" id="signal-arms"></div>
-            <h4>Blinking yellow</h4>
-            <p class="note">
-              In the window below this light blinks yellow instead of cycling,
-              which means cars may cross slowly as long as it is safe. The switch
-              puts one light on flashing yellow by hand, or hands it back to the
-              window and the normal cycle.
-            </p>
+            <h4>Blinking yellow <span class="info-tip" tabindex="0" role="button" aria-label="About blinking yellow" data-tip="In the window below this light blinks yellow instead of cycling, which means cars may cross slowly as long as it is safe. The switch puts one light on flashing yellow by hand, or hands it back to the window and the normal cycle.">?</span></h4>
             <label>Flash window starts at hour
               <input id="signal-flash-start" type="number" min="0" max="24" step="0.5">
             </label>
@@ -1050,13 +1067,7 @@
               <button id="signal-flash-off" aria-pressed="false">Normal cycle</button>
             </div>
             <p class="note" id="signal-flash-state"></p>
-            <h4>Emergency hold</h4>
-            <p class="note">
-              Police and firefighters are not simulated yet. These raise the
-              alert a dispatcher will one day send: hold stops the cross traffic
-              so an emergency vehicle can pass, open puts the junction on
-              flashing yellow, release hands it back.
-            </p>
+            <h4>Emergency hold <span class="info-tip" tabindex="0" role="button" aria-label="About emergency holds" data-tip="Police and firefighters are not simulated yet. These raise the alert a dispatcher will one day send: hold stops the cross traffic so an emergency vehicle can pass, open puts the junction on flashing yellow, release hands it back.">?</span></h4>
             <div class="transport-controls">
               <button id="signal-hold" aria-pressed="false">Hold cross traffic</button>
               <button id="signal-open" aria-pressed="false">Open</button>
@@ -1066,12 +1077,7 @@
           </div>
           <div id="signal-view-all" role="tabpanel" hidden>
             <div id="signal-list" class="signal-list"></div>
-            <h4>Apply to many lights</h4>
-            <p class="note">
-              Choose what to change, then whether it lands on every light, on
-              every light along one street, or on one junction. The count after
-              Apply says how many lights took the new value.
-            </p>
+            <h4>Apply to many lights <span class="info-tip" tabindex="0" role="button" aria-label="About bulk edits" data-tip="Choose what to change, then whether it lands on every light, on every light along one street, or on one junction. The count after Apply says how many lights took the new value.">?</span></h4>
             <div class="transport-controls">
               <select id="signal-bulk-scope" aria-label="Bulk scope">
                 <option value="0">Every light</option>
@@ -1099,11 +1105,7 @@
             <p class="note" id="signal-bulk-note"></p>
           </div>
           <div id="signal-view-map" role="tabpanel" hidden>
-            <p class="note">
-              Linked lights run the same cycle, with the follower held back by
-              the delay shown on the link. Pick a leader and a follower, set the
-              delay in simulation seconds, then Link them.
-            </p>
+            <h4>Coordination links <span class="info-tip" tabindex="0" role="button" aria-label="About coordination links" data-tip="Linked lights run the same cycle, with the follower held back by the delay shown on the link. Pick a leader and a follower, set the delay in simulation seconds, then Link them.">?</span></h4>
             <svg id="signal-map" viewBox="0 0 320 320" role="img" aria-label="Traffic light coordination map"></svg>
             <div class="transport-controls">
               <select id="signal-link-from" aria-label="Leader light"></select>
@@ -1114,13 +1116,7 @@
               <button id="signal-link-add">Link lights</button>
               <button id="signal-link-remove">Unlink</button>
             </div>
-            <h4>Emergency alerts</h4>
-            <p class="note">
-              A police or firefighter dispatcher will one day raise these. Hold
-              stops the cross traffic so an emergency vehicle can pass; Open puts
-              the junction on flashing amber; Release hands it back to its normal
-              cycle.
-            </p>
+            <h4>Emergency alerts <span class="info-tip" tabindex="0" role="button" aria-label="About emergency alerts" data-tip="A police or firefighter dispatcher will one day raise these. Hold stops the cross traffic so an emergency vehicle can pass; Open puts the junction on flashing amber; Release hands it back to its normal cycle.">?</span></h4>
             <div class="transport-controls">
               <select id="signal-alert-kind" aria-label="Alert">
                 <option value="1">Hold cross traffic</option>
@@ -1132,8 +1128,7 @@
             </div>
             <p class="note" id="signal-map-note"></p>
           </div>
-          <h3>Current queues</h3>
-          <div id="traffic-hotspots"></div>
+          </div>
           <p id="transport-message" role="status"></p>
         </div>
       </section>
@@ -1143,28 +1138,40 @@
         <button id="zone-tool" aria-pressed="false">Zoning <kbd>Z</kbd></button>
         <button id="pedestrian-overlay" aria-pressed="false">Pedestrians <kbd>F</kbd></button>
         <button id="permit-tool" aria-pressed="false">Permits <kbd>P</kbd></button>
+        <button id="park-tool" aria-pressed="false">Parks <kbd>G</kbd></button>
       </div>
       <section id="planning-panel" hidden aria-label="Road and zoning planner">
         <header><strong>STREETS &amp; LAND USE</strong><button id="planning-close" aria-label="Close planner">×</button></header>
         <div id="road-options">
           <label>Road shape <select id="road-shape"><option value="0">Straight</option><option value="1">Curved</option></select></label>
           <label>Street type <select id="road-class"><option value="1">Street</option><option value="0">Lane</option><option value="2">Avenue</option></select></label>
-          <p>Click start and end; curved roads add a bend control point. Junctions connect automatically. WASD pans, wheel zooms. Enter builds; Escape cancels.</p>
-          <button id="road-build" disabled>Build road</button> <button id="road-discard">Discard draft</button>
+          <button id="road-build" disabled>Build road</button> <button id="road-discard">Discard draft</button> <span class="info-tip" tabindex="0" role="button" aria-label="How to draw roads" data-tip="Click start and end; curved roads add a bend control point. Junctions connect automatically. WASD pans, wheel zooms. Enter builds; Escape cancels.">?</span>
         </div>
         <div id="zone-options" hidden>
           <label>Zone <select id="zone-kind"><option value="0">Unzoned</option><option value="1">Residential</option><option value="2">Commercial</option><option value="3">Industrial</option><option value="4">Mixed use</option><option value="5">Civic / park reserve</option></select></label>
           <label>Apply to <select id="zone-scope"><option value="block">Whole enclosed block</option><option value="parcel">Selected parcel</option></select></label>
-          <button id="zone-apply" disabled>Apply zoning</button>
-          <p>Green homes · blue commerce · ochre industry · violet mixed · teal civic · grey unzoned. Zoning reserves future use, and existing buildings remain. Zoned vacant land now attracts private applications: see <strong>Permits</strong>.</p>
+          <button id="zone-apply" disabled>Apply zoning</button> <span class="info-tip" tabindex="0" role="button" aria-label="About zoning" data-tip="Green homes, blue commerce, ochre industry, violet mixed, teal civic, grey unzoned. Zoning reserves future use, and existing buildings remain. Zoned vacant land now attracts private applications: see Permits.">?</span>
         </div>
         <div id="permit-options" hidden>
-          <p id="permit-summary">No applications. Private developers apply only where the town is measurably crowded and the land is zoned; approved jobs show their physical construction stage here.</p>
+          <p id="permit-summary">No applications. Private developers apply only where the town is measurably crowded and the land is zoned; approved jobs show their physical construction stage here, and every application shows the sunlight its site receives and the shadow it would cast.</p>
           <div class="table-scroll"><table>
             <thead><tr><th>#</th><th>Use</th><th>Where</th><th>Levy</th><th>Status / cost</th><th>Actions</th></tr></thead>
             <tbody id="permit-rows"></tbody>
           </table></div>
-          <p>Granting a permit takes the development levy into the municipal ledger; the applicant pays privately for access, grading, foundations, materials and a contractor crew. The site is redeveloped only after the crew has arrived and the materials are delivered. Silence is a decision: an unanswered application lapses.</p>
+          <div class="tip-row"><span class="info-tip" tabindex="0" role="button" aria-label="How private development works" data-tip="Granting a permit takes the development levy into the municipal ledger; the applicant pays privately for access, grading, foundations, materials, a contractor crew and the measured shadow compensation its new building owes its neighbours. Assessment follows measured sunlight and road access, so a shaded site is worth less and a building that shades others pays them; a proposal that would push a neighbour below the sunlight floor is refused. The site is redeveloped only after the crew has arrived and the materials are delivered. Silence is a decision: an unanswered application lapses.">?</span> <small>How permits work</small></div>
+        </div>
+        <div id="park-options" hidden>
+          <p id="park-summary">Public space: every park, playground and plaza has a measured walking catchment, a condition maintained from the municipal budget, and a bounded amenity value that lifts its neighbours' assessed value and district trust.</p>
+          <div class="table-scroll"><table>
+            <thead><tr><th>#</th><th>Kind</th><th>Address</th><th>Condition</th><th>Homes / residents</th><th>Mean walk / access</th><th>Visits today / ever</th><th>Amenity</th><th>Care now</th></tr></thead>
+            <tbody id="park-rows"></tbody>
+          </table></div>
+          <div class="form-grid">
+            <label>Maintenance <select id="park-funding"><option value="0">Minimum</option><option value="1">Standard</option><option value="2">Enhanced</option></select></label>
+            <label>New public space <select id="park-kind"><option value="0">Park</option><option value="1">Playground</option><option value="2">Plaza</option></select></label>
+            <button id="park-apply" disabled>Convert selected reserve</button>
+          </div>
+          <div class="tip-row"><span class="info-tip" tabindex="0" role="button" aria-label="How public spaces work" data-tip="Funding pays the parks maintenance bill from the municipal ledger; a shortfall simply leaves the park to deteriorate. Converting a vacant civic/park reserve parcel into a public space costs the ledger, and only a parcel already zoned Civic / park reserve qualifies. Maintenance coverage scales how fast condition recovers; visits add wear. A cared-for park is worth more to its neighbours, and a neglected one drags district trust down.">?</span> <small>How public spaces work</small></div>
         </div>
         <p id="planning-status" role="status"></p>
       </section>

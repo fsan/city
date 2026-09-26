@@ -98,6 +98,18 @@ baseline the slice-17 note records (820 lots of 900 storage, 1,328 nodes of
 | v12 file | result 3 |
 | six simulated days | peak 1,126 cars, 11 applications lodged, £2,500.00 in levies |
 
+## Item 12: assessment and sunlight
+
+Numbered list item 12 is now implemented as
+[property-valuation-slice.md](property-valuation-slice.md). The flat
+`city.lotValue(kind)` table is still the assessed *base* for a use, but the
+value a proposal is assessed at is that base times a measured sunlight factor
+(0.97–1.10) and a bounded road-access factor, so a shaded or remote site is
+worth less and pays a smaller levy. A proposal measures the assessed-value loss
+its new building would cast on its neighbours and pays them a fixed share of it
+privately; a proposal that would push a neighbour below the sunlight floor is
+refused with its own reason. Completed jobs reassess the whole roll.
+
 ## Limits
 
 - Numbered item 11 now gives approved permits a physical construction path in
@@ -111,4 +123,5 @@ baseline the slice-17 note records (820 lots of 900 storage, 1,328 nodes of
   price model: it says where the town is crowded, not what a square metre is
   worth.
 - The levy is a flat share of assessed value. There is no tender, no competing
-  applicant and no negotiation.
+  applicant and no negotiation; the assessed value itself is the measured
+  sunlight-and-access assessment from item 12, not a market price.

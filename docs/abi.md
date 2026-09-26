@@ -24,7 +24,10 @@ Avoid copying large global arrays into read paths: iterate by reference. This sl
 ## Geometry / crossing / agreement additions
 
 - Group 0 fields 26/27: selected resident (-1 none), camera zoom.
-- Group 1 field 12: sunlight assessment proxy (0.35–1).
+- Group 1 field 12: measured sunlight at the lot (0.15–1). A lot's assessed
+  value follows that sunlight and its road access, so a shaded lot is worth
+  less; the value is reproduced exactly by the published model rather than read
+  from a flat per-use table.
 - Group 3 field 27: actual trip origin node.
 - Group 5 field 14: segment crosswalks enabled.
 - `set_crosswalk(road, enabled)` validates 0/1, changes both endpoint markings, rebuilds walking routes.
@@ -181,14 +184,27 @@ Fields 20–36 are the physical construction account:
 | 35 | Construction progress, 0–1 |
 | 36 | Construction work order, -1 when none |
 
+Fields 37–48 are the slice-20 measured sunlight and shadow trade-off:
+
+| Field | Value |
+| --- | --- |
+| 37 | Measured sunlight at the site (0.15–1) |
+| 38 | Assessed-value loss the proposed building casts on its neighbours |
+| 39 | Private shadow compensation the applicant pays for that loss |
+| 40 | Number of shaded neighbours measured |
+| 41–44 | The four worst-affected neighbour lot indexes, -1 when unused |
+| 45–48 | Their individual assessed-value losses |
+
 Out-of-range application indexes return -1.
 
-Group 0 fields 70–85 are the running totals: 70 pending applications, 71
+Group 0 fields 70–89 are the running totals: 70 pending applications, 71
 physical jobs, 72 completed buildings, 73 applications refused, 74 lapsed,
 75 ever lodged, 76 development levies received, 77 zoned vacant sites, 78
 applications lodged today, 79 private construction spend, 80 material units
 delivered, 81 crews mobilising, 82 crews delivering/building, 83 blocked jobs,
-84 private budget committed. Group 16 field 7 is the pending application on that
+84 private budget committed, 85 private shadow compensation paid, 86 shadow
+value loss measured, 87 mean measured sunlight, 88 the assessed roll total, 89
+lots assessed below full sun. Group 16 field 7 is the pending application on that
 parcel, newest first, or -1. Group 3 field 7 and group 4 field 5 can carry a
 construction work order outside the road-order index range while a crew is
 travelling or working.
@@ -196,13 +212,67 @@ travelling or working.
 Commands: `development_accept(id)` grants the permit, records the levy in the
 municipal ledger as kind 12 under the application's own number, finds a free
 four-person contractor crew, assigns the site’s private budget and starts
-physical work. It returns false and retires the application when access,
-terrain, funds or the site itself fail; if no contractor crew is free the
+physical work. The assessed value and the levy follow the site's measured
+sunlight and frontage, and the applicant also pays the measured shadow
+compensation to the neighbours it shades; a proposal that would push a
+neighbour below the sunlight floor is refused with its own reason. It returns
+false and retires the application when access, terrain, funds or the site
+itself fail; if no contractor crew is free the
 application remains open with blocked reason 10. `development_refuse(id)`
 retires the application with reason 5. Both return false for an application
 that has already been decided. The levy is the only municipal money movement;
 all construction costs are the applicant's private budget paid to the selected
 contractor.
+
+## Parks and public spaces (numbered list item 13)
+
+Group 32 reads one public-space record by index:
+
+| Field | Value |
+| --- | --- |
+| 0 | Authored lot |
+| 1 | Kind (5 park, 12 playground, 13 plaza) |
+| 2 | District |
+| 3 | World x |
+| 4 | World z |
+| 5 | Width |
+| 6 | Depth |
+| 7 | Condition, 0-100 |
+| 8 | Visits today |
+| 9 | Visits ever |
+| 10 | Homes inside the 900 m walk catchment |
+| 11 | Residents inside it |
+| 12 | Mean walk cost to those homes |
+| 13 | Access score, 0-1 |
+| 14 | Maintenance needed today |
+| 15 | Maintenance paid today |
+| 16 | Coverage today, 0-1 |
+| 17 | Amenity benefit, 0-1 |
+| 18 | Lifetime maintenance received |
+| 19 | Street the lot fronts (see `web/data.js`) |
+| 20 | Street number |
+
+Group 0 fields 90-105 add: 90 public spaces, 91 mean condition, 92/93 visits
+ever/today, 94-96 maintenance spend/need/paid, 97 coverage, 98 parks below
+standard, 99 accessible homes, 100 mean amenity, 101 funding level (0 minimum,
+1 standard, 2 enhanced), 102 public spaces created, 103 municipal construction
+spend, 104 residents inside a catchment, 105 green area in square metres.
+
+Commands: `parks_create(parcel, kind)` converts a vacant lot already zoned
+Civic / park reserve into a park (0), playground (1) or plaza (2), charges the
+municipal ledger as kind 14 and returns the cost or -1. Nothing else may
+convert a lot. `parks_quote(parcel, kind)` is the read-only version: the same
+cost `parks_create` would charge (or -1 when the parcel is not a vacant civic
+reserve), with no mutation, so the planner can show the price before the
+player commits. `parks_set_funding(level)` accepts 0-2. Maintenance is paid in
+sixteen bounded instalments through the ordinary operating pass and recorded as
+ledger kind 13; an unpaid shortfall simply lowers coverage. A park's amenity is
+bounded to +5% of a neighbour's assessed value. All rules live in Zig.
+
+Save schema is version 16, rules `bellwether-2028-02-v16`; version 15 and older
+are rejected with result 3. The public-space ring, its funding and its money
+counters are serialized and validated field by field, and every derived
+catchment and amenity value is recomputed on load.
 
 ## Agreement review additions
 
@@ -514,9 +584,10 @@ Commands: `road_class(value)` sets the class (0-2) used by the next
 `road_begin`; `parking_rebuild()` re-seeds facilities after a road is built and
 reposts kerbside prices.
 
-Save schema is version 14, rules `bellwether-2027-12-v14`; version 13 and older are
-rejected with result 3. The bounded development queue, its physical
-construction account, counters and district rotation are serialized and
-validated field by field. Parking facilities, occupancy, prices, aggregate
-availability, movement, counters and every learned resident field are
-serialized and validated.
+Save schema is version 16, rules `bellwether-2028-02-v16`; version 15 and older
+are rejected with result 3. The bounded development queue, its physical
+construction account, its measured sunlight/shadow trade-off, counters and
+district rotation are serialized and validated field by field; each stored
+building's measured sunlight and assessed value are held inside the published
+model. Parking facilities, occupancy, prices, aggregate availability, movement,
+counters and every learned resident field are serialized and validated.

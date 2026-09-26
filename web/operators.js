@@ -28,6 +28,8 @@ export function createOperators(game, message) {
   }
   function update() {
     if (!document.body.contains($("fleet-operator"))) return;
+    const fleetPanel = $("tpanel-fleet");
+    if (fleetPanel && fleetPanel.hidden) return;
     const id = company();
     const unit = syncUnits();
     const sell = unit < 0 ? 7 : r(23, id * units + unit, 8);

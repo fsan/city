@@ -155,7 +155,7 @@ function start(renderer) {
     )
       return;
     const shortcuts = {
-      p: "reports",
+      c: "reports",
       b: "budget",
       j: "works",
       i: "inspector",
@@ -179,7 +179,8 @@ function start(renderer) {
     if (key === " ") speed(metric(13) ? 0 : lastSpeed);
     if (key === "r") game.reset_camera();
     if (key === "o") toggleOverlay();
-    if (key === "g") transport.toggleTraffic();
+    if (key === "k") transport.toggleParkCondition();
+    if (key === "v") transport.toggleTraffic();
     if (key === "f") transport.togglePedestrians();
     if (["1", "2", "3"].includes(key)) speed([1, 4, 16][Number(key) - 1]);
   });

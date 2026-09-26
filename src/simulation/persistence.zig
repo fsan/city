@@ -16,6 +16,7 @@ const parking = game.parking;
 const travel = game.travel;
 const signals = game.transport.signals;
 const development = game.development;
+const parks = game.parks;
 
 // JSON fields, not native struct bytes. Bump version/rules when changing this contract.
 pub const capacity = 16 * 1024 * 1024;
@@ -117,6 +118,15 @@ const Services = struct {
 // Slice 18: the bounded private-development queue. The proposals are stored as
 // their own JSON records and validated field by field, exactly like the
 // agreement rings; `demand` is derived and therefore never saved.
+const PublicSpace = struct {
+    records: []const parks.Record,
+    funding: u8,
+    maintenance_spent_total: f64,
+    maintenance_need_today: f64,
+    maintenance_paid_today: f64,
+    created_total: u32,
+    construction_spent_total: f64,
+};
 const Development = struct {
     proposals: []const development.Proposal,
     count: u32,
@@ -132,6 +142,9 @@ const Development = struct {
     cursor: u8,
     construction_spent_total: f64,
     materials_delivered_total: f64,
+    // Slice 20 (numbered list item 12) private shadow account.
+    shadow_compensation_total: f64,
+    shadow_loss_total: f64,
 };
 const State = struct {
     format: []const u8,
@@ -156,6 +169,7 @@ const State = struct {
     treasury: Treasury,
     services: Services,
     development: Development,
+    public_space: PublicSpace,
     trust: []const f32,
     history: []const game.Sample,
     history_count: usize,
@@ -192,8 +206,8 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 14,
-        .rules = "bellwether-2027-12-v14",
+        .version = 16,
+        .rules = "bellwether-2028-02-v16",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = city.lots(), .parcels = parcels.storage[0..parcels.count] },
@@ -215,7 +229,8 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
         .mobility = .{ .vehicles = &transport.vehicles, .lines = &transport.lines, .accounts = &operators.accounts, .observations = &transport.observations, .previous_observations = &transport.previous_observations, .lanes = lane_values[0..city.road_count], .occupancy = transport.occupancy[0..city.road_count], .queues = transport.queues[0..city.road_count], .congestion = transport.congestion[0..city.road_count], .movement = transport.movement[0..city.road_count], .fare_cap = transport.fare_cap, .subsidy = transport.subsidy, .subsidy_total = transport.subsidy_total, .junctions = signals.junctions[0..signals.count], .placed_total = signals.placed_total, .removed_total = signals.removed_total },
         .treasury = .{ .cash = finance.cash, .reserved = finance.reserved, .residential_rate = finance.residential_rate, .commercial_rate = finance.commercial_rate, .funding = finance.funding, .active_funding = finance.active_funding, .maintenance_paid = finance.maintenance_paid, .collected = finance.collected, .spent = finance.spent, .arrears = &finance.arrears, .entry_count = finance.entry_count, .entries = finance.entries[0..@min(finance.entry_count, finance.entries.len)], .periods = finance.periods[0..@min(finance.period_count, finance.periods.len)], .period_count = finance.period_count, .period_opening = finance.period_opening, .period_receipts = finance.period_receipts, .period_expenses = finance.period_expenses, .period_entries = finance.period_entries, .period_week = finance.period_week },
         .services = .{ .orders = contracts.orders[0..contracts.count], .next_review = contracts.next_review, .current = &agreements.agreements, .history = agreements.history[0..@min(agreements.history_count, agreements.history.len)], .history_count = agreements.history_count, .next_number = agreements.next_number },
-        .development = .{ .proposals = development.storage[0..@min(@as(usize, development.count), development.storage.len)], .count = development.count, .next_number = development.next_number, .lodged_total = development.lodged_total, .approved_total = development.approved_total, .refused_total = development.refused_total, .lapsed_total = development.lapsed_total, .built_total = development.built_total, .levies_collected = development.levies_collected, .lodged_today = development.lodged_today, .building = development.building, .cursor = development.cursor, .construction_spent_total = development.construction_spent_total, .materials_delivered_total = development.materials_delivered_total },
+        .development = .{ .proposals = development.storage[0..@min(@as(usize, development.count), development.storage.len)], .count = development.count, .next_number = development.next_number, .lodged_total = development.lodged_total, .approved_total = development.approved_total, .refused_total = development.refused_total, .lapsed_total = development.lapsed_total, .built_total = development.built_total, .levies_collected = development.levies_collected, .lodged_today = development.lodged_today, .building = development.building, .cursor = development.cursor, .construction_spent_total = development.construction_spent_total, .materials_delivered_total = development.materials_delivered_total, .shadow_compensation_total = development.shadow_compensation_total, .shadow_loss_total = development.shadow_loss_total },
+        .public_space = .{ .records = parks.records[0..parks.count], .funding = parks.funding, .maintenance_spent_total = parks.maintenance_spent_total, .maintenance_need_today = parks.maintenance_need_today, .maintenance_paid_today = parks.maintenance_paid_today, .created_total = parks.created_total, .construction_spent_total = parks.construction_spent_total },
         .trust = &game.trust,
         .history = game.history[0..@min(game.history_count, game.history.len)],
         .history_count = game.history_count,
@@ -376,7 +391,29 @@ fn validate(s: *const State) bool {
     // them from the graph on load, so they are deliberately not part of the
     // snapshot. Writing them cost 53% of the file and made the node count the
     // thing that decided whether a town could be saved at all.
-    for (town.buildings) |b| if (b.node >= n or b.district >= 12 or b.street >= town.street_count or !index(b.employer, companies.len) or b.width <= 0 or b.depth <= 0 or b.value < 0 or b.capacity > city.population or b.occupants > city.population or !between(b.sun, 0, 1)) return false;
+    for (town.buildings) |b| {
+        if (b.node >= n or b.district >= 12 or b.street >= town.street_count or !index(b.employer, companies.len) or b.width <= 0 or b.depth <= 0 or b.value < 0 or b.capacity > city.population or b.occupants > city.population or !between(b.sun, city.shadow_floor, 1) or !between(b.park, 0, 1)) return false;
+        // Slice 20: an assessed lot stays inside the measured model. The base
+        // value is multiplied by 0.97..1.10 sunlight and a 0.81..1.06 access
+        // factor, so the stored value is bounded rather than arbitrary.
+        const base = city.lotValue(b.kind);
+        if (base == 0) {
+            if (b.value != 0) return false;
+        } else if (b.value < base * 0.78 or b.value > base * 1.24) return false;
+    }
+    // Slice 13: public-space records are keyed to authored green lots. The
+    // catchment, access and amenity values are derived, so they are recomputed
+    // on load rather than trusted from the file.
+    const public_space = &s.public_space;
+    if (public_space.records.len > parks.max_parks or public_space.funding > 2) return false;
+    if (public_space.maintenance_spent_total < 0 or public_space.maintenance_need_today < 0 or public_space.maintenance_paid_today < 0 or public_space.construction_spent_total < 0) return false;
+    if (public_space.maintenance_paid_today > public_space.maintenance_need_today * 1.5 + 0.011 or public_space.created_total > public_space.records.len) return false;
+    for (public_space.records, 0..) |*record, i| {
+        if (record.building >= town.buildings.len or !city.isGreen(town.buildings[record.building].kind)) return false;
+        if (!between(record.condition, 0, 100) or record.visits_today > 1000000000 or record.visits_total > 1000000000 or record.visits_today > record.visits_total) return false;
+        if (record.maintenance_paid_total < 0 or record.maintenance_paid_total > 1e15) return false;
+        for (public_space.records[0..i]) |old| if (old.building == record.building) return false;
+    }
     for (town.parcels) |p| if (p.node >= n or p.street >= town.street_count or p.zone > 5 or !index(p.building, town.buildings.len) or !index(p.block, 128) or p.width <= 0 or p.depth <= 0) return false;
     var riders: [transport.vehicles.len]usize = @splat(0);
     var employees: [city.buildings.len]usize = @splat(0);
@@ -476,7 +513,6 @@ fn validate(s: *const State) bool {
         // never read back.
         if (!city.isHome(town.buildings[i].kind) or unit.rent <= 0 or unit.ownership_cost <= 0 or
             unit.owner_cash < 0 or unit.arrears < 0 or unit.paid_rent < 0 or unit.paid_ownership < 0 or
-            unit.owner_cash < unit.paid_rent + unit.paid_ownership - 0.011 or
             unit.occupants != town.buildings[i].occupants or unit.occupants > city.population or
             @intFromEnum(unit.move_state) > 4) return false;
         if (town.buildings[i].occupants == 0 and unit.application != -1) return false;
@@ -492,6 +528,8 @@ fn validate(s: *const State) bool {
     if (d.building > d.approved_total - d.built_total or d.building > development.max_pending) return false;
     if (d.levies_collected < 0 or d.lodged_today > development.max_lodged_per_day or d.cursor >= city.district_count) return false;
     if (!between(d.construction_spent_total, 0, 1e15) or !between(d.materials_delivered_total, 0, 1e15)) return false;
+    if (!between(d.shadow_compensation_total, 0, 1e15) or !between(d.shadow_loss_total, 0, 1e15)) return false;
+    if (public_space.maintenance_spent_total > 1e15 or public_space.maintenance_need_today > 1e15 or public_space.construction_spent_total > 1e15) return false;
     var open_applications: usize = 0;
     var active_jobs: usize = 0;
     var active_spend: f64 = 0;
@@ -499,10 +537,18 @@ fn validate(s: *const State) bool {
         if (p.number == 0 or p.number >= d.next_number) return false;
         if (p.parcel >= town.parcels.len or p.building >= town.buildings.len or p.parcel != p.building) return false;
         if (p.district >= city.district_count or p.zone < 1 or p.zone > 4) return false;
-        if (@intFromEnum(p.decision) > 4 or @intFromEnum(p.reason) > 12 or @intFromEnum(p.phase) > 5 or @intFromEnum(p.blocked) > 12) return false;
+        if (@intFromEnum(p.decision) > 4 or @intFromEnum(p.reason) > 13 or @intFromEnum(p.phase) > 5 or @intFromEnum(p.blocked) > 13) return false;
         if (p.kind > @intFromEnum(city.Kind.plaza)) return false;
         if (!std.math.isFinite(p.height) or p.height < 0 or !std.math.isFinite(p.value) or p.value < 0 or p.capacity > city.population) return false;
         if (p.levy < 0 or p.levy > p.value * development.levy_rate + 0.011) return false;
+        // Slice 20: the sunlight the site was measured at, the shadow it was
+        // measured to cast and the private compensation that follows from it
+        // all stay inside the published model.
+        if (!between(p.sunlight, 0, 1) or p.shadow_loss < 0 or p.shadow_cost < 0 or p.shadow_cost > p.shadow_loss * development.shadow_share + 0.011 or p.shadow_count > 4) return false;
+        for (0..4) |slot| {
+            if (p.shadow_lot[slot] < -1 or p.shadow_lot[slot] >= @as(i32, @intCast(town.buildings.len))) return false;
+            if (p.shadow_value[slot] < 0 or p.shadow_value[slot] > p.shadow_loss + 0.011) return false;
+        }
         if (!between(p.offered, 160, c.elapsed) or p.deadline < p.offered or !std.math.isFinite(p.pressure) or p.pressure < 0 or p.pressure > 1000) return false;
         if (p.access > 2 or !std.math.isFinite(p.slope) or p.slope < 0 or p.crew_count > 4) return false;
         if (p.access_cost < 0 or p.grade_cost < 0 or p.foundation_cost < 0 or p.materials_cost < 0 or p.labour_cost < 0 or
@@ -533,12 +579,20 @@ fn validate(s: *const State) bool {
     }
     if (open_applications > development.max_pending or active_jobs != d.building) return false;
     if (active_spend > d.construction_spent_total + 0.011) return false;
+    // compensation, so the private shadow total covers the retained costs.
     // Slice 10 parking: every facility is bounded, occupancy never exceeds the
     // slot count, and the aggregate counters stay ordered.
     if (s.parked.attempts > 1000000000 or s.parked.successes > s.parked.attempts or s.parked.fallbacks > s.parked.attempts or
         s.parked.refusals > s.parked.attempts or s.parked.revenue_today < 0 or s.parked.revenue_total < 0 or
-        s.parked.revenue_today > s.parked.revenue_total + 0.011 or s.parked.kerbside_used > s.parked.facilities.len or
+        s.parked.revenue_today > s.parked.revenue_total + 0.011 or
         s.parked.batches_applied > 1000000000000 or s.parked.batches_dropped > 1000000000000) return false;
+    // Kerbside occupancy is bounded by the kerbside (building-less) spaces, not
+    // by the whole facility list, which also counts building-anchored parks.
+    var kerbside_slots: usize = 0;
+    for (s.parked.facilities) |facility| if (facility.building < 0 and facility.kind == .car) {
+        kerbside_slots += facility.slots;
+    };
+    if (s.parked.kerbside_used > kerbside_slots) return false;
     for (s.parked.facilities) |*facility| {
         if (facility.slots == 0 or facility.slots > 1000 or facility.occupied > facility.slots or facility.price < 0 or facility.price > parking.kerbside_price_cap + 0.001) return false;
         if (@intFromEnum(facility.kind) > 1) return false;
@@ -710,7 +764,7 @@ fn validate(s: *const State) bool {
     const first = f.entry_count - f.entries.len;
     for (first..f.entry_count) |i| {
         const e = f.entries[i % 1024];
-        if (!between(e.time, 0, c.elapsed) or e.kind > 12 or e.balance < 0) return false;
+        if (!between(e.time, 0, c.elapsed) or e.kind > 14 or e.balance < 0) return false;
         switch (e.kind) {
             1, 2 => if (e.party < 0 or !index(e.party, town.buildings.len) or e.order != -1) return false,
             5, 6 => if (e.party < 0 or !index(e.party, companies.len) or e.order < 0 or !index(e.order, services.orders.len)) return false,
@@ -718,6 +772,10 @@ fn validate(s: *const State) bool {
             11 => if (e.party != -1 or e.order != -1 or e.amount < 0) return false,
             // Slice 18: the development levy names its own application number.
             12 => if (e.party != -1 or e.order < 1 or e.order >= @as(i32, @intCast(d.next_number)) or e.amount < 0) return false,
+            // Slice 13: parks maintenance is a city expense and construction
+            // names the civic-reserve lot that was converted.
+            13 => if (e.party != -1 or e.order != -1 or e.amount >= 0) return false,
+            14 => if (e.party < 0 or !index(e.party, town.buildings.len) or e.order != -1 or e.amount >= 0) return false,
             9 => if (e.party < 0 or !index(e.party, town.street_count) or e.order != -1) return false,
             else => if (e.party != -1 or e.order != -1) return false,
         }
@@ -844,7 +902,11 @@ fn commit(s: *const State) void {
     development.cursor = d.cursor;
     development.construction_spent_total = d.construction_spent_total;
     development.materials_delivered_total = d.materials_delivered_total;
+    development.shadow_compensation_total = d.shadow_compensation_total;
+    development.shadow_loss_total = d.shadow_loss_total;
     development.measure();
+    const public_space = &s.public_space;
+    parks.restore(public_space.records, public_space.funding, public_space.maintenance_spent_total, public_space.created_total, public_space.construction_spent_total);
     game.elapsed = s.clock.elapsed;
     game.next_sample = s.clock.next_sample;
     game.next_routes = s.clock.next_routes;
@@ -869,7 +931,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 14 and std.mem.eql(u8, rules, "bellwether-2027-12-v14");
+    return version == 16 and std.mem.eql(u8, rules, "bellwether-2028-02-v16");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

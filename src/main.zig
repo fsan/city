@@ -92,7 +92,7 @@ export fn set_funding(value: u32) void {
     finance.funding = @min(value, 2);
 }
 export fn set_overlay(value: u32) void {
-    scene.overlay = @min(value, 3);
+    scene.overlay = @min(value, 4);
 }
 export fn apply_taxes(home: f64, commercial: f64) bool {
     return finance.applyTaxes(home, commercial);
@@ -247,11 +247,20 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             67 => @floatFromInt(game.parking.kerbside_used),
             68 => @floatFromInt(game.residents.batches_applied),
             69 => @floatFromInt(game.residents.batches_dropped),
-            // Slice 18/19 development proposals and permits. 70-73 are the live
-            // queue, 74-77 what has happened so far, and 78 the levy the
+            // Slice 18/19/20 development proposals and permits. 70-73 are the
+            // live queue, 74-77 what has happened so far, and 78 the levy the
             // municipal ledger has actually received. 79-85 are the physical
-            // construction account and live crew/material counts.
-            70...85 => game.development.read0(field - 70),
+            // construction account and live crew/material counts. 86-89 are
+            // the slice-20 private shadow account and the assessed roll.
+            70...89 => game.development.read0(field - 70),
+            // Numbered item 13 parks and public spaces: the maintenance and
+            // amenity account. 90 is the park count, 91 mean condition, 92/93
+            // visits ever/today, 94-96 maintenance spend/need/paid, 97
+            // coverage, 98 neglected parks, 99 accessible homes, 100 mean
+            // amenity, 101 funding level, 102 parks created, 103 municipal
+            // construction spend, 104 residents within a catchment and 105
+            // the green area in square metres.
+            90...105 => game.parks.read0(field - 90),
             else => -1,
         },
         1 => {
@@ -738,6 +747,11 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             };
         },
         31 => return game.development.read(id, field),
+        // Numbered item 13: one public-space record by index. Fields 0-18 are
+        // building, kind, district, position, size, condition, visits, the
+        // measured walking catchment, today's maintenance offer, coverage and
+        // the amenity benefit the lot contributes to its neighbours.
+        32 => return game.parks.read(id, field),
         29 => {
             // Slice 11 signal heads, addressed by a flat index over junctions
             // and their arms. Green and yellow are simulation seconds.
@@ -1066,6 +1080,33 @@ export fn development_accept(id: u32) bool {
 
 export fn development_refuse(id: u32) bool {
     return game.development.refuse(id, game.elapsed);
+}
+
+// Numbered list item 13: parks and public spaces. The command converts a
+// vacant civic/park-reserve parcel into a public space, pays the municipal
+// construction cost as ledger kind 14, and returns that cost (or -1 when the
+// parcel or the city funds make the action invalid).
+export fn parks_create(parcel: u32, kind: u32) f64 {
+    if (parcel >= city.lot_count or parcel >= game.parcels.count) return -1;
+    const cost = game.parks.constructionCostFor(parcel, kind);
+    if (cost < 0 or finance.available() + 0.0001 < cost) return -1;
+    const created = game.parks.create(parcel, kind);
+    if (created < 0) return -1;
+    finance.record(game.elapsed, -created, 14, @intCast(parcel), -1);
+    game.parks.noteConstruction(created);
+    return created;
+}
+
+// Read-only conversion quote for the planner: the same cost parks_create
+// would charge, with no mutation. The Parks panel shows this before the
+// player converts a civic-reserve parcel.
+export fn parks_quote(parcel: u32, kind: u32) f64 {
+    if (parcel >= city.lot_count or parcel >= game.parcels.count) return -1;
+    return game.parks.constructionCostFor(parcel, kind);
+}
+
+export fn parks_set_funding(level: u32) bool {
+    return game.parks.setFunding(level);
 }
 
 // Slice 11: the traffic submenu places crosswalks and signals by clicking the

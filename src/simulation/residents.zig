@@ -5,6 +5,7 @@ const calendar = @import("calendar.zig");
 const households = @import("households.zig");
 const parking = @import("parking.zig");
 const travel = @import("travel.zig");
+const parks = @import("parks.zig");
 // Slice 10: every resident also carries a deliberately tiny learned model of
 // trip time and parking availability, the plan for the current journey, and the
 // parking space their bicycle or car currently occupies. Nothing allocates.
@@ -301,6 +302,7 @@ fn errandTarget(p: *const Person, leisure: bool) usize {
     const district = city.buildings[p.home].district;
     var choice: usize = p.home;
     var best_score: f32 = 1e9;
+    const home_node = city.buildings[p.home].node;
     for (city.lots(), 0..) |*b, i| {
         if (b.district != district or city.isHome(b.kind) or b.kind == .vacant) continue;
         var preference: f32 = 4;
@@ -309,11 +311,13 @@ fn errandTarget(p: *const Person, leisure: bool) usize {
         if (b.kind == .plaza) preference = 2;
         if (b.kind == .market or b.kind == .hall or b.kind == .shop) preference = 3;
         if (preference > 3 and leisure) continue;
-        // Distance from the resident's own home keeps the trip local, and the
-        // preference keeps a playground ahead of a shop of equal distance.
-        const dx = b.x - city.buildings[p.home].x;
-        const dz = b.z - city.buildings[p.home].z;
-        const score = preference * 1000 + dx * dx + dz * dz;
+        // Slice 13: the choice uses the same walking graph the resident will
+        // follow, and a neglected green space is less attractive than a cared
+        // for one. A park with no reachable route is not a candidate.
+        const walk = city.walkCost(home_node, b.node);
+        if (walk >= 1e8) continue;
+        const appeal = if (city.isGreen(b.kind)) parks.attractiveness(i) else 1;
+        const score = preference * 1000 + walk + (1 - appeal) * 180;
         if (score < best_score) {
             best_score = score;
             choice = i;
@@ -449,6 +453,9 @@ pub fn update(dt: f32, elapsed: f64) void {
         if (p.phase == 2) {
             const b = city.buildings[p.destination_building];
             if (moveTo(p, b.entry_x, b.ground + 0.35, b.entry_z, travel.walk_speed, dt)) {
+                // Slice 13: an actual arrival at a green lot is the visit the
+                // maintenance and neighbourhood reports measure.
+                if (city.isGreen(b.kind)) parks.visit(p.destination_building);
                 p.current_building = p.destination_building;
                 p.phase = 3;
                 p.wait = 18 + @as(f32, @floatFromInt(i % 50));

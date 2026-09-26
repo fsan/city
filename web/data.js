@@ -34,10 +34,18 @@ export const refusalNames = [
   "No contractor crew available",
   "Construction budget exhausted",
   "Contractor crew lost",
+  "Sunlight conflict",
 ];
+// Slice 20 (numbered list item 12): the measured sunlight assessment and the
+// private shadow compensation the applicant pays its neighbours.
+export const shadowNames = ["No measured shadow", "Shades neighbours"];
 // Slice 19: the physical stage of an approved private development job.
 export const phaseNames = ["Not started", "Mobilising", "Delivering materials", "Building", "Blocked", "Complete"];
 export const accessNames = ["No access", "Direct frontage", "Paid access"];
+// Numbered list item 13: public-space maintenance funding, the same three
+// levels Zig enforces.
+export const parkFunding = ["Minimum", "Standard", "Enhanced"];
+export const parkKinds = ["Park", "Playground", "Plaza"];
 export const streetClasses = ["Lane", "Street", "Avenue"];
 export const parkingKinds = ["Bicycle park", "Car park", "Kerbside"];
 export const parkingBands = ["free", "band 1", "band 2", "band 3", "band 4 (cap)"];

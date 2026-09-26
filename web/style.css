@@ -1003,6 +1003,12 @@ td {
 #planning-panel label {display:block;margin:10px 0}
 #planning-panel select {background:#303938;max-width:100%;padding:6px}
 #planning-panel p {font-size:12px;line-height:1.5;color:#bbc5bd}
+#planning-panel {max-height:calc(100dvh - 170px);overflow-y:auto;scrollbar-color:#727c6d #202728;scrollbar-width:thin}
+.table-scroll {max-width:100%;overflow:auto;margin:4px 0 8px;border:1px solid #3a4441;scrollbar-color:#727c6d #202728;scrollbar-width:thin}
+.table-scroll table {min-width:100%}
+.table-scroll td,.table-scroll th {white-space:nowrap;padding:6px 8px}
+.table-scroll thead th {position:sticky;top:0;z-index:1}
+#planning-panel .table-scroll {max-height:38dvh}
 
 .service-form {
   display: grid;
@@ -1013,3 +1019,126 @@ td {
 .service-form input, .service-form select, #service-history { width: 100%; }
 #operator-receipts, #service-status, #service-history-detail { white-space: pre-line; }
 #service-agreements td:last-child { text-align: left; }
+/* The permit and park tables live in the narrow planner panel. The wrapper
+   bounds the table to the panel and scrolls it; without it the table's
+   intrinsic width escapes the absolutely positioned panel and draws over the
+   map. Cells stay on one line each, and the panel itself scrolls by height so a
+   long list cannot run off the bottom of the screen. */
+#park-options .form-grid button { grid-column: 1 / -1; }
+
+/* Info tips: explanatory text moves off the page into ? bubbles. The tip
+   floats on hover or keyboard focus so explanations stay available without
+   reading as permanent prose. */
+.info-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid #687360;
+  background: #252e2b;
+  color: #a2ada7;
+  font-size: 10px;
+  line-height: 1;
+  cursor: help;
+  margin-left: 6px;
+  vertical-align: 2px;
+  padding: 0;
+  position: relative;
+}
+.info-tip:hover,
+.info-tip:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: #313932;
+  outline: none;
+}
+.info-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  width: 290px;
+  max-width: 70vw;
+  background: #1b2222;
+  border: 1px solid #777660;
+  box-shadow: 0 10px 28px #000a;
+  padding: 11px 12px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: #d3d9cd;
+  text-align: left;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.info-tip::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #777660;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  z-index: 91;
+}
+.info-tip:hover::after,
+.info-tip:hover::before,
+.info-tip:focus-visible::after,
+.info-tip:focus-visible::before {
+  opacity: 1;
+}
+.tip-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 10px 0;
+  color: var(--muted);
+}
+.tip-row .info-tip {
+  margin-left: 0;
+}
+
+/* Scroll panes: long tables scroll with the mouse wheel or a visible bar
+   instead of growing the window past the screen. */
+.table-scroll.tall {
+  max-height: 42dvh;
+  overflow: auto;
+}
+.window-body {
+  scrollbar-width: thin;
+  scrollbar-color: #727c6d #202728;
+}
+.table-scroll::-webkit-scrollbar,
+.window-body::-webkit-scrollbar,
+.signal-list::-webkit-scrollbar,
+#planning-panel::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.table-scroll::-webkit-scrollbar-thumb,
+.window-body::-webkit-scrollbar-thumb,
+.signal-list::-webkit-scrollbar-thumb,
+#planning-panel::-webkit-scrollbar-thumb {
+  background: #727c6d;
+  border: 2px solid #202728;
+  border-radius: 5px;
+}
+.table-scroll::-webkit-scrollbar-track,
+.window-body::-webkit-scrollbar-track {
+  background: #202728;
+}
+/* The treasury tab bar reuses the reports tab styling. */
+#budget-window .tabs button,
+#transport-window .tabs button {
+  flex: 1;
+}

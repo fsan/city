@@ -4,6 +4,7 @@ import {
   streetName,
   streetClasses,
   parkingBands,
+  parkingKinds,
   kinds,
   statusNames,
   reasons,
@@ -65,6 +66,31 @@ export function createReports(game, ui, transport) {
     selectedOrder = -1,
     selected = { kind: 1, id: -1 };
   const pageSize = 18;
+  // Treasury sections: policy vs ledger. Mirrors the reports tab wiring.
+  const budgetTabs = [...document.querySelectorAll("[data-budget-tab]")];
+  function showBudgetTab(name) {
+    budgetTabs.forEach((button) => {
+      const on = button.dataset.budgetTab === name;
+      button.setAttribute("aria-selected", String(on));
+      button.tabIndex = on ? 0 : -1;
+      $(`budget-${button.dataset.budgetTab}`).hidden = !on;
+    });
+  }
+  budgetTabs.forEach((button, index) => {
+    button.onclick = () => showBudgetTab(button.dataset.budgetTab);
+    button.onkeydown = (event) => {
+      let next;
+      if (event.key === "ArrowRight") next = (index + 1) % budgetTabs.length;
+      else if (event.key === "ArrowLeft") next = (index + budgetTabs.length - 1) % budgetTabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = budgetTabs.length - 1;
+      else return;
+      event.preventDefault();
+      event.stopPropagation();
+      showBudgetTab(budgetTabs[next].dataset.budgetTab);
+      budgetTabs[next].focus();
+    };
+  });
   const district = () => Number($("district-filter").value);
   const inDistrict = (id) => district() < 0 || id === district();
   const activity = (id) =>
@@ -339,8 +365,10 @@ export function createReports(game, ui, transport) {
             link(`#${p.home + 1}`, () => inspect(1, p.home)),
             p.employer < 0
               ? `Jobseeker · ${["general", "clerical", "professional"][r(3, p.id, 35)]}`
-              : link(companyName(p.employer), () => inspect(4, p.employer)) +
-                ` · ${["general", "clerical", "professional"][r(3, p.id, 35)]}`,
+              : link(
+                  `${companyName(p.employer)} · ${["general", "clerical", "professional"][r(3, p.id, 35)]}`,
+                  () => inspect(4, p.employer),
+                ),
             activity(p.id),
             r(3, p.id, 7) >= 0
               ? link(`Order ${r(3, p.id, 7) + 1}`, () =>
@@ -356,9 +384,10 @@ export function createReports(game, ui, transport) {
       $("housing-units").textContent = m(44).toLocaleString();
       $("housing-occupied").textContent = m(45).toLocaleString();
       $("housing-vacant").textContent = m(46).toLocaleString();
+      const homeKinds = new Set([0, 10]);
       const unitIds = buildings
         .map((b, id) => ({ b, id }))
-        .filter(({ b }) => inDistrict(b.district) && b.kind === 0);
+        .filter(({ b }) => inDistrict(b.district) && homeKinds.has(b.kind));
       rows(
         "housing-rows",
         unitIds.slice(0, 40).map(({ id }) => [
@@ -386,6 +415,8 @@ export function createReports(game, ui, transport) {
         ids.map((id) => [
           link(companyName(id), () => inspect(4, id)),
           `${r(27, id, 5)} / ${r(27, id, 6)}`,
+          r(27, id, 0) || "—",
+          `${money(r(27, id, 1))} · ${["general", "clerical", "professional"][r(27, id, 2)]}`,
           money(r(4, id, 3)),
           r(4, id, 4) ? "Street repairs" : "Local employer",
           r(4, id, 5) < 0
@@ -393,6 +424,64 @@ export function createReports(game, ui, transport) {
             : link(`#${r(4, id, 5) + 1}`, () => openOrder(r(4, id, 5))),
         ]),
       );
+    }
+    if (visible("households-report")) {
+      const homeKinds = new Set([0, 10]);
+      const homes = buildings
+        .map((b, id) => ({ b, id }))
+        .filter(({ b, id }) => homeKinds.has(b.kind) && inDistrict(b.district) && r(25, id, 0) === 1);
+      let arrearsCount = 0, arrearsTotal = 0;
+      for (const { id } of homes) {
+        const a = r(25, id, 5);
+        if (a > 0) { arrearsCount++; arrearsTotal += a; }
+      }
+      $("households-summary").textContent =
+        `${homes.length} households · ${arrearsCount} in arrears · ${money(arrearsTotal)} total arrears. ` +
+        "Rows show the shared balance and today's billed essentials; click to open the home in the inspector.";
+      rows(
+        "household-rows",
+        homes.slice(0, 60).map(({ id }) => [
+          link(`Unit #${id + 1}`, () => inspect(1, id)),
+          districts[buildings[id].district],
+          r(25, id, 1),
+          signedMoney(r(25, id, 2)),
+          signedMoney(r(25, id, 3)),
+          money(r(25, id, 4)),
+          r(25, id, 5) > 0 ? money(r(25, id, 5)) : "—",
+          r(25, id, 8) > 0 ? money(r(25, id, 8)) : "—",
+        ]),
+      );
+    }
+    if (visible("parking-report")) {
+      const count = m(55);
+      let used = 0, slots = 0, revenue = 0;
+      const values = [];
+      for (let i = 0; i < count; i++) {
+        const kind = r(28, i, 0), building = r(28, i, 1), road = r(28, i, 2), node = r(28, i, 3);
+        used += r(28, i, 5); slots += r(28, i, 4);
+        const where = building >= 0
+          ? link(buildingName(building), () => inspect(1, building))
+          : link(`${streetName(r(5, road, 15))} kerbside`, () => game.focus(11, node));
+        // Observed availability buckets are learned chances on the u8 scale:
+        // 255 = a space was found, 0 = none, 140 = the untried default.
+        const buckets = [8, 9, 10, 11]
+          .map((f) => { const v = r(28, i, f); return v < 0 ? "—" : `${((v / 255) * 100).toFixed(0)}%`; })
+          .join(" · ");
+        values.push([
+          parkingKinds[kind] ?? "Parking",
+          where,
+          r(28, i, 4),
+          r(28, i, 5),
+          r(28, i, 6),
+          r(28, i, 7) > 0 ? "£" + r(28, i, 7).toFixed(2) : "Free",
+          buckets,
+        ]);
+      }
+      revenue = m(62);
+      $("parking-report-summary").textContent =
+        `${count} facilities · ${used}/${slots} spaces occupied · ${money(revenue)} lifetime kerbside receipts. ` +
+        "Availability columns are the four daily arrival buckets travellers have learned.";
+      rows("parking-rows", values);
     }
     if (visible("history-report"))
       rows(
@@ -425,7 +514,10 @@ export function createReports(game, ui, transport) {
     "Bus service agreement",
     "Road construction",
     "Service credit",
+    "Kerbside parking",
     "Development levy",
+    "Park maintenance",
+    "Public-space construction",
   ];
   function ledgerValues(limit) {
     return Array.from({ length: limit }, (_, id) => {
@@ -473,16 +565,17 @@ export function createReports(game, ui, transport) {
     $("employment-note").textContent =
       `${m(38).toLocaleString()} jobseekers · ${m(39).toLocaleString()} open posts · last day ${m(40)} hires, ${m(41)} dismissals · ${money(m(42))} wages paid. Unpaid employer wages are wage arrears, not municipal debt.`;
     taxPreview();
-    rows(
-      "ledger-rows",
-      ledgerValues(Math.min(80, m(18))).map((v) => [
-        v[0],
-        `${v[1]} · ${v[2]}`,
-        v[3],
-        v[4],
-        v[5],
-      ]),
-    );
+    if (visible("budget-ledger"))
+      rows(
+        "ledger-rows",
+        ledgerValues(Math.min(80, m(18))).map((v) => [
+          v[0],
+          `${v[1]} · ${v[2]}`,
+          v[3],
+          v[4],
+          v[5],
+        ]),
+      );
   }
   function updateWorks() {
     if (!visible("works-window")) return;
@@ -556,18 +649,39 @@ export function createReports(game, ui, transport) {
         ["Neighbourhood", districts[b.district]],
         ["Address", `${r(1,id,14)} ${streetName(r(1,id,13))}`],
         ["Ground elevation", `${r(1, id, 3).toFixed(1)} m`],
-        ["Sun exposure (assessment proxy)", `${(r(1,id,12)*100).toFixed(0)}%`],
+        ["Measured sunlight", `${(r(1,id,12)*100).toFixed(0)}%`],
         ["Building height", `${r(1, id, 2).toFixed(1)} m`],
         ["Residents", r(1, id, 5)],
         ["Assessed value", money(r(1, id, 4))],
         ["Daily property bill", money(r(1, id, 7))],
         ["Arrears", money(r(1, id, 8))],
-        ["Tenure", r(26, id, 1) ? "Rented" : "Owned"],
-        ["Daily housing charge", money(r(26, id, 1) ? r(26, id, 2) : r(26, id, 3))],
-        ["Housing arrears", money(r(26, id, 5))],
-        ["Occupancy", r(26, id, 6)],
-        ["Move state", ["Idle", "Pending", "Moved", "Displaced", "Refused"][r(26, id, 9)]],
       ];
+      // Housing rows only mean something on actual homes (homes + apartments).
+      if (r(26, id, 0) === 1) {
+        fields.push(
+          ["Tenure", r(26, id, 1) ? "Rented" : "Owned"],
+          ["Daily housing charge", money(r(26, id, 1) ? r(26, id, 2) : r(26, id, 3))],
+          ["Housing arrears", money(r(26, id, 5))],
+          ["Occupancy", r(26, id, 6)],
+          ["Move state", ["Idle", "Pending", "Moved", "Displaced", "Refused"][r(26, id, 9)]],
+        );
+      }
+      // Green lots carry a parks record: condition, catchment and care.
+      if ([5, 12, 13].includes(b.kind)) {
+        const parkCount = r(0, 0, 90);
+        for (let pi = 0; pi < parkCount && pi < 512; pi++) {
+          if (r(32, pi, 0) !== id) continue;
+          fields.push(
+            ["Park condition", `${r(32, pi, 7).toFixed(0)}%`],
+            ["Visits today / ever", `${r(32, pi, 8)} / ${r(32, pi, 9)}`],
+            ["Catchment homes / residents", `${r(32, pi, 10)} / ${r(32, pi, 11)}`],
+            ["Mean walk / access", `${r(32, pi, 12).toFixed(0)} m · ${(r(32, pi, 13) * 100).toFixed(0)}%`],
+            ["Care today (paid / needed)", `${money(r(32, pi, 15))} / ${money(r(32, pi, 14))} · ${(r(32, pi, 16) * 100).toFixed(0)}% covered`],
+            ["Neighbourhood amenity", r(32, pi, 17).toFixed(2)],
+          );
+          break;
+        }
+      }
       actions = [
         link("Locate building", () => game.focus(1, id)),
         link("Local streets", () => {

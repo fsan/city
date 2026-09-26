@@ -32,6 +32,40 @@ export function createTransport(game, ui) {
     tool = null,
     signal = -1;
   const message = (text) => ($("transport-message").textContent = text);
+  // Top-level tabs: lines / agreements / fleet / stops / streets / signals.
+  // Panels keep their ids; switching only changes visibility, and update()
+  // refreshes the visible panel so hidden tables do not rebuild twice a second.
+  const transportTabs = {};
+  let transportTab = "lines";
+  for (const button of document.querySelectorAll("[data-transport-tab]"))
+    transportTabs[button.dataset.transportTab] = button;
+  function showTransportTab(name) {
+    if (!transportTabs[name]) return;
+    transportTab = name;
+    for (const [key, button] of Object.entries(transportTabs)) {
+      const on = key === name;
+      button.setAttribute("aria-selected", String(on));
+      button.tabIndex = on ? 0 : -1;
+      $(`tpanel-${key}`).hidden = !on;
+    }
+    update();
+  }
+  const transportTabList = Object.values(transportTabs);
+  transportTabList.forEach((button, index) => {
+    button.onclick = () => showTransportTab(button.dataset.transportTab);
+    button.onkeydown = (event) => {
+      let next;
+      if (event.key === "ArrowRight") next = (index + 1) % transportTabList.length;
+      else if (event.key === "ArrowLeft") next = (index + transportTabList.length - 1) % transportTabList.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = transportTabList.length - 1;
+      else return;
+      event.preventDefault();
+      event.stopPropagation();
+      showTransportTab(transportTabList[next].dataset.transportTab);
+      transportTabList[next].focus();
+    };
+  });
   // Slice 11: traffic-signal placement tools and the selected-light inspector.
   const signalButton = $("signal-place"), crosswalkButton = $("crosswalk-place"), crosswalkRemoveButton = $("crosswalk-remove");
   const inspector = $("signal-inspector"), greenInput = $("signal-green"), yellowInput = $("signal-yellow");
@@ -608,13 +642,14 @@ export function createTransport(game, ui) {
     $("pedestrian-overlay").setAttribute("aria-pressed", mode === 3);
     $("traffic-overlay").setAttribute("aria-pressed", mode === 2);
     $("overlay").setAttribute("aria-pressed", mode === 1);
+    $("park-overlay").setAttribute("aria-pressed", mode === 4);
     $("overlay-key").hidden = !mode;
     $("overlay-key").querySelector("strong").textContent =
-      mode === 3 ? "PEDESTRIAN DENSITY" : mode === 2 ? "TRAFFIC · INTENSITY & QUEUES" : "STREET CONDITION";
+      mode === 3 ? "PEDESTRIAN DENSITY" : mode === 2 ? "TRAFFIC · INTENSITY & QUEUES" : mode === 4 ? "PARK CONDITION" : "STREET CONDITION";
     $("overlay-key").querySelector("small").innerHTML =
       mode === 3 ? "Busy <span>Quiet</span><br>People walking or waiting outside; street intensity per 100 m² of sidewalk" : mode === 2
         ? "Queued <span>Flowing</span><br>Amber clouds: vehicle density; wider areas at city scale"
-        : "Worn <span>Maintained</span>";
+        : mode === 4 ? "Neglected <span>Maintained</span>" : "Worn <span>Maintained</span>";
   }
   $("pedestrian-overlay").onclick = () => setOverlay(overlay === 3 ? 0 : 3);
   $("traffic-overlay").onclick = () => setOverlay(overlay === 2 ? 0 : 2);
@@ -681,6 +716,7 @@ export function createTransport(game, ui) {
     if (picked >= 0) {
       // Slice 12: the inspector lives in the traffic drawer, so a click on a
       // light has to bring that drawer forward before it can be read.
+      showTransportTab("signals");
       ui.open("transport");
       showSignal(picked);
       reveal(inspector);
@@ -713,6 +749,7 @@ export function createTransport(game, ui) {
       }
       if (best !== null) {
         chooseRoad(best);
+        showTransportTab("streets");
         ui.open("transport");
         return true;
       }
@@ -754,9 +791,10 @@ export function createTransport(game, ui) {
   }
   function paint() {
     const svg = $("route-map");
-    heat.hidden = overlay < 2;
-    heat.style.display = overlay >= 2 ? "block" : "none";
-    if (overlay >= 2 && ++heatFrame % 12 === 0) {
+    const heatOn = overlay === 2 || overlay === 3;
+    heat.hidden = !heatOn;
+    heat.style.display = heatOn ? "block" : "none";
+    if (heatOn && ++heatFrame % 12 === 0) {
       const pts = points();
       const zoom = r(0,0,27);
       const groups = new Map();
@@ -901,9 +939,11 @@ export function createTransport(game, ui) {
   let hotspotIds = "";
   function update() {
     syncNetwork();
-    agreements.update();
-    updateObservations();
-    updatePassengerOutcomes();
+    if (transportTab === "agreements") agreements.update();
+    if (transportTab === "stops") {
+      updateObservations();
+      updatePassengerOutcomes();
+    }
     $("transport-summary").textContent =
       `Trips in progress: ${r(9, 0, 5)} walk · ${r(9, 0, 6)} cycle · ${r(9, 0, 7)} car · ${r(9, 0, 8)} bus. Waiting at stops: ${r(9, 0, 9)}. City subsidies paid: ${money(r(9, 0, 2))}.`;
     $("line-stats").textContent =
@@ -916,10 +956,16 @@ export function createTransport(game, ui) {
       button.disabled = !active;
       button.textContent = `Bus ${slot + 1} · ${active ? `${r(12, id, 4)}/24 aboard · ${r(12, id, 3).toFixed(1)} m/s · locate` : "Out of service"}`;
     });
-    if (signal >= 0) showSignal(signal);
-    // Slice 12: whichever traffic-lights view is on screen keeps itself current.
-    if (!signalTabViews.all.hidden) syncSignalList();
-    if (!signalTabViews.map.hidden) syncSignalMap();
+    if (transportTab === "lines") {
+      // summary handled below; nothing heavy here yet
+    }
+    if (transportTab === "signals") {
+      if (signal >= 0) showSignal(signal);
+      // Slice 12: whichever traffic-lights view is on screen keeps itself current.
+      if (!signalTabViews.all.hidden) syncSignalList();
+      if (!signalTabViews.map.hidden) syncSignalMap();
+    }
+    if (transportTab === "streets") syncParking();
     const road = Number($("traffic-road").value);
     crossing.textContent = r(5,road,14) ? "Remove crosswalk" : "Add crosswalk";
     $("traffic-road-stats").textContent =
@@ -963,15 +1009,18 @@ export function createTransport(game, ui) {
       cancel();
       selected = id;
       syncLines();
+      showTransportTab("lines");
       update();
       ui.open("transport");
     },
     inspectRoad(id) {
       chooseRoad(id);
+      showTransportTab("streets");
       ui.open("transport");
     },
     togglePedestrians: () => setOverlay(overlay === 3 ? 0 : 3),
     toggleTraffic: () => setOverlay(overlay === 2 ? 0 : 2),
+    toggleParkCondition: () => setOverlay(overlay === 4 ? 0 : 4),
     toggleCondition: () => setOverlay(overlay === 1 ? 0 : 1),
     reset() {
       tool = null;

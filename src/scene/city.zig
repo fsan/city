@@ -93,7 +93,7 @@ pub const Kind = enum(u32) { home, shop, office, clinic, hall, park, depot, vaca
 // of mixed housing, business and public space, so the fixed lot array grew with
 // it. The count is capped by the node ceiling above, not by this array.
 pub const max_buildings = 900;
-pub const Building = struct { x: f32, z: f32, width: f32, depth: f32, height: f32, ground: f32, kind: Kind, district: usize, node: usize, value: f64, capacity: usize, slots: usize = 0, sun: f32 = 1, occupants: usize = 0, employer: i32 = -1, entry_x: f32 = 0, entry_z: f32 = 0, street: usize = 0, number: usize = 0 };
+pub const Building = struct { x: f32, z: f32, width: f32, depth: f32, height: f32, ground: f32, kind: Kind, district: usize, node: usize, value: f64, capacity: usize, slots: usize = 0, sun: f32 = 1, occupants: usize = 0, employer: i32 = -1, entry_x: f32 = 0, entry_z: f32 = 0, street: usize = 0, number: usize = 0, park: f32 = 0 };
 pub const Node = struct { x: f32, z: f32, y: f32, street: usize = 0, number: usize = 0 };
 pub const Road = struct { a: usize, b: usize, length: f32, slope: f32, district: usize, condition: f32, street: usize = 0, class: u8 = 1, pedestrians: bool = true, vehicles: bool = true, crosswalk: bool = false, works: bool = false };
 pub const Vec = struct { x: f32, z: f32 };
@@ -802,12 +802,11 @@ pub fn init() void {
     }
     seedParking();
     if (developmentPlan()) forceAllFeatures();
-    for (lots()) |*b| {
-        for (lots()) |other| {
-            if (other.z > b.z and other.z - b.z < 35 and @abs(other.x - b.x) < 9) b.sun = @max(0.35, b.sun - @max(0, other.height - b.height * 0.5) / 45);
-        }
-        b.value *= 0.9 + @as(f64, b.sun) * 0.2;
-    }
+    // Slice 20 (numbered list item 12): the assessed value and the sunlight
+    // each lot receives are measured from the finished street wall, not from a
+    // one-line neighbour proxy. Every lot is reassessed again whenever a
+    // private development completes and changes its neighbours' shadow.
+    reassess();
     refreshElevations();
     rebuildRoutes();
 }
@@ -1373,6 +1372,204 @@ pub fn proposalHeight(kind: Kind, index: usize, x: f32, z: f32) f32 {
 
 pub fn proposalFootprint(kind: Kind, x: f32, z: f32) [2]f32 {
     return footprintFor(kind, inDowntown(x, z));
+}
+
+// ---------------------------------------------------------------------------
+// Slice 20 (numbered list item 12): property valuation and sunlight.
+//
+// One fixed sun position and one shadow shape are published here, so the
+// simulation, the report and a probe all read the same rule. The renderer's
+// daylight shading stays illustrative; this is the assessment model.
+pub const sun_altitude_tan: f32 = 0.84; // tan(40 degrees)
+pub const shadow_reach: f32 = 1.19; // 1 / sun_altitude_tan
+pub const shadow_spread: f32 = 0.30; // lateral metres of shadow per metre north
+pub const shadow_floor: f32 = 0.15; // the measured-sunlight physical floor
+pub const sun_floor: f32 = 0.35; // no assessed value uses less sun than this
+pub const neighbour_sun_floor: f32 = 0.25; // a proposal may not shade below this
+pub const sun_value_floor: f32 = 0.9;
+pub const sun_value_rate: f32 = 0.2;
+pub const access_free_distance: f32 = 12;
+pub const access_max_distance: f32 = 30;
+pub const access_value_floor: f32 = 0.85;
+// Lane, street, avenue. A better frontage is worth a bounded premium.
+pub const street_value: [3]f32 = .{ 0.95, 1.0, 1.06 };
+
+pub const Access = struct { distance: f32, class: u8 };
+
+fn roundCents(value: f64) f64 {
+    return @round(value * 100) / 100;
+}
+
+// The occlusion of one sample point by every lot whose shadow reaches it. The
+// town's sun stands to the south, so only a lot at a greater z can shade this
+// point, and only within that building's own shadow length.
+fn shadowOcclusion(x: f32, z: f32, exclude: usize, override_index: usize, override_height: f32, override_width: f32) f32 {
+    var occlusion: f32 = 0;
+    for (lots(), 0..) |*other, i| {
+        if (i == exclude) continue;
+        var height = other.height;
+        var width = other.width;
+        if (i == override_index) {
+            height = override_height;
+            width = override_width;
+        }
+        if (height < 0.5 or other.z <= z) continue;
+        const along = other.z - z;
+        const reach = height * shadow_reach;
+        if (along > reach) continue;
+        const half = width * 0.5 + shadow_spread * along;
+        if (half <= 0) continue;
+        const lateral = @abs(x - other.x);
+        if (lateral > half) continue;
+        occlusion += (1 - along / reach) * (1 - lateral / half);
+    }
+    return std.math.clamp(occlusion, 0, 1 - shadow_floor);
+}
+
+// The receiver's footprint is sampled at its four corners and its centre, so a
+// large lot that is only partly shaded reports a partial sunlight value.
+const sunlight_samples = [_][2]f32{ .{ 0, 0 }, .{ 1, 0 }, .{ 0, 1 }, .{ 1, 1 }, .{ 0.5, 0.5 } };
+
+fn sunlightSample(index: usize, override_index: usize, override_height: f32, override_footprint: [2]f32) f32 {
+    const b = &buildings[index];
+    var total: f32 = 0;
+    for (sunlight_samples) |s| {
+        total += shadowOcclusion(b.x + b.width * s[0], b.z + b.depth * s[1], index, override_index, override_height, override_footprint[0]);
+    }
+    return std.math.clamp(1 - total / @as(f32, @floatFromInt(sunlight_samples.len)), shadow_floor, 1);
+}
+
+pub fn sunlight(index: usize) f32 {
+    if (index >= lot_count) return 1;
+    return sunlightSample(index, std.math.maxInt(usize), 0, .{ 0, 0 });
+}
+
+// The same receiver's sunlight if `candidate` stood at the given height and
+// footprint, which is what a proposal's shadow assessment asks.
+pub fn sunlightIfBuilt(receiver: usize, candidate: usize, height: f32, footprint: [2]f32) f32 {
+    if (receiver >= lot_count or candidate >= lot_count) return 1;
+    return sunlightSample(receiver, candidate, height, footprint);
+}
+
+// The door's distance to the nearest carriageway and that carriageway's own
+// class. `development.zig` reads the distance; the assessment reads both.
+pub fn roadAccess(b: *const Building) Access {
+    if (b.node >= node_count) return .{ .distance = 1e9, .class = 1 };
+    var best: f32 = 1e9;
+    var class: u8 = 1;
+    for (roads) |r| {
+        if (!r.vehicles) continue;
+        const a = nodes[r.a];
+        const c = nodes[r.b];
+        const u = projection(.{ .x = b.entry_x, .z = b.entry_z }, a, c);
+        const px = a.x + (c.x - a.x) * u;
+        const pz = a.z + (c.z - a.z) * u;
+        const d = hypot(px - b.entry_x, pz - b.entry_z);
+        if (d < best) {
+            best = d;
+            class = r.class;
+        }
+    }
+    return .{ .distance = best, .class = class };
+}
+
+fn accessMultiplier(access: Access) f32 {
+    const door = access.distance;
+    const distance_mult = if (door <= access_free_distance) 1 else if (door >= access_max_distance) access_value_floor else 1 - (1 - access_value_floor) * ((door - access_free_distance) / (access_max_distance - access_free_distance));
+    const class_mult = if (access.class < street_value.len) street_value[access.class] else 1;
+    return distance_mult * class_mult;
+}
+
+// The assessed value of one use at a measured sunlight, frontage and
+// neighbourhood park benefit. The park term is bounded to +5%, which keeps the
+// combined assessment inside the snapshot's declared range. Zero for uses the
+// town does not assess (open space, parking and vacant land).
+pub fn assessedValueFor(kind: Kind, sun: f32, access: Access, park: f32) f64 {
+    const base = valueFor(kind);
+    if (base == 0) return 0;
+    const sun_mult = sun_value_floor + sun_value_rate * std.math.clamp(sun, sun_floor, 1);
+    const park_mult = 1 + 0.05 * std.math.clamp(park, 0, 1);
+    return roundCents(base * @as(f64, @floatCast(sun_mult)) * @as(f64, @floatCast(accessMultiplier(access))) * @as(f64, @floatCast(park_mult)));
+}
+
+pub fn assessedValue(index: usize) f64 {
+    if (index >= lot_count) return 0;
+    const b = &buildings[index];
+    return assessedValueFor(b.kind, b.sun, roadAccess(b), b.park);
+}
+
+// One neighbour's measured loss, retained for the four worst-affected lots.
+pub const ShadowHit = struct { lot: u32 = 0, loss: f64 = 0, sun_after: f32 = 0 };
+pub const Shadow = struct {
+    count: u32 = 0,
+    total_loss: f64 = 0,
+    min_sun: f32 = 1,
+    hits: [4]ShadowHit = .{ .{}, .{}, .{}, .{} },
+
+    fn record(self: *Shadow, hit: ShadowHit) void {
+        self.count += 1;
+        self.total_loss = roundCents(self.total_loss + hit.loss);
+        self.min_sun = @min(self.min_sun, hit.sun_after);
+        if (hit.loss <= self.hits[3].loss) return;
+        self.hits[3] = hit;
+        var i: usize = 3;
+        while (i > 0 and self.hits[i].loss > self.hits[i - 1].loss) : (i -= 1) {
+            const swap = self.hits[i - 1];
+            self.hits[i - 1] = self.hits[i];
+            self.hits[i] = swap;
+        }
+    }
+};
+
+// Measure what a proposed building would cost its neighbours: the reduction in
+// each affected lot's assessed value, the worst four losses and the darkest
+// neighbour left standing.
+pub fn shadowOf(candidate: usize, kind: Kind, height: f32) Shadow {
+    var shadow = Shadow{};
+    if (candidate >= lot_count) return shadow;
+    const b = &buildings[candidate];
+    const footprint = proposalFootprint(kind, b.x, b.z);
+    for (lots(), 0..) |*other, j| {
+        if (j == candidate) continue;
+        const base = valueFor(other.kind);
+        if (base == 0) continue;
+        const access = roadAccess(other);
+        const before = assessedValueFor(other.kind, other.sun, access, other.park);
+        const after_sun = sunlightIfBuilt(j, candidate, height, footprint);
+        const after = assessedValueFor(other.kind, after_sun, access, other.park);
+        if (after >= before - 0.005) continue;
+        shadow.record(.{ .lot = @intCast(j), .loss = roundCents(before - after), .sun_after = after_sun });
+    }
+    return shadow;
+}
+
+// Recompute every placed lot's sunlight and assessed value from the live
+// building set. Called once after the authored town is laid out and again
+// whenever a private development changes its neighbours' shadow.
+pub fn reassess() void {
+    for (lots(), 0..) |*b, i| b.sun = sunlightSample(i, std.math.maxInt(usize), 0, .{ 0, 0 });
+    for (lots(), 0..) |*b, i| b.value = assessedValueFor(b.kind, buildings[i].sun, roadAccess(b), b.park);
+}
+
+pub fn meanSunlight() f32 {
+    if (lot_count == 0) return 0;
+    var total: f32 = 0;
+    for (lots()) |b| total += b.sun;
+    return total / @as(f32, @floatFromInt(lot_count));
+}
+
+pub fn assessedTotal() f64 {
+    var total: f64 = 0;
+    for (lots()) |b| total += b.value;
+    return roundCents(total);
+}
+
+pub fn shadowedLots() usize {
+    var total: usize = 0;
+    for (lots()) |b| if (b.sun < 0.999) {
+        total += 1;
+    };
+    return total;
 }
 
 // Slice 15: the authored green spaces. Each site is a candidate rectangle; the

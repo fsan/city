@@ -4,6 +4,7 @@ const parcels = @import("../scene/parcels.zig");
 const residents = @import("residents.zig");
 const housing = @import("housing.zig");
 const finance = @import("finance.zig");
+const parks = @import("parks.zig");
 
 // Slice 18 (numbered list item 10) created the bounded private development
 // queue. Slice 19 (numbered list item 11) gives an approved permit a physical
@@ -34,6 +35,10 @@ pub const max_buildable_slope: f32 = 0.38;
 pub const grading_rate: f64 = 140;
 pub const foundation_rate: f64 = 95;
 pub const materials_area_rate: f64 = 55;
+// Slice 20 (numbered list item 12): the applicant pays this share of the
+// measured assessed-value loss its new building casts on its neighbours. The
+// money is private - it never enters the municipal ledger.
+pub const shadow_share: f64 = 0.06;
 pub const materials_height_rate: f64 = 12;
 pub const labour_per_second: f64 = 0.04;
 pub const work_order_base: i32 = 1_000_000;
@@ -56,6 +61,7 @@ pub const Reason = enum(u8) {
     crew_unavailable = 10,
     budget_exhausted = 11,
     crew_lost = 12,
+    sunlight_conflict = 13,
 };
 
 // The physical stage of an approved job. `blocked` and `complete` are terminal
@@ -104,6 +110,18 @@ pub const Proposal = struct {
     phase: Phase = .none,
     blocked: Reason = .none,
     progress: f32 = 0,
+
+    // Slice 20: the measured sunlight/valuation trade-off. `sunlight` is the
+    // site's own measured sun, `shadow_loss` is the summed assessed-value loss
+    // the proposed building casts on its neighbours and `shadow_cost` is the
+    // private compensation the applicant pays for it. Up to four worst-affected
+    // lots are retained for inspection.
+    sunlight: f32 = 0,
+    shadow_loss: f64 = 0,
+    shadow_cost: f64 = 0,
+    shadow_count: u8 = 0,
+    shadow_lot: [4]i32 = .{ -1, -1, -1, -1 },
+    shadow_value: [4]f64 = .{ 0, 0, 0, 0 },
 };
 
 pub var storage: [max_proposals]Proposal = @splat(.{});
@@ -123,6 +141,11 @@ pub var building: usize = 0; // approved proposals still physically under constr
 // ledger movements; the ledger still records only the levy as kind 12.
 pub var construction_spent_total: f64 = 0;
 pub var materials_delivered_total: f64 = 0;
+// Slice 20 private shadow account. `shadow_compensation_total` is money the
+// applicants actually paid their neighbours; `shadow_loss_total` is the
+// assessed-value loss the lodged proposals measured.
+pub var shadow_compensation_total: f64 = 0;
+pub var shadow_loss_total: f64 = 0;
 
 // Which district leads the next day's rotation, restored with the town so a
 // save and reload keep offering the same sites in the same order.
@@ -140,9 +163,18 @@ const SiteMetrics = struct {
     foundation_cost: f64 = 0,
     materials_cost: f64 = 0,
     labour_cost: f64 = 0,
+    shadow_cost: f64 = 0,
     total_cost: f64 = 0,
     materials_required: f64 = 0,
     budget: f64 = 0,
+    // Slice 20 measured sunlight and valuation.
+    sunlight: f32 = 0,
+    value: f64 = 0,
+    shadow_loss: f64 = 0,
+    shadow_count: u8 = 0,
+    shadow_min_sun: f32 = 1,
+    shadow_lot: [4]i32 = .{ -1, -1, -1, -1 },
+    shadow_value: [4]f64 = .{ 0, 0, 0, 0 },
 };
 
 pub fn init() void {
@@ -159,6 +191,8 @@ pub fn init() void {
     building = 0;
     construction_spent_total = 0;
     materials_delivered_total = 0;
+    shadow_compensation_total = 0;
+    shadow_loss_total = 0;
     cursor = 0;
     demand_cache = @splat(.{});
 }
@@ -292,22 +326,6 @@ fn useFor(zone: u8, d: Demand) ?city.Kind {
 
 const Site = struct { parcel: usize, building: usize, kind: city.Kind, height: f32, metrics: SiteMetrics };
 
-fn accessDistance(b: *const city.Building) f32 {
-    if (b.node >= city.node_count) return 1e9;
-    var best: f32 = 1e9;
-    for (city.roads) |r| {
-        if (!r.vehicles) continue;
-        const a = city.nodes[r.a];
-        const c = city.nodes[r.b];
-        const u = city.projection(.{ .x = b.entry_x, .z = b.entry_z }, a, c);
-        const px = a.x + (c.x - a.x) * u;
-        const pz = a.z + (c.z - a.z) * u;
-        const d = city.hypot(px - b.entry_x, pz - b.entry_z);
-        if (d < best) best = d;
-    }
-    return best;
-}
-
 fn slopeAt(x: f32, z: f32, width: f32, depth: f32) f32 {
     var low: f32 = 1e9;
     var high: f32 = -1e9;
@@ -325,7 +343,8 @@ fn siteMetrics(b: *const city.Building, kind: city.Kind, height: f32) SiteMetric
     const footprint = city.proposalFootprint(kind, b.x, b.z);
     const width = footprint[0];
     const depth = footprint[1];
-    const distance = accessDistance(b);
+    const road_access = city.roadAccess(b);
+    const distance = road_access.distance;
     const valid_node = b.node < city.node_count and city.degree(b.node) > 0;
     const access: u8 = if (!valid_node or distance > access_max_distance) 0 else if (distance <= access_free_distance) 1 else 2;
     const slope = slopeAt(b.x, b.z, width, depth);
@@ -338,7 +357,6 @@ fn siteMetrics(b: *const city.Building, kind: city.Kind, height: f32) SiteMetric
     const labour_cost = finance.cents(labour_per_second * 4 * buildDays(height) * days * 2);
     const total_cost = finance.cents(access_cost + grade_cost + foundation_cost + materials_cost + labour_cost);
     const materials_required = @max(1, area * (1 + height64 * 0.08));
-    const budget = finance.cents(city.lotValue(kind) * developer_budget_rate);
     return .{
         .access = access,
         .distance = distance,
@@ -350,8 +368,35 @@ fn siteMetrics(b: *const city.Building, kind: city.Kind, height: f32) SiteMetric
         .labour_cost = labour_cost,
         .total_cost = total_cost,
         .materials_required = materials_required,
-        .budget = budget,
     };
+}
+
+// Slice 20: the measured valuation and shadow. This is deliberately separate
+// from `siteMetrics` because it is the expensive half - `shadowOf` scans every
+// assessed neighbour - and the daily site search must not pay for it on every
+// candidate. It is run when a proposal is actually lodged and again when the
+// permit is granted, so the levy, the budget and the compensation all follow
+// the same measurement.
+fn valueSite(index: usize, kind: city.Kind, height: f32, metrics: *SiteMetrics) void {
+    const sunlight = city.sunlight(index);
+    const access = city.roadAccess(&city.buildings[index]);
+    const value = city.assessedValueFor(kind, sunlight, access, parks.benefitAt(index));
+    const shadow = city.shadowOf(index, kind, height);
+    metrics.sunlight = sunlight;
+    metrics.value = value;
+    metrics.budget = finance.cents(value * developer_budget_rate);
+    metrics.shadow_loss = shadow.total_loss;
+    metrics.shadow_cost = finance.cents(shadow.total_loss * shadow_share);
+    metrics.shadow_count = if (shadow.count > 255) 255 else @intCast(shadow.count);
+    metrics.shadow_min_sun = shadow.min_sun;
+    metrics.shadow_lot = .{ -1, -1, -1, -1 };
+    metrics.shadow_value = .{ 0, 0, 0, 0 };
+    for (shadow.hits, 0..) |hit, slot| {
+        if (hit.lot == 0 and hit.loss == 0) continue;
+        metrics.shadow_lot[slot] = @intCast(hit.lot);
+        metrics.shadow_value[slot] = hit.loss;
+    }
+    metrics.total_cost = finance.cents(metrics.total_cost + metrics.shadow_cost);
 }
 
 // The first authored vacant lot in the district whose zone permits a use and
@@ -373,7 +418,9 @@ fn siteFor(d: usize, demand_now: Demand) ?Site {
     return null;
 }
 
-fn lodge(time: f64, site: Site, demand_now: Demand) void {
+fn lodge(time: f64, site_in: Site, demand_now: Demand) void {
+    var site = site_in;
+    valueSite(site.parcel, site.kind, site.height, &site.metrics);
     const b = city.buildings[site.building];
     const proposal = Proposal{
         .number = next_number,
@@ -383,9 +430,9 @@ fn lodge(time: f64, site: Site, demand_now: Demand) void {
         .zone = zoneOf(site.parcel),
         .kind = @intCast(@intFromEnum(site.kind)),
         .height = site.height,
-        .value = city.lotValue(site.kind),
+        .value = site.metrics.value,
         .capacity = city.lotCapacity(site.kind),
-        .levy = finance.cents(city.lotValue(site.kind) * levy_rate),
+        .levy = finance.cents(site.metrics.value * levy_rate),
         .offered = time,
         .deadline = time + @as(f64, offer_days) * days,
         .pressure = if (site.kind == .home or site.kind == .apartment) demand_now.residential else demand_now.commercial,
@@ -400,8 +447,15 @@ fn lodge(time: f64, site: Site, demand_now: Demand) void {
         .labour_cost = site.metrics.labour_cost,
         .budget = site.metrics.budget,
         .materials_required = site.metrics.materials_required,
+        .sunlight = site.metrics.sunlight,
+        .shadow_loss = site.metrics.shadow_loss,
+        .shadow_cost = site.metrics.shadow_cost,
+        .shadow_count = site.metrics.shadow_count,
+        .shadow_lot = site.metrics.shadow_lot,
+        .shadow_value = site.metrics.shadow_value,
     };
     storage[@as(usize, count) % storage.len] = proposal;
+    shadow_loss_total = finance.cents(shadow_loss_total + site.metrics.shadow_loss);
     count += 1;
     next_number += 1;
     lodged_total += 1;
@@ -438,21 +492,60 @@ pub fn daily(time: f64) void {
     cursor = @intCast((@as(usize, cursor) + 1) % city.district_count);
 }
 
-fn payPrivate(p: *Proposal, amount: f64) void {
+// Charge the applicant's private budget. Returns the pennies spent, or null if
+// the next step would overrun the budget and blocks the job instead.
+fn chargeBudget(p: *Proposal, amount: f64) ?f64 {
     const paid = finance.cents(amount);
-    if (paid <= 0) return;
+    if (paid <= 0) return 0;
     if (p.spent + paid > p.budget + 0.011) {
         p.phase = .blocked;
         p.blocked = .budget_exhausted;
-        return;
+        return null;
     }
     p.spent = finance.cents(p.spent + paid);
     construction_spent_total = finance.cents(construction_spent_total + paid);
+    return paid;
+}
+
+fn payPrivate(p: *Proposal, amount: f64) void {
+    const paid = chargeBudget(p, amount) orelse return;
     if (p.company >= 0 and p.company < residents.company_count) {
         const company: usize = @intCast(p.company);
         residents.companies[company].cash = finance.cents(residents.companies[company].cash + paid);
         residents.companies[company].costs = finance.cents(residents.companies[company].costs + paid);
     }
+}
+
+// Credit one affected neighbour with its share of the shadow compensation: an
+// owner's cash for a home, a company's cash for a workplace. Open space and
+// vacant land have no owner, so their share stays uncredited; the applicant has
+// still paid it, so no money is created.
+fn creditOwner(lot: i32, amount: f64) void {
+    if (amount <= 0 or lot < 0 or @as(usize, @intCast(lot)) >= city.lot_count) return;
+    const index: usize = @intCast(lot);
+    const b = &city.buildings[index];
+    if (city.isHome(b.kind) and index < housing.units.len and housing.units[index].present) {
+        housing.units[index].owner_cash = finance.cents(housing.units[index].owner_cash + amount);
+    } else if (b.employer >= 0 and b.employer < residents.company_count) {
+        const company: usize = @intCast(b.employer);
+        residents.companies[company].cash = finance.cents(residents.companies[company].cash + amount);
+        residents.companies[company].costs = finance.cents(residents.companies[company].costs + amount);
+    }
+}
+
+// The applicant pays its measured shadow compensation to the affected owners.
+// The last share carries the rounding remainder so the credited penny total is
+// exactly what left the applicant's budget.
+fn payShadow(p: *Proposal) void {
+    if (p.shadow_cost <= 0 or p.shadow_loss <= 0 or p.shadow_count == 0) return;
+    const paid = chargeBudget(p, p.shadow_cost) orelse return;
+    var credited: f64 = 0;
+    for (0..@as(usize, p.shadow_count)) |slot| {
+        const share = if (slot + 1 == @as(usize, p.shadow_count)) finance.cents(paid - credited) else finance.cents(paid * p.shadow_value[slot] / p.shadow_loss);
+        credited = finance.cents(credited + share);
+        creditOwner(p.shadow_lot[slot], share);
+    }
+    shadow_compensation_total = finance.cents(shadow_compensation_total + paid);
 }
 
 fn block(p: *Proposal, reason: Reason) void {
@@ -588,6 +681,10 @@ fn construct(p: *Proposal) void {
     } else if (p.capacity > 0) {
         residents.addEmployer(index, kind);
     }
+    // Slice 20: the new building changes its neighbours' sunlight and assessed
+    // value (and its own, if another lot shades it), so the whole roll is
+    // reassessed. Rents already enrolled stay sticky.
+    city.reassess();
 }
 
 fn buildDays(height: f32) f64 {
@@ -608,11 +705,18 @@ pub fn accept(index: usize, time: f64) bool {
     const b = &city.buildings[p.building];
     const kind: city.Kind = @enumFromInt(p.kind);
     const height = city.proposalHeight(kind, p.building, b.x, b.z);
-    const metrics = siteMetrics(b, kind, height);
+    var metrics = siteMetrics(b, kind, height);
+    valueSite(p.building, kind, height, &metrics);
     p.height = height;
-    p.value = city.lotValue(kind);
+    p.value = metrics.value;
     p.capacity = city.lotCapacity(kind);
-    p.levy = finance.cents(p.value * levy_rate);
+    p.levy = finance.cents(metrics.value * levy_rate);
+    p.sunlight = metrics.sunlight;
+    p.shadow_loss = metrics.shadow_loss;
+    p.shadow_cost = metrics.shadow_cost;
+    p.shadow_count = metrics.shadow_count;
+    p.shadow_lot = metrics.shadow_lot;
+    p.shadow_value = metrics.shadow_value;
     p.access = metrics.access;
     p.slope = metrics.slope;
     p.access_cost = metrics.access_cost;
@@ -632,6 +736,12 @@ pub fn accept(index: usize, time: f64) bool {
     }
     if (metrics.total_cost > metrics.budget + 0.011) {
         retire(p, .insufficient_funds, time);
+        return false;
+    }
+    // A proposal that would put a neighbour below the sunlight floor is refused
+    // outright; anything less severe is priced into the shadow compensation.
+    if (metrics.shadow_count > 0 and metrics.shadow_min_sun < city.neighbour_sun_floor) {
+        retire(p, .sunlight_conflict, time);
         return false;
     }
     const company_index = availableContractor() orelse {
@@ -657,6 +767,8 @@ pub fn accept(index: usize, time: f64) bool {
         residents.send(id, b.node, workOrder(p.number));
     }
     payPrivate(p, p.access_cost + p.grade_cost + p.foundation_cost);
+    if (p.phase == .blocked) return false;
+    payShadow(p);
     if (p.levy > 0) {
         finance.record(time, p.levy, 12, -1, @intCast(p.number));
         levies_collected = finance.cents(levies_collected + p.levy);
@@ -721,6 +833,19 @@ pub fn read(index: usize, field: u32) f64 {
         34 => @floatFromInt(@intFromEnum(p.blocked)),
         35 => p.progress,
         36 => if (p.company >= 0) @floatFromInt(workOrder(p.number)) else -1,
+        // Slice 20 measured sunlight, shadow loss and compensation.
+        37 => p.sunlight,
+        38 => p.shadow_loss,
+        39 => p.shadow_cost,
+        40 => @floatFromInt(p.shadow_count),
+        41 => @floatFromInt(p.shadow_lot[0]),
+        42 => @floatFromInt(p.shadow_lot[1]),
+        43 => @floatFromInt(p.shadow_lot[2]),
+        44 => @floatFromInt(p.shadow_lot[3]),
+        45 => p.shadow_value[0],
+        46 => p.shadow_value[1],
+        47 => p.shadow_value[2],
+        48 => p.shadow_value[3],
         else => -1,
     };
 }
@@ -743,6 +868,12 @@ pub fn read0(field: u32) f64 {
         12 => @floatFromInt(activeCrews(.building) + activeCrews(.delivering)),
         13 => @floatFromInt(blockedJobs()),
         14 => privateBudgetCommitted(),
+        // Slice 20 private shadow account and the assessed roll.
+        15 => shadow_compensation_total,
+        16 => shadow_loss_total,
+        17 => @floatCast(city.meanSunlight()),
+        18 => city.assessedTotal(),
+        19 => @floatFromInt(city.shadowedLots()),
         else => -1,
     };
 }
