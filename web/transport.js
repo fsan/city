@@ -72,6 +72,8 @@ export function createTransport(game, ui) {
   // Slice 12: the granular per-light controls, the traffic-lights tab and the
   // coordination map.
   const redInput = $("signal-red"), flashStartInput = $("signal-flash-start"), flashEndInput = $("signal-flash-end"), flashEnabledInput = $("signal-flash-enabled");
+  // Item 14: the pedestrian-only stage and its clearance.
+  const pedWalkInput = $("signal-ped-walk"), pedClearInput = $("signal-ped-clear"), pedEnabledInput = $("signal-ped-enabled");
   const arm = (next) => {
     tool = tool === next ? null : next;
     signalButton.setAttribute("aria-pressed", tool === "signal" ? "true" : "false");
@@ -98,7 +100,7 @@ export function createTransport(game, ui) {
   // is not part-way through typing one. Otherwise a live refresh writes the
   // stored value back over the number being entered and the edit is replaced.
   let signalFieldsHead = -1, signalFieldsEdited = false;
-  const signalFieldInputs = [greenInput, yellowInput, redInput, flashStartInput, flashEndInput];
+  const signalFieldInputs = [greenInput, yellowInput, redInput, flashStartInput, flashEndInput, pedWalkInput, pedClearInput];
   for (const input of signalFieldInputs) input.addEventListener("input", () => { signalFieldsEdited = true; });
   function fillSignalFields(head, force) {
     const changed = head !== signalFieldsHead;
@@ -106,6 +108,7 @@ export function createTransport(game, ui) {
     const fields = [
       [greenInput, 6], [yellowInput, 7], [redInput, 15],
       [flashStartInput, 19], [flashEndInput, 20],
+      [pedWalkInput, 39], [pedClearInput, 40],
     ];
     for (const [input, field] of fields) {
       if (!changed && !force && document.activeElement === input) continue;
@@ -136,6 +139,17 @@ export function createTransport(game, ui) {
     redInput.min = r(29, head, 24); redInput.max = r(29, head, 25);
     fillSignalFields(head, force === true);
     flashEnabledInput.checked = r(29, head, 18) === 1;
+    pedWalkInput.min = r(29, head, 45); pedWalkInput.max = r(29, head, 46);
+    pedClearInput.min = r(29, head, 47); pedClearInput.max = r(29, head, 48);
+    pedEnabledInput.checked = r(29, head, 41) === 1;
+    const stageNames = ["vehicle branches", "pedestrian walk", "clearance"];
+    const stage = r(29, head, 42);
+    const pedLeft = r(29, head, 43);
+    $("signal-ped-state").textContent =
+      stage === 0 ? `No pedestrian stage running now. Walk ${r(29,head,39).toFixed(1)} s, clearance ${r(29,head,40).toFixed(1)} s.`
+      : stage === 1 ? `Pedestrian walk now: every vehicle arm is red and the crossings are open. ${simSeconds(pedLeft)} left.`
+      : `Clearance after the walk: nobody is admitted until the box empties. ${simSeconds(pedLeft)} left.`;
+    $("signal-turn-list").innerHTML = turnSummary(head);
     $("signal-flash-state").textContent = flashingNow
       ? "Blinking yellow right now: cars may cross slowly, and only when the junction is clear."
       : mode > 0.5 ? "Flashing yellow by hand. Follow the window hands it back to the daily window."
@@ -163,6 +177,18 @@ export function createTransport(game, ui) {
     const yellow = game.signal_set_yellow(node, timingInput(yellowInput, signal, 7));
     const red = game.signal_set_red(node, timingInput(redInput, signal, 15));
     message(green < 0 || yellow < 0 || red < 0 ? "That junction has no signal." : `Timing set: green ${green.toFixed(1)} s, amber ${yellow.toFixed(1)} s, off ${red.toFixed(1)} s (simulation time).`);
+    showSignal(signal, true);
+  };
+  $("signal-ped-save").onclick = () => {
+    if (signal < 0) return;
+    const node = r(29, signal, 1);
+    const walk = game.signal_set_ped_walk(node, timingInput(pedWalkInput, signal, 39));
+    const clear = game.signal_set_ped_clear(node, timingInput(pedClearInput, signal, 40));
+    if (walk < 0 || clear < 0) { message("That junction has no signal."); return; }
+    game.signal_set_ped_enabled(node, pedEnabledInput.checked ? 1 : 0);
+    message(pedEnabledInput.checked
+      ? `Pedestrian stage set: walk ${walk.toFixed(1)} s, clearance ${clear.toFixed(1)} s (simulation time).`
+      : "Pedestrian-only stage off; the junction returns to its vehicle-only cycle.");
     showSignal(signal, true);
   };
   $("signal-remove").onclick = () => {
@@ -206,6 +232,24 @@ export function createTransport(game, ui) {
       if (!seen.has(junction)) seen.set(junction, head);
     }
     return [...seen.entries()].map(([junction, head]) => ({ junction, head }));
+  }
+  // Item 14: the turning geometry of the selected light's own arm. Read from
+  // group 33, one movement per (junction, approach slot, exit slot).
+  function turnSummary(head) {
+    const junction = r(29, head, 0), approach = r(29, head, 3), arms = r(29, head, 4);
+    const names = ["straight", "left", "right", "u-turn"];
+    const rows = [];
+    for (let exit = 0; exit < arms; exit++) {
+      if (exit === approach) continue;
+      const movement = junction * 16 + approach * 4 + exit;
+      const kind = r(33, movement, 6);
+      const radius = r(33, movement, 7);
+      const blocked = r(33, movement, 8) === 1;
+      const exitRoad = r(33, movement, 5);
+      const geometry = radius > 0 ? `${radius.toFixed(1)} m radius` : "no corner";
+      rows.push(`${names[kind] ?? "?"} into street #${exitRoad + 1} (${geometry}${blocked ? ", held by yielding" : ""})`);
+    }
+    return rows.length ? `Turning geometry from this arm — ${rows.join("; ")}.` : "";
   }
   function armSummary(head) {
     const slots = [];

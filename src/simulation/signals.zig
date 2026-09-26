@@ -21,6 +21,20 @@ const calendar = @import("calendar.zig");
 //   * alerts, so a police or firefighter dispatcher can one day ask a junction
 //     to hold cross traffic or to fall back to flashing amber. Nothing calls
 //     those yet except the player's own controls.
+//
+// Item 14 (crossings and junction behaviour) adds the three things the earlier
+// signals deliberately left out:
+//   * a pedestrian-only stage. After every vehicle branch has run its green,
+//     amber and all-red clearance, the junction holds every vehicle arm red for
+//     a bounded walk time so people cross on their own stage rather than only
+//     beside a parallel green. A clearance interval follows, during which no
+//     crossing is admitted, so the box empties before the next vehicle phase.
+//   * turning geometry. Every movement between an approach arm and an exit arm
+//     is classified straight/left/right/u-turn from the codebase's own
+//     right-hand side rule, given a bounded radius, and given the lateral lane
+//     position a driver should hold on the approach for that turn.
+//   * yielding. Turning traffic yields to whoever is on the crosswalk it turns
+//     into, and a left turn yields while another vehicle is still in the box.
 pub const max_junctions = 64;
 pub const max_arms = 4;
 pub const max_links = 128;
@@ -42,6 +56,19 @@ pub const default_green: f32 = 8;
 pub const default_yellow: f32 = 2;
 pub const default_red: f32 = 1;
 pub const default_delay: f32 = 0;
+// Item 14: the pedestrian stage. Walk time zero disables the stage entirely, so
+// a junction set that way keeps the exact pre-item-14 cycle.
+pub const min_ped_walk: f32 = 0;
+pub const max_ped_walk: f32 = 30;
+pub const min_ped_clear: f32 = 0;
+pub const max_ped_clear: f32 = 10;
+pub const default_ped_walk: f32 = 4;
+pub const default_ped_clear: f32 = 1.5;
+// Turning geometry: the last stretch of approach where a driver moves into the
+// lane their turn needs, and the bounds of a measured turning radius.
+pub const turn_approach: f32 = 12;
+pub const min_turn_radius: f32 = 3;
+pub const max_turn_radius: f32 = 16;
 // A signal head sits this far down its own arm, set back from the corner.
 pub const head_setback: f32 = 3.4;
 pub const head_offset: f32 = 2.6;
@@ -51,6 +78,15 @@ pub const flash_period: f32 = 0.9;
 pub const default_preempt_seconds: f32 = 30;
 
 pub const State = enum(u8) { red = 0, yellow = 1, green = 2, flash = 3 };
+// Which part of the cycle is running. The vehicle stage walks the arms in
+// order; the pedestrian stage holds every arm red; clearance then empties the
+// box before the next vehicle arm is released.
+pub const Stage = enum(u8) { vehicle = 0, pedestrian = 1, clearance = 2 };
+// The movement from one arm of a junction to another, from the codebase's own
+// right-hand side rule: rotate the direction of travel by +90 degrees and the
+// exit lies on the driver's right when the exit direction has a positive
+// component along it.
+pub const Turn = enum(u8) { straight = 0, left = 1, right = 2, uturn = 3 };
 pub const FlashMode = enum(i8) { off = -1, auto = 0, on = 1 };
 pub const Preempt = enum(u8) { none = 0, closed = 1, open = 2 };
 pub const AlertKind = enum(u8) { hold = 1, open = 2, release = 3 };
@@ -63,6 +99,10 @@ pub const BulkField = enum(u8) {
     flash_end = 4,
     flash_enabled = 5,
     flash_mode = 6,
+    // Item 14 append-only bulk targets for the pedestrian stage.
+    ped_walk = 7,
+    ped_clear = 8,
+    ped_enabled = 9,
 };
 
 pub const Junction = struct {
@@ -86,6 +126,12 @@ pub const Junction = struct {
     flash_end: f32 = 6,
     preempt: Preempt = .none,
     preempt_until: f64 = 0,
+    // Item 14: the pedestrian-only walk time and the all-red clearance that
+    // follows it. `ped_enabled` false removes both from the cycle, so an older
+    // junction keeps its original timing.
+    ped_walk: f32 = default_ped_walk,
+    ped_clear: f32 = default_ped_clear,
+    ped_enabled: bool = true,
     active: bool = false,
 };
 
@@ -141,8 +187,40 @@ fn spanSeconds(j: *const Junction) f32 {
     return @max(0.5, j.green + j.yellow + j.red);
 }
 
-fn totalSeconds(j: *const Junction) f32 {
+fn vehicleSeconds(j: *const Junction) f32 {
     return spanSeconds(j) * @as(f32, @floatFromInt(@max(1, j.arm_count)));
+}
+
+fn pedWalkSeconds(j: *const Junction) f32 {
+    return if (j.ped_enabled) @max(0, j.ped_walk) else 0;
+}
+
+fn pedClearSeconds(j: *const Junction) f32 {
+    return if (j.ped_enabled) @max(0, j.ped_clear) else 0;
+}
+
+fn totalSeconds(j: *const Junction) f32 {
+    return @max(0.5, vehicleSeconds(j) + pedWalkSeconds(j) + pedClearSeconds(j));
+}
+
+// Which part of the cycle is running, which vehicle arm is in its green/amber
+// if any, and how far into that part the junction is.
+pub const StageInfo = struct { stage: Stage = .vehicle, arm: usize = 0, into: f32 = 0 };
+
+pub fn stageAt(j: *const Junction, elapsed: f64) StageInfo {
+    const clock = clockAt(j, elapsed);
+    const vehicle = vehicleSeconds(j);
+    if (clock < vehicle) {
+        const span = spanSeconds(j);
+        const limit: f32 = @floatFromInt(@max(0, j.arm_count -| 1));
+        const arm_f = @min(limit, @floor(clock / span));
+        return .{ .stage = .vehicle, .arm = @intFromFloat(arm_f), .into = clock - arm_f * span };
+    }
+    if (clock < vehicle + pedWalkSeconds(j)) {
+        return .{ .stage = .pedestrian, .arm = @max(0, j.arm_count -| 1), .into = clock - vehicle };
+    }
+    const walk = pedWalkSeconds(j);
+    return .{ .stage = .clearance, .arm = @max(0, j.arm_count -| 1), .into = clock - vehicle - walk };
 }
 
 fn clockAt(j: *const Junction, elapsed: f64) f32 {
@@ -150,9 +228,34 @@ fn clockAt(j: *const Junction, elapsed: f64) f32 {
     return @mod(@max(0, raw), totalSeconds(j));
 }
 
-// Phase length, including the all-red clearance between branches.
+// Phase length, including the all-red clearance between branches and the
+// pedestrian walk and clearance stages.
 pub fn cycleSeconds(j: *const Junction) f32 {
     return totalSeconds(j);
+}
+
+// Item 14: the current pedestrian stage and how long it still has to run, both
+// for the inspector and for the ABI. `secondsLeft` is zero during the vehicle
+// stage and counts down through walk and clearance.
+pub fn stage(j: *const Junction, elapsed: f64) Stage {
+    return stageAt(j, elapsed).stage;
+}
+
+pub fn pedestrianWalk(j: *const Junction, elapsed: f64) bool {
+    return stageAt(j, elapsed).stage == .pedestrian;
+}
+
+pub fn pedestrianClearance(j: *const Junction, elapsed: f64) bool {
+    return stageAt(j, elapsed).stage == .clearance;
+}
+
+pub fn pedSecondsLeft(j: *const Junction, elapsed: f64) f32 {
+    const info = stageAt(j, elapsed);
+    return switch (info.stage) {
+        .vehicle => 0,
+        .pedestrian => pedWalkSeconds(j) - info.into,
+        .clearance => pedClearSeconds(j) - info.into,
+    };
 }
 
 // Is this junction showing flashing amber right now? A manual switch wins over
@@ -181,45 +284,40 @@ pub fn flashLit(j: *const Junction, elapsed: f64) bool {
     return @mod(@max(0, clock), flash_period * 2) < flash_period;
 }
 
-// Which phase is running, and how far into it, for a junction at this instant.
+// Which vehicle arm holds the running phase. During the pedestrian walk or the
+// clearance that follows it every arm is red, so the last arm is reported and
+// its state is red.
 pub fn phaseAt(j: *const Junction, elapsed: f64) usize {
-    const span = spanSeconds(j);
-    const clock = clockAt(j, elapsed);
-    const limit: f32 = @floatFromInt(@max(0, j.arm_count -| 1));
-    return @intFromFloat(@min(limit, @floor(clock / span)));
+    return stageAt(j, elapsed).arm;
 }
 
 pub fn armState(j: *const Junction, arm: usize, elapsed: f64) State {
     if (arm >= j.arm_count) return .red;
     if (flashing(j, elapsed)) return .flash;
-    const span = spanSeconds(j);
-    const clock = clockAt(j, elapsed);
-    const limit: f32 = @floatFromInt(@max(0, j.arm_count -| 1));
-    const phase: usize = @intFromFloat(@min(limit, @floor(clock / span)));
-    if (phase != arm) return .red;
-    const into = clock - @as(f32, @floatFromInt(phase)) * span;
-    if (into < j.green) return .green;
-    if (into < j.green + j.yellow) return .yellow;
+    const info = stageAt(j, elapsed);
+    if (info.stage != .vehicle) return .red; // pedestrian walk and clearance hold every arm
+    if (info.arm != arm) return .red;
+    if (info.into < j.green) return .green;
+    if (info.into < j.green + j.yellow) return .yellow;
     return .red;
 }
 
 // Seconds until this arm changes state, for the inspector. Flashing amber has
-// no upcoming change, so it reports zero.
+// no upcoming change, so it reports zero. The pedestrian walk and clearance are
+// part of the arm's wait, so the countdown is honest about the whole cycle.
 pub fn secondsLeft(j: *const Junction, arm: usize, elapsed: f64) f32 {
     if (j.arm_count == 0 or arm >= j.arm_count) return 0;
     if (flashing(j, elapsed)) return 0;
     const span = spanSeconds(j);
     const total = totalSeconds(j);
     const clock = clockAt(j, elapsed);
-    const limit: f32 = @floatFromInt(j.arm_count - 1);
-    const phase: usize = @intFromFloat(@min(limit, @floor(clock / span)));
-    if (phase == arm) {
-        const into = clock - @as(f32, @floatFromInt(phase)) * span;
-        if (into < j.green) return j.green - into;
-        return j.green + j.yellow + j.red - into;
+    const info = stageAt(j, elapsed);
+    if (info.stage == .vehicle and info.arm == arm) {
+        if (info.into < j.green) return j.green - info.into;
+        return j.green + j.yellow + j.red - info.into;
     }
     var left = total - clock;
-    var step = phase;
+    var step = info.arm;
     while (step != arm) {
         left += span;
         step = (step + 1) % j.arm_count;
@@ -264,6 +362,78 @@ pub fn headPosition(node: usize, road: usize) ?city.Vec {
     return .{
         .x = n.x + dir.x * head_setback - dir.z * head_offset,
         .z = n.z + dir.z * head_setback + dir.x * head_offset,
+    };
+}
+
+// Item 14 turning geometry. The direction a driver travels *into* the node along
+// this arm: the arm direction points out of the node, so travel is its negative.
+pub fn travelDirection(node: usize, road: usize) ?city.Vec {
+    const out = armDirection(node, road) orelse return null;
+    return .{ .x = -out.x, .z = -out.z };
+}
+
+// The movement from one arm of a junction to another. The right-hand side of a
+// driver travelling along `d` is `(-d.z, d.x)`, the rule this file already uses
+// for the signal head. An exit with a positive component along that side is a
+// right turn; a negative component is a left turn; and a near-reversal is a
+// u-turn. A junction with two arms or an arm that does not touch the node has no
+// movement to classify and reports straight, so nothing is gated on bad data.
+pub fn turnKind(node: usize, approach_road: usize, exit_road: usize) Turn {
+    if (approach_road == exit_road) return .uturn;
+    const d = travelDirection(node, approach_road) orelse return .straight;
+    const e = armDirection(node, exit_road) orelse return .straight;
+    const dot = d.x * e.x + d.z * e.z;
+    if (dot > 0.7) return .straight;
+    if (dot < -0.7) return .uturn;
+    const cross = d.x * e.z - d.z * e.x;
+    return if (cross > 0) .right else .left;
+}
+
+// The measured radius of the arc joining this approach's lane to this exit's
+// lane. The two signal-head points sit a setback down their own arms; a right
+// angle between them makes that chord the hypotenuse of a square, so the radius
+// is the chord over the square root of two. Straight and u-turn movements have
+// no corner to round and report zero. The value is bounded so a very short or
+// very long authored arm cannot report a radius the renderer would have to
+// trust blindly.
+pub fn turnRadius(node: usize, approach_road: usize, exit_road: usize) f32 {
+    const kind = turnKind(node, approach_road, exit_road);
+    if (kind == .straight or kind == .uturn) return 0;
+    const a = headPosition(node, approach_road) orelse return 0;
+    const b = headPosition(node, exit_road) orelse return 0;
+    const chord = city.hypot(a.x - b.x, a.z - b.z);
+    return std.math.clamp(chord / std.math.sqrt2, min_turn_radius, max_turn_radius);
+}
+
+// How far from the centre line a driver holds on the approach for each kind of
+// turn. A right turn keeps to the kerb so it can swing wide; a left turn keeps
+// close to the centre so it crosses the oncoming lane as briefly as possible;
+// a straight movement keeps the ordinary lane offset.
+pub fn turnOffset(kind: Turn) f32 {
+    return switch (kind) {
+        .straight => 0.55,
+        .right => 1.9,
+        .left => 0.2,
+        .uturn => 0.2,
+    };
+}
+
+// The lateral offset at a point on the approach. Far from the junction the
+// driver keeps the ordinary lane; inside the turn approach they slide steadily
+// into the offset their turn needs, which is the visible turning geometry.
+pub fn approachLaneOffset(base: f32, kind: Turn, remaining: f32) f32 {
+    if (kind == .straight) return base;
+    const span = @max(0.1, turn_approach);
+    const t = std.math.clamp(1 - remaining / span, 0, 1);
+    return base + (turnOffset(kind) - base) * t;
+}
+
+pub fn turnName(kind: Turn) []const u8 {
+    return switch (kind) {
+        .straight => "straight",
+        .left => "left",
+        .right => "right",
+        .uturn => "u-turn",
     };
 }
 
@@ -359,13 +529,19 @@ pub fn heldForEmergency(node: usize) bool {
 }
 
 // Pedestrians and cyclists cross an arm while it is stopped for traffic, which
-// is when the movement parallel to them holds green. Flashing amber is a
-// yielding junction, so people on foot keep priority and may cross.
+// is when the movement parallel to them holds green. Item 14 adds the
+// pedestrian-only walk stage, when every vehicle arm is red and every crossing
+// is open; the clearance that follows admits nobody, so people who started
+// walking have a bounded interval to finish before the vehicles move again.
+// Flashing amber is a yielding junction, so people on foot keep priority.
 pub fn crossingAllowed(node: usize, movement: city.Vec, elapsed: f64) bool {
     const index = find(node) orelse return true;
     const j = &junctions[index];
     if (j.preempt == .closed) return false;
     if (flashing(j, elapsed)) return true;
+    const info = stageAt(j, elapsed);
+    if (info.stage == .pedestrian) return true;
+    if (info.stage == .clearance) return false;
     var parallel_green = false;
     for (j.arms[0..j.arm_count], 0..) |arm, slot| {
         if (arm < 0) continue;
@@ -375,6 +551,15 @@ pub fn crossingAllowed(node: usize, movement: city.Vec, elapsed: f64) bool {
         if (armState(j, slot, elapsed) == .green) parallel_green = true;
     }
     return parallel_green;
+}
+
+// Item 14: the crossing painted on one arm of a junction. A walker using it
+// travels across that road, which is perpendicular to the arm's own direction,
+// so the movement vector is the arm direction rotated onto the driver's right.
+pub fn crossingAcrossArm(node: usize, arm_road: usize, elapsed: f64) bool {
+    const dir = armDirection(node, arm_road) orelse return true;
+    const movement = city.Vec{ .x = -dir.z, .z = dir.x };
+    return crossingAllowed(node, movement, elapsed);
 }
 
 pub fn setGreen(node: usize, seconds: f32) bool {
@@ -393,6 +578,27 @@ pub fn setYellow(node: usize, seconds: f32) bool {
 pub fn setRed(node: usize, seconds: f32) bool {
     const index = find(node) orelse return false;
     junctions[index].red = std.math.clamp(seconds, min_red, max_red);
+    return true;
+}
+
+// Item 14: the pedestrian walk time. Zero disables the stage without touching
+// the vehicle timings.
+pub fn setPedWalk(node: usize, seconds: f32) bool {
+    const index = find(node) orelse return false;
+    junctions[index].ped_walk = std.math.clamp(seconds, min_ped_walk, max_ped_walk);
+    return true;
+}
+
+// The all-red clearance between the pedestrian walk and the next vehicle arm.
+pub fn setPedClear(node: usize, seconds: f32) bool {
+    const index = find(node) orelse return false;
+    junctions[index].ped_clear = std.math.clamp(seconds, min_ped_clear, max_ped_clear);
+    return true;
+}
+
+pub fn setPedEnabled(node: usize, enabled: bool) bool {
+    const index = find(node) orelse return false;
+    junctions[index].ped_enabled = enabled;
     return true;
 }
 
@@ -600,6 +806,9 @@ pub fn bulkApply(scope: u8, key: usize, field: u8, value: f32) u32 {
             4 => j.flash_end = clampHour(value),
             5 => j.flash_enabled = value != 0,
             6 => j.flash = modeFromNumber(value),
+            7 => j.ped_walk = std.math.clamp(value, min_ped_walk, max_ped_walk),
+            8 => j.ped_clear = std.math.clamp(value, min_ped_clear, max_ped_clear),
+            9 => j.ped_enabled = value != 0,
             else => continue,
         }
         changed +|= 1;
@@ -652,6 +861,85 @@ pub fn junctionRoad(junction_index: usize, slot: usize) i32 {
     if (junction_index >= count) return -1;
     if (slot >= junctions[junction_index].arm_count) return -1;
     return junctions[junction_index].arms[slot];
+}
+
+// Item 14 ABI: the movement from one arm slot of a junction to another. These
+// index the junction's own arm slots, so a caller reads the road ids first and
+// then asks this group about any pair of them. A junction with no signal has no
+// movements to report.
+pub fn movementApproach(junction_index: usize, movement: usize) i32 {
+    if (junction_index >= count) return -1;
+    const j = &junctions[junction_index];
+    const approach = movement / max_arms;
+    if (approach >= j.arm_count) return -1;
+    return j.arms[approach];
+}
+
+pub fn movementExit(junction_index: usize, movement: usize) i32 {
+    if (junction_index >= count) return -1;
+    const j = &junctions[junction_index];
+    const exit = movement % max_arms;
+    if (exit >= j.arm_count) return -1;
+    return j.arms[exit];
+}
+
+pub fn movementTurn(junction_index: usize, movement: usize) Turn {
+    if (junction_index >= count) return .straight;
+    const j = &junctions[junction_index];
+    const approach = movement / max_arms;
+    const exit = movement % max_arms;
+    if (approach >= j.arm_count or exit >= j.arm_count) return .straight;
+    const a = j.arms[approach];
+    const b = j.arms[exit];
+    if (a < 0 or b < 0) return .straight;
+    return turnKind(j.node, @intCast(a), @intCast(b));
+}
+
+pub fn movementRadius(junction_index: usize, movement: usize) f32 {
+    if (junction_index >= count) return 0;
+    const j = &junctions[junction_index];
+    const approach = movement / max_arms;
+    const exit = movement % max_arms;
+    if (approach >= j.arm_count or exit >= j.arm_count) return 0;
+    const a = j.arms[approach];
+    const b = j.arms[exit];
+    if (a < 0 or b < 0) return 0;
+    return turnRadius(j.node, @intCast(a), @intCast(b));
+}
+
+// Is a driver turning into this exit arm held because somebody is on that
+// crosswalk, or because a left turn must wait for the box to clear? Both are
+// the yielding half of item 14 and both are reported so the panel can show why
+// a movement is refused.
+pub fn movementBlocked(junction_index: usize, movement: usize, elapsed: f64) bool {
+    if (junction_index >= count) return false;
+    const j = &junctions[junction_index];
+    const approach = movement / max_arms;
+    const exit = movement % max_arms;
+    if (approach >= j.arm_count or exit >= j.arm_count) return false;
+    if (approach == exit) return false;
+    const kind = movementTurn(junction_index, movement);
+    const exit_road = movementExit(junction_index, movement);
+    if (exit_road >= 0 and kind != .straight and crossingAcrossArmBlocked(junction_index, @intCast(exit_road), elapsed)) return true;
+    if (kind == .left and boxOccupied(j.node)) return true;
+    return false;
+}
+
+// Small indirections so signals.zig does not need to import transport.zig (the
+// dependency runs the other way). transport fills these each step.
+pub var crossing_blocked_road: [city.max_roads]bool = @splat(false);
+pub var box_busy: [city.max_nodes]bool = @splat(false);
+
+fn crossingAcrossArmBlocked(junction_index: usize, road: usize, elapsed: f64) bool {
+    _ = junction_index;
+    _ = elapsed;
+    if (road >= city.max_roads) return false;
+    return crossing_blocked_road[road];
+}
+
+fn boxOccupied(node: usize) bool {
+    if (node >= city.max_nodes) return false;
+    return box_busy[node];
 }
 
 // Seed signals where the authored plan already crosses a busy corner, so the

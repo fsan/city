@@ -206,8 +206,8 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 16,
-        .rules = "bellwether-2028-02-v16",
+        .version = 17,
+        .rules = "bellwether-2028-03-v17",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = city.lots(), .parcels = parcels.storage[0..parcels.count] },
@@ -619,6 +619,11 @@ fn validate(s: *const State) bool {
             !between(junction.flash_end, 0, 24) or
             junction.group < -1 or junction.group >= signals.max_groups or
             junction.preempt_until < 0) return false;
+        // Item 14: the pedestrian-only walk and the all-red clearance that
+        // follows it are bounded policy numbers, validated like every other
+        // timing rather than trusted from a file.
+        if (!between(junction.ped_walk, signals.min_ped_walk, signals.max_ped_walk) or
+            !between(junction.ped_clear, signals.min_ped_clear, signals.max_ped_clear)) return false;
         _ = @intFromEnum(junction.flash);
         _ = @intFromEnum(junction.preempt);
         for (junction.arms[0..junction.arm_count]) |arm| {
@@ -931,7 +936,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 16 and std.mem.eql(u8, rules, "bellwether-2028-02-v16");
+    return version == 17 and std.mem.eql(u8, rules, "bellwether-2028-03-v17");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

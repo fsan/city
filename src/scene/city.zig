@@ -1941,8 +1941,8 @@ pub fn rebuildRoutes() void {
     for (roads) |r| {
         if (!r.pedestrians) continue;
         const cost = r.length * (1 + r.slope * 3) / (0.7 + r.condition / 100);
-        used = addDirected(used, r.a, r.b, cost, cost + (if (markedCrossing(r.b, true)) @as(f32, 0) else 7));
-        used = addDirected(used, r.b, r.a, cost, cost + (if (markedCrossing(r.a, true)) @as(f32, 0) else 7));
+        used = addDirected(used, r.a, r.b, cost, cost + (if (markedCrossing(r.b, .{ .x = r.length, .z = 0 })) @as(f32, 0) else 7));
+        used = addDirected(used, r.b, r.a, cost, cost + (if (markedCrossing(r.a, .{ .x = -r.length, .z = 0 })) @as(f32, 0) else 7));
     }
     for (0..node_count) |source| {
         search(source, &adj_drive, &distance[source], &next_node[source]);
@@ -1976,12 +1976,47 @@ pub fn condition(district: usize) f32 {
     return total / @max(1, count);
 }
 
-pub fn markedCrossing(node: usize, _: bool) bool {
-    if (degree(node) < 3) return true;
-    for (roads) |r| {
-        if ((r.a == node or r.b == node) and r.crosswalk) return true;
+// Item 14: which arm of this junction a walker actually crosses. A crossing is
+// painted across one road, so the walker crossing it travels perpendicular to
+// that road. Pick the painted arm whose direction is most nearly perpendicular
+// to the walker's own movement; return -1 when the junction has no such
+// crossing. This replaces the older flag-only test, which could not tell one
+// crossing of a junction from another.
+pub fn crossedArm(node: usize, movement: Vec) i32 {
+    if (degree(node) < 3) return -1;
+    const len = hypot(movement.x, movement.z);
+    if (len < 0.01) return -1;
+    const mx = movement.x / len;
+    const mz = movement.z / len;
+    var best: i32 = -1;
+    var best_dot: f32 = 0.7;
+    for (roads, 0..) |r, id| {
+        if (!r.crosswalk or (r.a != node and r.b != node)) continue;
+        const a = nodes[r.a];
+        const b = nodes[r.b];
+        var dx: f32 = 0;
+        var dz: f32 = 0;
+        if (r.a == node) {
+            dx = b.x - a.x;
+            dz = b.z - a.z;
+        } else {
+            dx = a.x - b.x;
+            dz = a.z - b.z;
+        }
+        const road_len = hypot(dx, dz);
+        if (road_len < 0.01) continue;
+        const dot = @abs(dx / road_len * mx + dz / road_len * mz);
+        if (dot < best_dot) {
+            best_dot = dot;
+            best = @intCast(id);
+        }
     }
-    return false;
+    return best;
+}
+
+pub fn markedCrossing(node: usize, movement: Vec) bool {
+    if (degree(node) < 3) return true;
+    return crossedArm(node, movement) >= 0;
 }
 
 pub fn frontage(b: Building) Vec {

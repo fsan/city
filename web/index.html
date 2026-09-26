@@ -1052,6 +1052,19 @@
             </div>
             <p class="note" id="signal-clock"></p>
             <div class="note" id="signal-arms"></div>
+            <h4>Pedestrian phase <span class="info-tip" tabindex="0" role="button" aria-label="About the pedestrian phase" data-tip="After every vehicle branch has run, the junction holds all arms red for the walk time so people cross on their own stage. The clearance that follows admits nobody, so the box empties before the next vehicle arm. Walk time zero turns the stage off and returns the junction to its vehicle-only cycle.">?</span></h4>
+            <label>Walk time (simulation seconds)
+              <input id="signal-ped-walk" type="number" min="0" max="30" step="0.5">
+            </label>
+            <label>Clearance after walk (simulation seconds)
+              <input id="signal-ped-clear" type="number" min="0" max="10" step="0.5">
+            </label>
+            <label class="note"><input id="signal-ped-enabled" type="checkbox"> Run the pedestrian-only stage</label>
+            <div class="transport-controls">
+              <button id="signal-ped-save">Save pedestrian phase</button>
+            </div>
+            <p class="note" id="signal-ped-state"></p>
+            <div id="signal-turn-list" class="note"></div>
             <h4>Blinking yellow <span class="info-tip" tabindex="0" role="button" aria-label="About blinking yellow" data-tip="In the window below this light blinks yellow instead of cycling, which means cars may cross slowly as long as it is safe. The switch puts one light on flashing yellow by hand, or hands it back to the window and the normal cycle.">?</span></h4>
             <label>Flash window starts at hour
               <input id="signal-flash-start" type="number" min="0" max="24" step="0.5">
@@ -1094,6 +1107,9 @@
                 <option value="4">Flash window end (hour)</option>
                 <option value="5">Flash window on/off</option>
                 <option value="6">Manual flash mode</option>
+                <option value="7">Pedestrian walk time</option>
+                <option value="8">Pedestrian clearance</option>
+                <option value="9">Pedestrian stage on/off</option>
               </select>
               <input id="signal-bulk-value" type="number" step="0.5" value="8" aria-label="Value to apply">
               <button id="signal-bulk-apply">Apply</button>

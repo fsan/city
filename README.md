@@ -97,8 +97,14 @@ the time to leave home read it. Ownership now decides the municipal assessment:
 owners pay from the household, rented homes pay from the owner's collected
 rent. Traffic lights and crosswalks are player-placed from the traffic panel;
 each signal gives one branch green at a time and its green and amber times are
-set in simulation seconds by clicking the light. Manual save files use schema
-version 11, bellwether-2027-09-v11; older files are rejected. See [street types and parking](docs/street-types-parking-learning-slice.md).
+set in simulation seconds by clicking the light. After every branch has run, a
+junction can hold all of its vehicle arms red for a pedestrian-only walk and an
+all-red clearance, so people cross on their own stage; turning drivers yield to
+the crosswalk they actually drive over and to the traffic already in the box,
+and every movement carries a measured turn radius and its approach lane offset.
+Manual save files use schema version 17, bellwether-2028-03-v17; older files are
+rejected. See [street types and parking](docs/street-types-parking-learning-slice.md)
+and [crossings and junction behaviour](docs/crossings-junctions-slice.md).
 
 
 ## Housing and occupancy

@@ -128,6 +128,10 @@ pub var junction_traffic: [city.max_nodes]u16 = @splat(0);
 // block itself.
 pub var junction_entered: [city.max_nodes]u16 = @splat(0);
 pub var crossing_active: [city.max_nodes]u16 = @splat(0);
+// Item 14: the same count keyed by the arm being crossed, so a driver yields to
+// the crosswalk actually in its path rather than to any pedestrian anywhere at
+// the junction. Filled from the residents' crossing state each step.
+pub var crossing_active_road: [city.max_roads]u16 = @splat(0);
 var heads: [city.max_roads * 4]i32 = @splat(-1);
 var entries: [city.max_roads * 4]bool = @splat(false);
 var links: [vehicles.len]i32 = @splat(-1);
@@ -160,6 +164,7 @@ pub fn init() void {
     junction_traffic = @splat(0);
     junction_entered = @splat(0);
     crossing_active = @splat(0);
+    crossing_active_road = @splat(0);
     signals.seed();
     seedMovement();
     fare_cap = 2;
@@ -349,6 +354,12 @@ pub fn update(dt: f32, elapsed: f64) void {
         }
         if (db < 196) junction_traffic[v.next] +|= 1;
     }
+    // Item 14: publish the two yielding facts the signal module reads when it
+    // classifies a movement. `box_busy` is a vehicle already inside the box that
+    // a left turn must yield to; `crossing_blocked_road` is a crosswalk with
+    // somebody on it, which a turning driver must not drive into.
+    for (0..city.node_count) |n| signals.box_busy[n] = junction_entered[n] > 0;
+    for (0..city.road_count) |rd| signals.crossing_blocked_road[rd] = crossing_active_road[rd] > 0;
     for (0..city.road_count) |r| {
         flow[r] += (@as(f32, @floatFromInt(occupancy[r])) - flow[r]) * @min(1, dt / 45);
         movement[r] = baseline[r] + flow[r];
@@ -428,8 +439,13 @@ pub fn update(dt: f32, elapsed: f64) void {
         const leaving = bus and (!lines[@intCast(v.line)].active or v.version != lines[@intCast(v.line)].version or v.retiring or v.shift_day != operators.daytime(elapsed));
         // Service and retirement stops reach the node itself so departure does
         // not jump from a pre-stop clearance point onto the next segment.
-        // Cars yield at a crosswalk while somebody is actually crossing it.
-        const cross_yield = !bus and !at_target and !leaving and crossing_active[@min(v.next, city.max_nodes - 1)] > 0;
+        // Item 14: a car yields at the crosswalk painted on its own approach,
+        // which is the one physically in its path, not to any pedestrian
+        // anywhere at the junction. Turning traffic also yields to the crosswalk
+        // it turns into; that check lives in entryAllowed, where the exit arm is
+        // known.
+        const approach_road: usize = @intCast(city.road_between[v.node][v.next]);
+        const cross_yield = !bus and !at_target and !leaving and city.roads[approach_road].crosswalk and crossing_active_road[approach_road] > 0;
         // Slice 13: hold a car at its own stop line, which is the signal head, so
         // the queue stands *before* the light instead of creeping past it.
         const head_setback = signals.head_setback + if (bus) @as(f32, 0.8) else 0.6;
@@ -472,7 +488,19 @@ pub fn update(dt: f32, elapsed: f64) void {
         const a = city.nodes[v.node];
         const b = city.nodes[v.next];
         const fraction = @min(1, v.progress / road.length);
-        const lane: f32 = if (v.lane == 1) 1.25 else 0.55;
+        var lane: f32 = if (v.lane == 1) 1.25 else 0.55;
+        // Item 14 turning geometry: a driver slides into the part of the
+        // carriageway their turn needs over the last stretch of approach, kerb
+        // side for a right turn and centre for a left, so the turn is prepared
+        // before the junction rather than cut at the corner.
+        if (!bus and v.next != v.target) {
+            const after = city.next_node[v.next][v.target];
+            if (after != v.next) {
+                const exit: usize = @intCast(city.road_between[v.next][after]);
+                const kind = signals.turnKind(v.next, r, exit);
+                if (kind != .straight) lane = signals.approachLaneOffset(lane, kind, road.length - v.progress);
+            }
+        }
         v.x = a.x + (b.x - a.x) * fraction - (b.z - a.z) / road.length * lane;
         v.z = a.z + (b.z - a.z) * fraction + (b.x - a.x) / road.length * lane;
         if (v.progress >= stop_at - 0.01) {
@@ -587,6 +615,17 @@ fn entryAllowed(v: Vehicle, next: usize, elapsed: f64, approach: i32) bool {
             // ahead of this driver.
             if (junction_entered[v.node] > 0) return false;
         } else if (!signals.greenForApproach(v.node, approach, @intCast(road_id), elapsed)) return false;
+        // Item 14 yielding. A turning driver yields to the crosswalk it turns
+        // into, and a left turn yields while another vehicle is still inside the
+        // junction box. Straight movements are unchanged.
+        if (approach >= 0) {
+            const in_road: usize = @intCast(approach);
+            const kind = signals.turnKind(v.node, in_road, @intCast(road_id));
+            if (kind != .straight) {
+                if (city.roads[@intCast(road_id)].crosswalk and crossing_active_road[@intCast(road_id)] > 0) return false;
+                if (kind == .left and junction_entered[v.node] > 0) return false;
+            }
+        }
     }
     if (!room(v, next)) return false;
     var candidate = v;

@@ -330,6 +330,7 @@ pub fn update(dt: f32, elapsed: f64) void {
     walking = 0;
     // Crosswalk yielding reads the previous step's crossings; refill it now.
     transport.crossing_active = @splat(0);
+    transport.crossing_active_road = @splat(0);
     for (&people, 0..) |*p, i| {
         if (p.arrived and p.order >= 0) continue;
         if (p.wait > 0) {
@@ -521,7 +522,19 @@ pub fn update(dt: f32, elapsed: f64) void {
             p.node = p.next;
             p.crossing = false;
         }
-        if (p.crossing and p.back < city.max_nodes) transport.crossing_active[p.back] +|= 1;
+        // Item 14: a crossing belongs to the junction the walker is actually
+        // crossing at, which is `p.node`, and to the one painted arm that lies
+        // across their path. The old count used `p.back`, the node before the
+        // junction, so the vehicles checking the junction node almost never saw
+        // it. Both facts are derived from the movement, so nothing new is saved.
+        if (p.crossing and p.node < city.max_nodes) {
+            transport.crossing_active[p.node] +|= 1;
+            const here = city.nodes[p.node];
+            const next = city.nodes[p.next];
+            const movement = city.Vec{ .x = next.x - here.x, .z = next.z - here.z };
+            const crossed = city.crossedArm(p.node, movement);
+            if (crossed >= 0) transport.crossing_active_road[@intCast(crossed)] +|= 1;
+        }
         // Road surfaces follow authored terrain; do not interpolate through grade changes.
         p.y = city.elevation(p.x, p.z) + 0.15;
     }
@@ -939,10 +952,11 @@ fn crossingWait(p: *Person, elapsed: f64, dt: f32) bool {
     if (in_len < 0.01 or out_len < 0.01) return false;
     const dot = ((here.x - came.x) * (next.x - here.x) + (here.z - came.z) * (next.z - here.z)) / (in_len * out_len);
     if (dot >= 0.7) return false; // straight through the junction: no crossing
-    const marked = city.markedCrossing(p.node, city.horizontal(p.back, p.node));
+    const movement = city.Vec{ .x = next.x - here.x, .z = next.z - here.z };
+    const marked = city.markedCrossing(p.node, movement);
     // Slice 11: the parallel movement holds green while this crossing's own
     // traffic arm is stopped, so a signalised corner releases walkers with it.
-    const movement = city.Vec{ .x = next.x - here.x, .z = next.z - here.z };
+    // Item 14 adds the pedestrian-only walk stage, when every arm is held red.
     const parallel = transport.signals.crossingAllowed(p.node, movement, elapsed);
     const gap = transport.junction_traffic[p.node] == 0;
     if (travel.crossingAdmitted(marked, parallel, gap, p.cross_wait)) {

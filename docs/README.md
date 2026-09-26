@@ -17,3 +17,4 @@ regularity-target-slice.md records optional agreement interval targets and diagn
 - [Property valuation and sunlight](property-valuation-slice.md)
 - [Parks and public spaces](parks-public-spaces-slice.md)
 - [UI navigation batch](ui-navigation-slice.md)
+- [Crossings and junction behaviour](crossings-junctions-slice.md)

@@ -29,7 +29,9 @@ Avoid copying large global arrays into read paths: iterate by reference. This sl
   less; the value is reproduced exactly by the published model rather than read
   from a flat per-use table.
 - Group 3 field 27: actual trip origin node.
-- Group 5 field 14: segment crosswalks enabled.
+- Group 5 field 14: segment crosswalks enabled. `city.crossedArm(node,
+movement)` resolves the one painted arm a walker actually crosses, so the
+junction's crossing count and the vehicle's yield test finally agree.
 - `set_crosswalk(road, enabled)` validates 0/1, changes both endpoint markings, rebuilds walking routes.
 - Group 13 (line ID): 0 status (none/offered/active/expired/cancelled), 1 operator, 2 fleet, 3 duration seconds, 4 maximum price, 5 paid, 6 remaining reserved, 7 delivered bus-seconds, 8 refusal (none/capacity/price), 9 start time.
 - Group 14 (operator ID 0–2): 0 capacity, 1 assigned fleet/drivers, 2 cumulative agreement receipts.
@@ -112,6 +114,39 @@ update, and a timed hold expires on its own. `signal_alerts_pending()`,
 and firefighters are not simulated yet, so today the player's own controls raise
 these alerts. `signal_link(from, to, delay)` and `signal_unlink(from, to)` edit
 the map and `signal_link_count()`/`signal_links_total()` report it.
+
+### Crossings and junction behaviour (slice 22, numbered item 14)
+
+Each junction now runs its vehicle branches, then a pedestrian-only walk and an
+all-red clearance. During the walk every vehicle arm is red and every crossing
+is admitted; during the clearance nobody is admitted. Group 29 appends fields:
+39 pedestrian walk seconds, 40 clearance seconds, 41 whether the stage is on,
+42 the live stage (0 vehicle, 1 pedestrian walk, 2 clearance), 43 seconds left in
+the stage (0 during the vehicle branches), 44 whether the crossing painted on
+this head's own arm is admitted now, and 45-48 the walk and clearance bounds.
+Walk time zero removes the stage and returns the cycle to its vehicle-only
+length.
+
+`signal_set_ped_walk(node, seconds)` and `signal_set_ped_clear(node, seconds)`
+clamp to those bounds and return the applied value or -1;
+`signal_set_ped_enabled(node, enabled)` turns the stage on or off.
+`signal_apply_bulk` fields 7, 8 and 9 write walk, clearance and the switch across
+the same three scopes.
+
+Group 33 reports turning geometry, one movement per (junction, approach arm
+slot, exit arm slot): id is `junction * 16 + approach * 4 + exit`. Fields 0
+junction, 1 node, 2/3 approach and exit slot, 4/5 approach and exit street, 6
+turn kind (0 straight, 1 left, 2 right, 3 u-turn), 7 measured turn radius in
+metres (0 for a straight or u-turn), 8 whether the movement is held by yielding
+now, 9 whether the crosswalk on the exit arm is occupied, 10 the lateral offset
+the turn needs, 11 the movement count for the whole town.
+
+Yielding is real simulation state, not presentation: a car yields to the
+crosswalk painted on its own approach, a turning driver also yields to the
+crosswalk it turns into, and a left turn yields while another vehicle is still
+in the junction box. Turning drivers slide into their turn's lane over the last
+12 m of approach, so the movement is visible before the corner; the selected
+junction draws a bounded arc for each left and right movement.
 
 ## Planning additions
 

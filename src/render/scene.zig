@@ -681,6 +681,18 @@ pub fn draw(w: f32, h: f32) void {
                 lamp;
             box(p.x - 0.21, p.z - 0.21, 0.42, 0.42, 0.16, y + lit, shown);
         }
+        // Item 14 turning geometry: the selected junction draws a bounded arc
+        // for every turn from every arm, so the player can see the path a
+        // turning vehicle takes through the box and which movement a head
+        // governs. Only the selected junction draws, which keeps the vertex
+        // budget bounded no matter how many lights the town has.
+        if (selected_signal >= 0) {
+            var selected_here = false;
+            for (junction.arms[0..junction.arm_count], 0..) |_, slot| {
+                if (selected_signal == @as(i32, @intCast(signal_index(junction_index, slot)))) selected_here = true;
+            }
+            if (selected_here) drawTurnGuides(junction);
+        }
     }
     // Ground-only projected shadows, clipped into small terrain-following cells.
     const hour: f32 = @floatCast(@mod(game.elapsed / 20, 24));
@@ -875,6 +887,42 @@ pub fn signal_index(junction_index: usize, slot: usize) usize {
     var j: usize = 0;
     while (j < junction_index and j < transport.signals.count) : (j += 1) index += transport.signals.junctions[j].arm_count;
     return index + slot;
+}
+
+// Item 14: a bounded arc for each turning movement of the selected junction.
+// The arc runs from the approach's own lane point to the exit's lane point
+// through the corner the two arms share, which is the geometry the movement
+// radius came from. Six segments a movement keeps the drawn output small.
+fn drawTurnGuides(junction: transport.signals.Junction) void {
+    for (junction.arms[0..junction.arm_count], 0..) |arm, approach_slot| {
+        if (arm < 0) continue;
+        const approach_road: usize = @intCast(arm);
+        const a = transport.signals.headPosition(junction.node, approach_road) orelse continue;
+        for (junction.arms[0..junction.arm_count], 0..) |other, exit_slot| {
+            if (other < 0 or approach_slot == exit_slot) continue;
+            const exit_road: usize = @intCast(other);
+            const kind = transport.signals.turnKind(junction.node, approach_road, exit_road);
+            if (kind != .left and kind != .right) continue;
+            const b = transport.signals.headPosition(junction.node, exit_road) orelse continue;
+            const node = city.nodes[junction.node];
+            // A quadratic Bezier whose control point is the corner: the two
+            // head points are the ends and the node itself pulls the curve into
+            // the junction box, which is what gives the arc its radius.
+            const color: Color = if (kind == .left) .{ 0.35, 0.72, 0.95 } else .{ 0.95, 0.72, 0.30 };
+            var previous = a;
+            var step: usize = 1;
+            while (step <= 6) : (step += 1) {
+                const t = @as(f32, @floatFromInt(step)) / 6;
+                const mt = 1 - t;
+                const q = city.Vec{
+                    .x = mt * mt * a.x + 2 * mt * t * node.x + t * t * b.x,
+                    .z = mt * mt * a.z + 2 * mt * t * node.z + t * t * b.z,
+                };
+                ribbon(previous, q, 0.16, 0, 0.05, color);
+                previous = q;
+            }
+        }
+    }
 }
 
 // Slice 11: nearest signal head under the cursor, in screen pixels. Sets the

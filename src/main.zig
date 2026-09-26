@@ -809,6 +809,19 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 36 => @floatFromInt(signals.junctionRoad(headJunction(@intCast(head)), 1)),
                 37 => @floatFromInt(signals.junctionRoad(headJunction(@intCast(head)), 2)),
                 38 => @floatFromInt(signals.junctionRoad(headJunction(@intCast(head)), 3)),
+                // Item 14: the pedestrian-only stage and the crossing that
+                // belongs to this head's own arm. Stage is 0 vehicle, 1 walk,
+                // 2 the all-red clearance that follows the walk.
+                39 => junction.ped_walk,
+                40 => junction.ped_clear,
+                41 => if (junction.ped_enabled) 1 else 0,
+                42 => @floatFromInt(@intFromEnum(signals.stage(junction, game.elapsed))),
+                43 => signals.pedSecondsLeft(junction, game.elapsed),
+                44 => if (signals.crossingAcrossArm(junction.node, road_id, game.elapsed)) 1 else 0,
+                45 => signals.min_ped_walk,
+                46 => signals.max_ped_walk,
+                47 => signals.min_ped_clear,
+                48 => signals.max_ped_clear,
                 else => -1,
             };
         },
@@ -830,6 +843,38 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 6 => @floatFromInt(from.group),
                 7 => @floatFromInt(to.group),
                 8 => if (signals.flashing(&to, game.elapsed)) 1 else 0,
+                else => -1,
+            };
+        },
+        33 => {
+            // Item 14 turning geometry: one movement per (junction, approach
+            // arm slot, exit arm slot), so the panel can name the turn, its
+            // measured radius and why a driver is currently held. A movement
+            // with an approach equal to its exit is not a movement and reports
+            // -1 except for the count.
+            const junction_index = id / (signals.max_arms * signals.max_arms);
+            if (junction_index >= signals.count) return if (field == 11) @floatFromInt(signals.count * signals.max_arms * signals.max_arms) else -1;
+            const junction = &signals.junctions[junction_index];
+            const movement = id % (signals.max_arms * signals.max_arms);
+            const approach_slot = movement / signals.max_arms;
+            const exit_slot = movement % signals.max_arms;
+            if (field == 11) return @floatFromInt(signals.count * signals.max_arms * signals.max_arms);
+            if (approach_slot >= junction.arm_count or exit_slot >= junction.arm_count) return -1;
+            const approach_road = signals.junctionRoad(junction_index, approach_slot);
+            const exit_road = signals.junctionRoad(junction_index, exit_slot);
+            const kind = signals.movementTurn(junction_index, movement);
+            return switch (field) {
+                0 => @floatFromInt(junction_index),
+                1 => @floatFromInt(junction.node),
+                2 => @floatFromInt(approach_slot),
+                3 => @floatFromInt(exit_slot),
+                4 => @floatFromInt(approach_road),
+                5 => @floatFromInt(exit_road),
+                6 => @floatFromInt(@intFromEnum(kind)),
+                7 => signals.movementRadius(junction_index, movement),
+                8 => if (signals.movementBlocked(junction_index, movement, game.elapsed)) 1 else 0,
+                9 => if (approach_road >= 0 and signals.crossingAcrossArm(junction.node, @intCast(exit_road), game.elapsed)) 1 else 0,
+                10 => signals.turnOffset(kind),
                 else => -1,
             };
         },
@@ -1155,6 +1200,28 @@ export fn signal_set_red(node: u32, seconds: f64) f64 {
     if (!signals.setRed(node, @floatCast(seconds))) return -1;
     const index = signals.find(node) orelse return -1;
     return signals.junctions[index].red;
+}
+
+// Item 14: the pedestrian-only walk stage and the all-red clearance after it,
+// in simulation seconds. Both return the applied value, or -1 when that
+// junction has no signal.
+export fn signal_set_ped_walk(node: u32, seconds: f64) f64 {
+    if (node >= city.node_count or !std.math.isFinite(seconds)) return -1;
+    if (!signals.setPedWalk(node, @floatCast(seconds))) return -1;
+    const index = signals.find(node) orelse return -1;
+    return signals.junctions[index].ped_walk;
+}
+
+export fn signal_set_ped_clear(node: u32, seconds: f64) f64 {
+    if (node >= city.node_count or !std.math.isFinite(seconds)) return -1;
+    if (!signals.setPedClear(node, @floatCast(seconds))) return -1;
+    const index = signals.find(node) orelse return -1;
+    return signals.junctions[index].ped_clear;
+}
+
+export fn signal_set_ped_enabled(node: u32, enabled: u32) bool {
+    if (node >= city.node_count) return false;
+    return signals.setPedEnabled(node, enabled == 1);
 }
 
 // The daily window, in hours of the simulation day, where this light flashes
