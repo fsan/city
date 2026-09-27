@@ -664,6 +664,7 @@ export function createTransport(game, ui) {
   };
   const chooseRoad = (id) => {
     $("traffic-road").value = id;
+    if (document.activeElement !== $("traffic-road-speed")) $("traffic-road-speed").value = "0";
     if (document.activeElement !== $("traffic-lane")) $("traffic-lane").value = r(5, id, 13);
     update();
   };
@@ -721,6 +722,102 @@ export function createTransport(game, ui) {
       message("That street cannot take drains (lanes, works and pedestrian-only segments are excluded, and the count is capped by street class).");
     else if (cost === 0) message(`Street #${road + 1} already has ${drains} drain${drains === 1 ? "" : "s"}.`);
     else message(`Street #${road + 1} now has ${drains} drain${drains === 1 ? "" : "s"}; £${cost.toFixed(2)} of works booked.`);
+    update();
+  };
+
+  // Numbered item 19: traffic law. The city-wide record is group 0 fields
+  // 190-203; the selected street's own limit, override and trap are group 5
+  // fields 21-31, and the whole trap register is group 24. Zig owns every rule;
+  // these controls publish what it accepts and read back what it applied.
+  function syncTrafficLaw() {
+    const lawSpeed = r(0, 0, 190), lawRule = r(0, 0, 195), lawFine = r(0, 0, 197);
+    if (document.activeElement !== $("traffic-law-speed")) $("traffic-law-speed").value = String(Math.round(lawSpeed));
+    if (document.activeElement !== $("traffic-law-fine")) $("traffic-law-fine").value = String(Math.round(lawFine));
+    if (document.activeElement !== $("traffic-law-junction")) $("traffic-law-junction").value = String(Math.max(1, Math.round(lawRule)));
+    $("traffic-law-left").checked = r(0, 0, 191) === 1;
+    $("traffic-law-right").checked = r(0, 0, 192) === 1;
+    $("traffic-law-uturn").checked = r(0, 0, 193) === 1;
+    $("traffic-law-stop").checked = r(0, 0, 194) === 1;
+    $("traffic-law-enforce").checked = r(0, 0, 196) === 1;
+    const ruleNames = ["city law", "uncontrolled", "give way", "stop sign"];
+    $("traffic-law-summary").textContent =
+      `City law: ${lawSpeed.toFixed(0)} km/h · left ${r(0,0,191) ? "allowed" : "banned"} · right ${r(0,0,192) ? "allowed" : "banned"} · U-turn ${r(0,0,193) ? "allowed" : "banned"} · ` +
+      `lights ${r(0,0,194) ? "stop traffic" : "warn only"} · junctions ${ruleNames[Math.round(lawRule)] ?? "?"} · ` +
+      `${r(0,0,196) ? "enforcement on" : "enforcement off"}, £${lawFine.toFixed(0)} a fine. ` +
+      `${r(0,0,186)} trap${r(0,0,186) === 1 ? "" : "s"} stand, ${r(0,0,199)} caught today and ${r(0,0,200)} ever, for £${r(0,0,201).toFixed(2)} of fines.`;
+
+    const road = Number($("traffic-road").value);
+    const limit = r(5, road, 22), override = r(5, road, 23) === 1;
+    if (document.activeElement !== $("traffic-road-speed")) $("traffic-road-speed").value = String(override ? Math.round(limit) : 0);
+    for (const [id, field] of [["traffic-road-left", 29], ["traffic-road-right", 30], ["traffic-road-uturn", 31]]) {
+      if (document.activeElement !== $(id)) $(id).value = String(Math.round(r(5, road, field)));
+    }
+    const trap = r(5, road, 25) === 1;
+    if (document.activeElement !== $("traffic-trap-limit")) $("traffic-trap-limit").value = String(Math.round(trap ? r(5, road, 24) : 0));
+    $("traffic-trap-place").disabled = trap;
+    $("traffic-trap-remove").disabled = !trap;
+    const permissions = [26, 27, 28].map((field) => r(5, road, field) ? "allowed" : "banned");
+    $("traffic-message").textContent =
+      `Street #${road + 1}: ${r(5,road,21)} lane${r(5,road,21) === 1 ? "" : "s"} each way, legal limit ${limit.toFixed(0)} km/h${override ? " (local override)" : " (city law)"}. ` +
+      `Left ${permissions[0]}, right ${permissions[1]}, U-turn ${permissions[2]}.` +
+      (trap ? ` A speed trap stands here${r(5,road,24) > 0 ? ` at a pinned ${r(5,road,24).toFixed(0)} km/h` : " at the street's own limit"}.` : " No speed trap stands here.");
+    // The whole trap register, so the player sees the enforcement picture
+    // rather than only the street selected above.
+    const traps = r(0, 0, 186);
+    const body = $("traffic-trap-rows");
+    while (body.children.length > traps) body.lastElementChild.remove();
+    for (let i = 0; i < traps; i++) {
+      const row = body.children[i] || body.appendChild(document.createElement("tr"));
+      const locate = row.children[5] || row.appendChild(document.createElement("td"));
+      valuesInto(row, ["", "", "", "", "", locate.textContent]);
+      const trapRoad = r(24, i, 0);
+      if (trapRoad < 0) continue;
+      valuesInto(row, [
+        `#${trapRoad + 1}`,
+        `${r(24, i, 2).toFixed(0)} km/h`,
+        r(24, i, 3) === 1 ? "active" : "switched off",
+        r(24, i, 4).toFixed(0),
+        money(r(24, i, 5)),
+        locate.textContent,
+      ]);
+      let button = locate.querySelector("button");
+      if (!button) { locate.replaceChildren(); button = locate.appendChild(document.createElement("button")); }
+      button.textContent = "Locate";
+      button.onclick = () => { chooseRoad(trapRoad); game.focus(5, trapRoad); };
+    }
+  }
+  $("traffic-law-apply").onclick = () => {
+    const speed = game.traffic_set_speed(Number($("traffic-law-speed").value));
+    const fine = game.traffic_set_fine(Number($("traffic-law-fine").value));
+    game.traffic_set_turns($("traffic-law-left").checked ? 1 : 0, $("traffic-law-right").checked ? 1 : 0, $("traffic-law-uturn").checked ? 1 : 0);
+    game.traffic_set_stop_at_signals($("traffic-law-stop").checked ? 1 : 0);
+    game.traffic_set_junction_rule(Number($("traffic-law-junction").value));
+    game.traffic_set_enforcement($("traffic-law-enforce").checked ? 1 : 0);
+    message(speed < 0 || fine < 0
+      ? "Enter a speed of 5-60 km/h and a fine of £5-200."
+      : `City law applied: ${speed.toFixed(0)} km/h city-wide and a £${fine.toFixed(0)} fine.`);
+    update();
+  };
+  $("traffic-road-apply").onclick = () => {
+    const road = Number($("traffic-road").value);
+    game.traffic_set_road_speed(road, Number($("traffic-road-speed").value));
+    game.traffic_set_road_turn(road, 0, Number($("traffic-road-left").value));
+    game.traffic_set_road_turn(road, 1, Number($("traffic-road-right").value));
+    game.traffic_set_road_turn(road, 2, Number($("traffic-road-uturn").value));
+    message(`Street #${road + 1} now carries its own speed limit and turn rules; anything left on the city law follows it.`);
+    update();
+  };
+  $("traffic-trap-place").onclick = () => {
+    const road = Number($("traffic-road").value);
+    const cost = game.traffic_place_trap(road, Number($("traffic-trap-limit").value));
+    if (cost < 0) message("A trap cannot stand here: the segment already has one, is a lane, or the register is full.");
+    else message(`Speed trap installed on street #${road + 1} for £${cost.toFixed(2)} of works.`);
+    update();
+  };
+  $("traffic-trap-remove").onclick = () => {
+    const road = Number($("traffic-road").value);
+    if (game.traffic_remove_trap(road)) message(`Speed trap removed from street #${road + 1}.`);
+    else message("There is no trap on that street.");
     update();
   };
 
@@ -1211,7 +1308,10 @@ export function createTransport(game, ui) {
       if (!signalTabViews.all.hidden) syncSignalList();
       if (!signalTabViews.map.hidden) syncSignalMap();
     }
-    if (transportTab === "streets") syncParking();
+    if (transportTab === "streets") {
+      syncTrafficLaw();
+      syncParking();
+    }
     if (transportTab === "incidents") updateIncidents();
     if (transportTab === "incidents") updateIncidents();
     const road = Number($("traffic-road").value);

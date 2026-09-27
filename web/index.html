@@ -1157,6 +1157,57 @@
               ><button id="lane-apply">Apply lanes</button
               ><button id="road-locate">Locate street</button>
             </div>
+            <h3>Traffic law <span class="info-tip" tabindex="0" role="button" aria-label="About traffic law" data-tip="One body of law applies to the whole city: the legal maximum speed, whether left turns, right turns and U-turns are allowed, whether a traffic light actually stops cars or merely warns them, and the default rule at a junction with no light. A single street or junction can override the city law without changing it anywhere else, so a 20 mph street inside a 30 mph town is one override rather than a second legal system. A speed trap is placed on one street, catches drivers over the posted limit and pays the fine into the municipal ledger; it costs works to install.">?</span></h3>
+            <div class="form-grid">
+              <label>City-wide speed limit (km/h)
+                <input id="traffic-law-speed" type="number" min="5" max="60" step="1" value="25">
+              </label>
+              <label>Default junction rule
+                <select id="traffic-law-junction">
+                  <option value="1">Uncontrolled</option>
+                  <option value="2">Give way</option>
+                  <option value="3">Stop sign</option>
+                </select>
+              </label>
+              <label>Fine per catch (£)
+                <input id="traffic-law-fine" type="number" min="5" max="200" step="5" value="40">
+              </label>
+              <label class="check"><input id="traffic-law-left" type="checkbox"> Left turns allowed</label>
+              <label class="check"><input id="traffic-law-right" type="checkbox"> Right turns allowed</label>
+              <label class="check"><input id="traffic-law-uturn" type="checkbox"> U-turns allowed</label>
+              <label class="check"><input id="traffic-law-stop" type="checkbox"> Cars must stop at traffic lights</label>
+              <label class="check"><input id="traffic-law-enforce" type="checkbox"> Speed traps enforce</label>
+              <button id="traffic-law-apply">Apply city law</button>
+            </div>
+            <div id="traffic-law-summary" class="note"></div>
+            <h4>This street <span class="info-tip" tabindex="0" role="button" aria-label="About this street's own rules" data-tip="Each entry is an override on the street selected above. Leaving one on the city law keeps the town-wide rule; setting one changes this street only. The per-street speed is the legal limit drivers obey here, and it can never exceed the physical design speed of the street class.">?</span></h4>
+            <div class="form-grid">
+              <label>Legal speed here (km/h, 0 = city law)
+                <input id="traffic-road-speed" type="number" min="0" max="60" step="1" value="0">
+              </label>
+              <label>Left turn
+                <select id="traffic-road-left"><option value="0">City law</option><option value="1">Allowed</option><option value="2">Banned</option></select>
+              </label>
+              <label>Right turn
+                <select id="traffic-road-right"><option value="0">City law</option><option value="1">Allowed</option><option value="2">Banned</option></select>
+              </label>
+              <label>U-turn
+                <select id="traffic-road-uturn"><option value="0">City law</option><option value="1">Allowed</option><option value="2">Banned</option></select>
+              </label>
+              <button id="traffic-road-apply">Apply to this street</button>
+            </div>
+            <div class="transport-controls">
+              <label>Speed trap on this street
+                <input id="traffic-trap-limit" type="number" min="0" max="60" step="1" value="0">
+              </label>
+              <button id="traffic-trap-place">Place trap</button>
+              <button id="traffic-trap-remove">Remove trap</button>
+            </div>
+            <p class="note" id="traffic-message"></p>
+            <div class="table-scroll tall"><table>
+              <thead><tr><th>Street</th><th>Limit</th><th>Traps</th><th>Catches</th><th>Fines</th><th>Locate</th></tr></thead>
+              <tbody id="traffic-trap-rows"></tbody>
+            </table></div>
             <h3>Parking and street types <span class="info-tip" tabindex="0" role="button" aria-label="About parking" data-tip="Bicycle parks and car parks are seeded where districts are busy; every space has a hard slot count. Cyclists and drivers aim for the nearest place they expect to be free, fall back to the closest free space, and walk the rest of the way. Streets and avenues sell kerbside car spaces at a price banded by the movement actually observed on that segment, capped at 1.20 pounds. Lanes never allow kerbside parking.">?</span></h3>
             <div id="parking-summary" class="note"></div>
             <div class="report-links">
@@ -1362,6 +1413,9 @@
         <div id="road-options">
           <label>Road shape <select id="road-shape"><option value="0">Straight</option><option value="1">Curved</option></select></label>
           <label>Street type <select id="road-class"><option value="1">Street</option><option value="0">Lane</option><option value="2">Avenue</option><option value="3">Boulevard</option></select></label>
+          <label>Traffic lanes each way
+            <select id="road-lane-count"><option value="0">Class default</option><option value="1">1 lane</option><option value="2">2 lanes</option><option value="3">3 lanes</option></select>
+          </label>
           <fieldset id="road-lanes" class="road-lanes">
             <legend>Attached lanes</legend>
             <label class="check"><input type="checkbox" id="road-lane-bus"> Bus priority lane <small>(+£8/m)</small></label>

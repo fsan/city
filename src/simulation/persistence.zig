@@ -21,6 +21,7 @@ const incidents = game.incidents;
 const freight = game.freight;
 const lighting = game.lighting;
 const water = game.water;
+const traffic = game.traffic;
 
 // JSON fields, not native struct bytes. Bump version/rules when changing this contract.
 pub const capacity = 16 * 1024 * 1024;
@@ -204,6 +205,32 @@ const Water = struct {
     tipping_paid_total: f64,
     collection_rounds: u32,
 };
+// Numbered item 19: the city-wide traffic law is policy the player edits, so it
+// is serialized whole; the per-segment and per-junction overrides are stored as
+// the used slices only, and the traps are a bounded register.
+const Traffic = struct {
+    max_speed_kmh: f32,
+    left: bool,
+    right: bool,
+    uturn: bool,
+    stop_at_signals: bool,
+    junction_rule: u8,
+    // 0 inherit, 1 allowed, 2 banned.
+    enforcement: bool,
+    fine: f64,
+    speed_override: []const f32,
+    turn_override: []const u8,
+    junction_override: []const u8,
+    traps: []const traffic.Trap,
+    traps_installed: u32,
+    traps_removed: u32,
+    catches: u32,
+    catches_today: u32,
+    fines_total: f64,
+    fines_today: f64,
+    install_spent: f64,
+    overrides_total: u32,
+};
 const Development = struct {
     proposals: []const development.Proposal,
     count: u32,
@@ -251,6 +278,7 @@ const State = struct {
     freight: Freight,
     lighting: Lighting,
     water: Water,
+    traffic: Traffic,
     trust: []const f32,
     history: []const game.Sample,
     history_count: usize,
@@ -283,12 +311,14 @@ fn validWorkRef(s: *const State, order: i32, road_orders: usize) bool {
     return parsedWorkOrder(s, order);
 }
 var lane_values: [city.max_roads]u32 = undefined;
+var junction_overrides: [city.max_nodes]u8 = undefined;
 fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
+    for (traffic.junction_override[0..city.node_count], 0..) |rule, i| junction_overrides[i] = rule;
     return .{
         .format = "Common Ground town",
-        .version = 21,
-        .rules = "bellwether-2028-07-v21",
+        .version = 22,
+        .rules = "bellwether-2028-08-v22",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = city.lots(), .parcels = parcels.storage[0..parcels.count] },
@@ -316,6 +346,9 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
         .lighting = .{ .lamps = lighting.lamps[0..city.road_count], .lit = lighting.lit[0..city.road_count], .repairs = lighting.repairs[0..city.road_count], .faults_total = lighting.faults_total, .repairs_total = lighting.repairs_total, .installed_total = lighting.installed_total, .electricity_paid_total = lighting.electricity_paid_total, .electricity_paid_today = lighting.electricity_paid_today, .works_paid_total = lighting.works_paid_total, .works_paid_today = lighting.works_paid_today, .electricity_need_today = lighting.electricity_need_today },
         .incidents = .{ .records = incidents.records[0..incidents.count], .next_number = incidents.next_number, .raised_total = incidents.raised_total, .cleared_total = incidents.cleared_total, .collisions_total = incidents.collisions_total, .cost_total = incidents.cost_total, .blocked_seconds_total = incidents.blocked_seconds_total, .delay_total = incidents.delay_total, .last_raised = incidents.last_raised },
         .water = .{ .supplies = &water.supplies, .intake_working = water.intake_working, .intake_faults_total = water.intake_faults_total, .intake_repairs_total = water.intake_repairs_total, .install_spent_total = water.install_spent_total, .water_paid_total = water.water_paid_total, .water_paid_today = water.water_paid_today, .works_paid_total = water.works_paid_total, .works_paid_today = water.works_paid_today, .water_need_today = water.water_need_today, .drains = water.drains[0..city.road_count], .drains_clear = water.drains_clear[0..city.road_count], .drain_clears = water.drain_clears[0..city.road_count], .drains_total = water.drains_total, .drains_blocked_total = water.drains_blocked_total, .drains_cleared_total = water.drains_cleared_total, .waste_collected_total = water.waste_collected_total, .waste_backlog = water.waste_backlog, .tipping_paid_total = water.tipping_paid_total, .collection_rounds = water.collection_rounds },
+        // Numbered item 19: only the used slices of the override tables are
+        // stored, so a bigger board does not write a bigger file than it needs.
+        .traffic = .{ .max_speed_kmh = traffic.laws.max_speed_kmh, .left = traffic.laws.left, .right = traffic.laws.right, .uturn = traffic.laws.uturn, .stop_at_signals = traffic.laws.stop_at_signals, .junction_rule = @intFromEnum(traffic.laws.junction_rule), .enforcement = traffic.laws.enforcement, .fine = traffic.laws.fine, .speed_override = traffic.speed_override[0..city.road_count], .turn_override = traffic.turn_override[0..city.road_count], .junction_override = junction_overrides[0..city.node_count], .traps = traffic.traps[0..traffic.trap_count], .traps_installed = traffic.traps_installed, .traps_removed = traffic.traps_removed, .catches = traffic.catches, .catches_today = traffic.catches_today, .fines_total = traffic.fines_total, .fines_today = traffic.fines_today, .install_spent = traffic.install_spent, .overrides_total = traffic.overrides_total },
         .trust = &game.trust,
         .history = game.history[0..@min(game.history_count, game.history.len)],
         .history_count = game.history_count,
@@ -559,6 +592,24 @@ fn validate(s: *const State) bool {
     // than its class allows, more working drains than installed ones, or any
     // drain at all where drainage is not eligible. Coverage, rain and flooding
     // are derived and never trusted.
+    // Numbered item 19: the traffic law is bounded policy. Every override names
+    // a real segment or junction and carries a legal value, and every trap names
+    // a real segment at most once.
+    const rules = &s.traffic;
+    if (rules.speed_override.len != roads.len or rules.turn_override.len != roads.len or rules.junction_override.len != n) return false;
+    if (!between(rules.max_speed_kmh, traffic.min_speed_kmh, traffic.max_speed_kmh) or rules.junction_rule > 3 or !between(rules.fine, traffic.min_fine, traffic.max_fine)) return false;
+    if (rules.traps.len > traffic.max_traps or rules.catches_today > rules.catches) return false;
+    if (rules.fines_total < 0 or rules.fines_today < 0 or rules.install_spent < 0 or rules.traps_installed < rules.traps_removed) return false;
+    if (rules.traps_installed < rules.traps.len) return false;
+    for (rules.speed_override) |value| if (value != 0 and !between(value, traffic.min_speed_kmh, traffic.max_speed_kmh)) return false;
+    for (rules.turn_override) |value| if (value & 0xc0 != 0) return false;
+    for (rules.junction_override) |value| if (value > 3) return false;
+    for (rules.traps, 0..) |trap, i| {
+        if (trap.road >= roads.len) return false;
+        if (trap.limit_kmh != 0 and !between(trap.limit_kmh, traffic.min_speed_kmh, traffic.max_speed_kmh)) return false;
+        if (trap.catches > rules.catches or trap.fines < 0 or trap.spent < 0 or trap.fines > trap.spent * 1e6 + 1e9) return false;
+        for (rules.traps[0..i]) |old| if (old.road == trap.road) return false;
+    }
     const utility = &s.water;
     if (utility.supplies.len != city.district_count or utility.drains.len != roads.len or utility.drains_clear.len != roads.len or utility.drain_clears.len != roads.len) return false;
     if (utility.install_spent_total < 0 or utility.water_paid_total < 0 or utility.water_paid_today < 0 or utility.works_paid_total < 0 or utility.works_paid_today < 0 or utility.water_need_today < 0 or utility.waste_collected_total < 0 or utility.waste_backlog < 0 or utility.tipping_paid_total < 0) return false;
@@ -927,7 +978,7 @@ fn validate(s: *const State) bool {
     const first = f.entry_count - f.entries.len;
     for (first..f.entry_count) |i| {
         const e = f.entries[i % 1024];
-        if (!between(e.time, 0, c.elapsed) or e.kind > 19 or e.balance < 0) return false;
+        if (!between(e.time, 0, c.elapsed) or e.kind > 21 or e.balance < 0) return false;
         switch (e.kind) {
             1, 2 => if (e.party < 0 or !index(e.party, town.buildings.len) or e.order != -1) return false,
             5, 6 => if (e.party < 0 or !index(e.party, companies.len) or e.order < 0 or !index(e.order, services.orders.len)) return false,
@@ -949,6 +1000,11 @@ fn validate(s: *const State) bool {
             // water works - intake repairs, drain clearing and new drains (19).
             18 => if (e.party != -1 or e.order != -1 or e.amount >= 0) return false,
             19 => if (e.party != -1 or e.order != -1 or e.amount >= 0) return false,
+            // Numbered item 19: a speed trap is a municipal capital work (20)
+            // naming the segment it stands on, and a fine (21) is revenue that
+            // names the same segment.
+            20 => if (e.party != -1 or e.order < 0 or !index(e.order, roads.len) or e.amount >= 0) return false,
+            21 => if (e.party != -1 or e.order < 0 or !index(e.order, roads.len) or e.amount <= 0) return false,
             9 => if (e.party < 0 or !index(e.party, town.street_count) or e.order != -1) return false,
             else => if (e.party != -1 or e.order != -1) return false,
         }
@@ -1093,6 +1149,11 @@ fn commit(s: *const State) void {
     // recomputed from them.
     const utility = &s.water;
     water.restore(utility.supplies, utility.intake_working, utility.intake_faults_total, utility.intake_repairs_total, utility.install_spent_total, utility.water_paid_total, utility.water_paid_today, utility.works_paid_total, utility.works_paid_today, utility.water_need_today, utility.drains, utility.drains_clear, utility.drain_clears, utility.drains_total, utility.drains_blocked_total, utility.drains_cleared_total, utility.waste_collected_total, utility.waste_backlog, utility.tipping_paid_total, utility.collection_rounds);
+    // Numbered item 19: the law, the overrides and the trap register come back
+    // exactly as saved. Everything derived - the limit a segment is actually
+    // under and the permission a movement actually has - is recomputed.
+    const rules = &s.traffic;
+    traffic.restore(@floatCast(rules.max_speed_kmh), rules.left, rules.right, rules.uturn, rules.stop_at_signals, rules.junction_rule, rules.enforcement, rules.fine, rules.speed_override, rules.turn_override, rules.junction_override, rules.traps, rules.traps_installed, rules.traps_removed, rules.catches, rules.catches_today, rules.fines_total, rules.fines_today, rules.install_spent, rules.overrides_total);
     game.elapsed = s.clock.elapsed;
     game.next_sample = s.clock.next_sample;
     game.next_routes = s.clock.next_routes;
@@ -1117,7 +1178,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 21 and std.mem.eql(u8, rules, "bellwether-2028-07-v21");
+    return version == 22 and std.mem.eql(u8, rules, "bellwether-2028-08-v22");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

@@ -19,6 +19,7 @@ pub const incidents = @import("incidents.zig");
 pub const freight = @import("freight.zig");
 pub const lighting = @import("lighting.zig");
 pub const water = @import("water.zig");
+pub const traffic = @import("traffic.zig");
 pub var elapsed: f64 = 160;
 pub var trust: [city.district_count]f32 = undefined;
 pub const Sample = struct { time: f64, cash: f64, reserved: f64, walking: usize, condition: f32 };
@@ -54,6 +55,7 @@ pub fn init() void {
     freight.init();
     lighting.init();
     water.init();
+    traffic.init();
     development.init();
     roadworks.reset();
     parcels.init();
@@ -85,6 +87,7 @@ pub fn update(dt: f32) void {
         freight.daily(elapsed);
         lighting.daily(calendar.dayIndex(elapsed));
         water.daily(calendar.dayIndex(elapsed));
+        traffic.daily();
         for (residents.companies[0..residents.company_count], 0..) |*c, i| {
             // Explicit simplified local trading: a staffed non-contractor position
             // earns its posted wage plus the documented GBP 12 daily surplus, so

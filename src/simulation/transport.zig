@@ -7,6 +7,8 @@ pub const incidents = @import("incidents.zig");
 pub const lighting = @import("lighting.zig");
 pub const water = @import("water.zig");
 pub const calendar = @import("calendar.zig");
+pub const traffic = @import("traffic.zig");
+const finance = @import("finance.zig");
 pub var clock: f64 = 160;
 // Numbered item 15: a monotonic step counter feeds the deterministic incident
 // hash, so a collision is a pure function of the live congestion and the step.
@@ -36,6 +38,15 @@ pub const Vehicle = struct {
     version: u32 = 0,
     // Owned fleet unit currently occupied by this bus; -1 for cars and idle slots.
     unit: i32 = -1,
+    // Numbered item 19: whether this driver obeys the posted limit. `temper`
+    // is drawn once when the trip starts; a bounded share of drivers travel at
+    // the street's design speed instead, which is what a speed trap catches.
+    // Buses always comply and carry 1.
+    temper: f32 = 1,
+    // Numbered item 19: set once the driver has been recorded by a speed trap
+    // on the segment they are on, and cleared when the trap is left, so one
+    // pass is one catch rather than one per simulation step.
+    caught: bool = false,
 };
 pub const Line = struct {
     active: bool = false,
@@ -140,8 +151,13 @@ pub var crossing_active: [city.max_nodes]u16 = @splat(0);
 // the crosswalk actually in its path rather than to any pedestrian anywhere at
 // the junction. Filled from the residents' crossing state each step.
 pub var crossing_active_road: [city.max_roads]u16 = @splat(0);
-var heads: [city.max_roads * 4]i32 = @splat(-1);
-var entries: [city.max_roads * 4]bool = @splat(false);
+// Numbered item 19: each direction of a segment has one slot per lane the
+// player built, plus one more when a dedicated bus lane is attached, so the
+// lane count really is the capacity of the segment.
+pub const max_slots = 4;
+const key_stride = max_slots * 2;
+var heads: [city.max_roads * key_stride]i32 = @splat(-1);
+var entries: [city.max_roads * key_stride]bool = @splat(false);
 var links: [vehicles.len]i32 = @splat(-1);
 pub var fare_cap: f64 = 2;
 pub var subsidy: f64 = 1;
@@ -290,27 +306,122 @@ pub fn remove(id: usize) void {
     lines[id].version += 1;
     syncObservation(id);
 }
-fn laneKey(v: Vehicle, road: usize) usize {
-    return road * 4 + (if (v.node == city.roads[road].a) @as(usize, 0) else 2) + @as(usize, v.lane);
+// Numbered item 19: the exit a driver may actually take. `next_node` is a
+// shortest-path first hop and knows nothing about the road the driver arrived
+// along, so a banned turn is applied here: when the planned hop is a movement
+// the law forbids, the driver takes the legal exit that leaves the least
+// distance to run, and re-routes from there. A junction with no legal way on
+// falls back to the planned hop, so no driver can be stranded.
+pub fn routeExit(node: usize, arrival: i32, target: usize) usize {
+    const planned = city.next_node[node][target];
+    if (arrival < 0 or planned == node) return planned;
+    const plan_road = city.road_between[node][planned];
+    if (plan_road < 0) return planned;
+    const kind = signals.turnKind(node, @intCast(arrival), @intCast(plan_road));
+    if (kind == .straight or traffic.movementAllowed(@intCast(arrival), switch (kind) {
+        .left => .left,
+        .right => .right,
+        .uturn => .uturn,
+        .straight => .left,
+    })) return planned;
+    var best: usize = planned;
+    var best_cost = std.math.inf(f32);
+    for (city.roads, 0..) |r, id| {
+        const other = if (r.a == node) r.b else if (r.b == node) r.a else continue;
+        if (other == node or other == planned) continue;
+        const exit_kind = signals.turnKind(node, @intCast(arrival), id);
+        if (exit_kind == .straight) continue;
+        const turn: traffic.Movement = switch (exit_kind) {
+            .left => .left,
+            .right => .right,
+            .uturn => .uturn,
+            .straight => .left,
+        };
+        if (!traffic.movementAllowed(@intCast(arrival), turn)) continue;
+        const residual = city.distance[other][target];
+        if (residual >= 1e8) continue;
+        const cost = r.length + residual;
+        if (cost < best_cost) {
+            best_cost = cost;
+            best = other;
+        }
+    }
+    return best;
 }
-fn room(v: Vehicle, next: usize) bool {
-    const road: usize = @intCast(city.road_between[v.node][next]);
-    var candidate = v;
-    candidate.next = next;
-    candidate.lane = if (v.line >= 0 and lanes[road] & 1 != 0) 1 else 0;
-    const key = laneKey(candidate, road);
+
+// Where a driver sits across the carriageway. Slot 0 is the inside general
+// lane and each further lane sits a little further out, so a three-lane avenue
+// shows three streams of traffic rather than one.
+fn lane_offset(slot: u8) f32 {
+    return 0.55 + @as(f32, @floatFromInt(@min(slot, max_slots - 1))) * 0.85;
+}
+
+fn keyFor(road: usize, node: usize, slot: usize) usize {
+    const forward: usize = if (node == city.roads[road].a) 0 else 1;
+    return road * key_stride + forward * max_slots + @min(slot, max_slots - 1);
+}
+fn laneKey(v: Vehicle, road: usize) usize {
+    return keyFor(road, v.node, @as(usize, v.lane));
+}
+// The bus lane, when one is attached, is the last slot of the direction, so the
+// general lanes keep their numbering whether or not dedicated capacity exists.
+fn busSlot(road: usize) ?usize {
+    if (lanes[road] & 1 == 0) return null;
+    return @min(max_slots - 1, @as(usize, city.roads[road].lanes));
+}
+fn generalSlots(road: usize) usize {
+    return @max(1, @min(@as(usize, city.roads[road].lanes), max_slots - 1));
+}
+fn slotCount(road: usize) usize {
+    const bus: usize = if (busSlot(road) != null) 1 else 0;
+    return @min(max_slots, generalSlots(road) + bus);
+}
+// A deterministic lane preference per vehicle so traffic spreads over the
+// lanes the street actually has instead of queueing in one of them.
+fn laneFor(index: usize, road: usize) usize {
+    const slots = generalSlots(road);
+    if (slots <= 1) return 0;
+    return (index *% 2654435761 +% road *% 40503) % slots;
+}
+fn preferredSlot(v: Vehicle, road: usize, index: usize) usize {
+    if (v.line >= 0) return busSlot(road) orelse 0;
+    return laneFor(index, road);
+}
+fn laneFree(candidate: Vehicle, road: usize, slot: usize) bool {
+    const key = keyFor(road, candidate.node, slot);
     if (entries[key]) return false;
     var link = heads[key];
     while (link >= 0) {
         const other = vehicles[@intCast(link)];
-        if (other.active and other.node == candidate.node and other.next == candidate.next and other.progress < spacing(v, other)) return false;
+        if (other.active and other.node == candidate.node and other.next == candidate.next and other.progress < spacing(candidate, other)) return false;
         link = links[@intCast(link)];
     }
     return true;
 }
+// The slot the vehicle may enter on `next`: its own preferred lane first, then
+// the rest of the lanes the street has, so a wider street holds more traffic.
+fn chooseRoom(v: Vehicle, next: usize, index: usize) ?usize {
+    const road: usize = @intCast(city.road_between[v.node][next]);
+    var candidate = v;
+    candidate.next = next;
+    const slots = slotCount(road);
+    const first = preferredSlot(v, road, index);
+    var offset: usize = 0;
+    while (offset < slots) : (offset += 1) {
+        const slot = (first + offset) % slots;
+        if (laneFree(candidate, road, slot)) return slot;
+    }
+    return null;
+}
+fn room(v: Vehicle, next: usize, index: usize) bool {
+    return chooseRoom(v, next, index) != null;
+}
 pub fn startCar(id: usize, node: usize, target: usize) void {
     const n = city.nodes[node];
-    vehicles[id] = .{ .active = true, .node = node, .next = node, .target = target, .x = n.x, .z = n.z };
+    // A bounded quarter of private drivers ignore the posted limit. The choice
+    // is a pure function of the vehicle index, so a save replays identically.
+    const temper: f32 = if (id % 4 == 0) 1.15 else 0.95;
+    vehicles[id] = .{ .active = true, .node = node, .next = node, .target = target, .x = n.x, .z = n.z, .temper = temper };
 }
 pub fn board(bus: usize) bool {
     const v = &vehicles[bus];
@@ -444,11 +555,12 @@ pub fn update(dt: f32, elapsed: f64) void {
                 v.arrived = true;
                 continue;
             }
-            const next = city.next_node[v.node][v.target];
+            const next = routeExit(v.node, -1, v.target);
             if (next == v.node or city.road_between[v.node][next] < 0) continue;
-            if (!enter(v.*, next, elapsed, -1)) continue;
+            if (!enter(v.*, next, i, elapsed, -1)) continue;
             v.next = next;
-            v.lane = if (v.line >= 0 and lanes[@intCast(city.road_between[v.node][next])] & 1 != 0) 1 else 0;
+            const started_road: usize = @intCast(city.road_between[v.node][next]);
+            v.lane = @intCast(preferredSlot(v.*, started_road, i));
             v.progress = 0;
         }
         const r: usize = @intCast(city.road_between[v.node][v.next]);
@@ -469,13 +581,16 @@ pub fn update(dt: f32, elapsed: f64) void {
         // the queue stands *before* the light instead of creeping past it.
         const head_setback = signals.head_setback + if (bus) @as(f32, 0.8) else 0.6;
         const stop_point = if (at_target or leaving) road.length else if (cross_yield) @max(road.length * 0.35, road.length - 2.6) else @max(road.length * 0.6, road.length - head_setback);
-        const next_after = city.next_node[v.next][v.target];
+        const next_after = routeExit(v.next, @intCast(r), v.target);
         var lookahead = v.*;
         lookahead.node = v.next;
         lookahead.next = if (next_after == v.next) v.next else next_after;
-        lookahead.lane = if (bus and next_after != v.next and lanes[@intCast(city.road_between[v.next][next_after])] & 1 != 0) 1 else 0;
+        if (next_after != v.next and city.road_between[v.next][next_after] >= 0) {
+            const ahead_road: usize = @intCast(city.road_between[v.next][next_after]);
+            lookahead.lane = @intCast(preferredSlot(v.*, ahead_road, i));
+        }
         const approach: i32 = @intCast(city.road_between[v.node][v.next]);
-        const blocked = next_after == v.next or !entryAllowed(lookahead, next_after, elapsed, approach);
+        const blocked = next_after == v.next or !entryAllowed(lookahead, next_after, i, elapsed, approach);
         // Only segment ends that actually stop the vehicle receive braking. Ordinary
         // short street segments keep their speed and hand momentum to the next one.
         const must_stop = v.retiring or leaving or at_target or cross_yield or (v.next != v.target and blocked);
@@ -495,8 +610,11 @@ pub fn update(dt: f32, elapsed: f64) void {
             link = links[@intCast(link)];
         }
         // Slice 12: a flashing-amber junction is a caution, not a green, so
-        // approaching drivers slow to about half speed and yield.
-        const caution: f32 = if (city.degree(v.next) >= 3 and signals.flashingAt(v.next, elapsed)) 0.5 else 1;
+        // approaching drivers slow to about half speed and yield. Numbered item
+        // 19: a light the law does not enforce, and a give way or stop junction,
+        // are the same kind of caution.
+        const signalled_ahead = signals.find(v.next) != null;
+        const caution: f32 = if (city.degree(v.next) >= 3 and (signals.flashingAt(v.next, elapsed) or traffic.cautionJunction(v.next, signalled_ahead))) 0.5 else 1;
         // Numbered item 15: a live incident on this segment holds its lane and
         // slows everyone routed through it, with the penalty scaled by severity.
         const incident_factor: f32 = 1 / (1 + incidents.penalty(r) * 0.12);
@@ -507,7 +625,27 @@ pub fn update(dt: f32, elapsed: f64) void {
         // Numbered item 18: an undrained segment floods in heavy rain, so the
         // day's rain and the drain coverage are a second bounded speed factor.
         const flood_factor: f32 = water.floodFactor(r, calendar.dayIndex(elapsed));
-        const limit: f32 = (if (bus) travel.busSpeed(road.class, road.condition, road.slope, road.works) else travel.classSpeed(road.class, road.condition, road.slope, road.works)) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1) * caution * incident_factor * night_factor * flood_factor;
+        const design: f32 = (if (bus) travel.busSpeed(road.class, road.condition, road.slope, road.works) else travel.classSpeed(road.class, road.condition, road.slope, road.works)) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1);
+        // Numbered item 19: the city's law sets the legal maximum speed for the
+        // segment, and a driver who obeys it never passes it. A bounded share of
+        // drivers ignore the law and travel at the street's design speed, which
+        // is what a speed trap catches. Buses always comply.
+        const legal = traffic.speedLimit(r);
+        const obey = bus or v.temper <= 1.0;
+        const governed: f32 = if (obey) @min(design, legal) else design;
+        const limit: f32 = governed * caution * incident_factor * night_factor * flood_factor;
+        // A driver who speeds is caught on the trap's own segment. The catch is
+        // counted once per vehicle per pass: `caught` is set below and cleared
+        // when the vehicle leaves the trapped segment.
+        const trap_here = !bus and traffic.trapAt(r) != null;
+        if (trap_here and v.speed > traffic.trapThreshold(r)) {
+            if (!v.caught) {
+                v.caught = true;
+                if (traffic.enforceTrap(r, v.speed)) finance.record(elapsed, traffic.laws.fine, 21, -1, @intCast(r));
+            }
+        } else if (!trap_here) {
+            v.caught = false;
+        }
         var target = limit;
         if (must_stop or following) target = @min(target, @sqrt(6 * free));
         if (v.speed < target) v.speed = @min(target, v.speed + dt * 2) else v.speed = @max(target, v.speed - dt * 3);
@@ -517,13 +655,13 @@ pub fn update(dt: f32, elapsed: f64) void {
         const a = city.nodes[v.node];
         const b = city.nodes[v.next];
         const fraction = @min(1, v.progress / road.length);
-        var lane: f32 = if (v.lane == 1) 1.25 else 0.55;
+        var lane: f32 = lane_offset(v.lane);
         // Item 14 turning geometry: a driver slides into the part of the
         // carriageway their turn needs over the last stretch of approach, kerb
         // side for a right turn and centre for a left, so the turn is prepared
         // before the junction rather than cut at the corner.
         if (!bus and v.next != v.target) {
-            const after = city.next_node[v.next][v.target];
+            const after = routeExit(v.next, @intCast(r), v.target);
             if (after != v.next) {
                 const exit: usize = @intCast(city.road_between[v.next][after]);
                 const kind = signals.turnKind(v.next, r, exit);
@@ -544,12 +682,13 @@ pub fn update(dt: f32, elapsed: f64) void {
                 // Keep the vehicle's footprint on the approach until its exit has room.
                 var candidate = v.*;
                 candidate.node = v.next;
-                const next = city.next_node[candidate.node][v.target];
+                const next = routeExit(candidate.node, @intCast(r), v.target);
                 const carried = v.speed;
-                if (next != candidate.node and enter(candidate, next, elapsed, approach)) {
+                if (next != candidate.node and enter(candidate, next, i, elapsed, approach)) {
                     v.node = candidate.node;
                     v.next = next;
-                    v.lane = if (bus and lanes[@intCast(city.road_between[v.node][next])] & 1 != 0) 1 else 0;
+                    const ahead_road: usize = @intCast(city.road_between[v.node][next]);
+                    v.lane = @intCast(preferredSlot(v.*, ahead_road, i));
                     v.progress = 0;
                     v.speed = carried;
                 } else v.speed = 0;
@@ -631,7 +770,7 @@ pub fn journey(from: usize, to: usize) Journey {
 // Slice 13: the head over an approach governs the cars on that approach, so the
 // gate reads the arm the driver is arriving along rather than the one they are
 // turning into. `approach` is that road, or -1 for a driver already at the node.
-fn entryAllowed(v: Vehicle, next: usize, elapsed: f64, approach: i32) bool {
+fn entryAllowed(v: Vehicle, next: usize, index: usize, elapsed: f64, approach: i32) bool {
     const road_id = city.road_between[v.node][next];
     if (road_id < 0 or !city.roads[@intCast(road_id)].vehicles) return false;
     if (city.degree(v.node) >= 3) {
@@ -639,34 +778,54 @@ fn entryAllowed(v: Vehicle, next: usize, elapsed: f64, approach: i32) bool {
         // flashing-amber junction lets drivers cross slowly when it is safe, so
         // they only commit when nothing is already inside the junction box.
         if (signals.heldForEmergency(v.node)) return false;
-        if (signals.flashingAt(v.node, elapsed)) {
-            // Cross slowly, and only once the box is clear of whoever went in
-            // ahead of this driver.
+        const signalled = signals.find(v.node) != null;
+        if (signalled and traffic.laws.stop_at_signals) {
+            if (signals.flashingAt(v.node, elapsed)) {
+                // Cross slowly, and only once the box is clear of whoever went
+                // in ahead of this driver.
+                if (junction_entered[v.node] > 0) return false;
+            } else if (!signals.greenForApproach(v.node, approach, @intCast(road_id), elapsed)) return false;
+        } else {
+            // Numbered item 19: a light the law does not enforce, or a give way
+            // or stop rule on an unsignalised junction, is a yield. A stop rule
+            // additionally demands a standstill before the driver may go.
+            const rule = traffic.junctionRule(v.node);
+            const stopping = signalled or rule == .stop;
             if (junction_entered[v.node] > 0) return false;
-        } else if (!signals.greenForApproach(v.node, approach, @intCast(road_id), elapsed)) return false;
-        // Item 14 yielding. A turning driver yields to the crosswalk it turns
-        // into, and a left turn yields while another vehicle is still inside the
-        // junction box. Straight movements are unchanged.
+            if (stopping and v.speed > 0.3) return false;
+        }
+        // Item 14 yielding, and item 19 turn restrictions. A turning driver
+        // yields to the crosswalk it turns into and a left turn yields while
+        // another vehicle is inside the box; a movement the law bans is refused
+        // outright, whatever the signal says.
         if (approach >= 0) {
             const in_road: usize = @intCast(approach);
             const kind = signals.turnKind(v.node, in_road, @intCast(road_id));
             if (kind != .straight) {
+                const turn: traffic.Movement = switch (kind) {
+                    .left => .left,
+                    .right => .right,
+                    .uturn => .uturn,
+                    .straight => .left,
+                };
+                if (!traffic.movementAllowed(in_road, turn)) return false;
                 if (city.roads[@intCast(road_id)].crosswalk and crossing_active_road[@intCast(road_id)] > 0) return false;
                 if (kind == .left and junction_entered[v.node] > 0) return false;
             }
         }
     }
-    if (!room(v, next)) return false;
+    const slot = chooseRoom(v, next, index) orelse return false;
     var candidate = v;
-    candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] & 1 != 0) 1 else 0;
+    candidate.lane = @intCast(slot);
     return !entries[laneKey(candidate, @intCast(road_id))];
 }
 
-fn enter(v: Vehicle, next: usize, elapsed: f64, approach: i32) bool {
-    if (!entryAllowed(v, next, elapsed, approach)) return false;
+fn enter(v: Vehicle, next: usize, index: usize, elapsed: f64, approach: i32) bool {
+    if (!entryAllowed(v, next, index, elapsed, approach)) return false;
     const road_id = city.road_between[v.node][next];
+    const slot = chooseRoom(v, next, index) orelse return false;
     var candidate = v;
-    candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] & 1 != 0) 1 else 0;
+    candidate.lane = @intCast(slot);
     entries[laneKey(candidate, @intCast(road_id))] = true;
     return true;
 }

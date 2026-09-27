@@ -11,6 +11,7 @@ const signals = transport.signals;
 const parking = game.parking;
 const travel = game.travel;
 const water = game.water;
+const traffic = game.traffic;
 const calendar = game.calendar;
 var speed: f32 = 1;
 var resume_speed: f32 = 1;
@@ -377,6 +378,26 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             175 => water.read0(22, calendar.dayIndex(game.elapsed)),
             176 => water.read0(23, calendar.dayIndex(game.elapsed)),
             177 => water.read0(24, calendar.dayIndex(game.elapsed)),
+            // Numbered item 19 traffic law: 190 the city-wide legal speed,
+            // 191/192/193 left/right/u-turn allowed, 194 whether a traffic
+            // light stops traffic, 195 the default rule at an unsignalised
+            // junction, 196 whether enforcement is on, 197 the fine, 198 traps
+            // installed, 199 catches today, 200 catches ever, 201 fines ever
+            // and 202/203 the day's fines and their lifetime total.
+            190 => traffic.laws.max_speed_kmh,
+            191 => if (traffic.laws.left) 1 else 0,
+            192 => if (traffic.laws.right) 1 else 0,
+            193 => if (traffic.laws.uturn) 1 else 0,
+            194 => if (traffic.laws.stop_at_signals) 1 else 0,
+            195 => @floatFromInt(@intFromEnum(traffic.laws.junction_rule)),
+            196 => if (traffic.laws.enforcement) 1 else 0,
+            197 => traffic.laws.fine,
+            198 => @floatFromInt(traffic.trap_count),
+            199 => @floatFromInt(traffic.catches_today),
+            200 => @floatFromInt(traffic.catches),
+            201 => traffic.fines_total,
+            202 => traffic.fines_today,
+            203 => traffic.install_spent,
             else => -1,
         },
         1 => {
@@ -525,6 +546,23 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 18 => transport.movement[id],
                 19 => @floatFromInt(parking.band(transport.movement[id])),
                 20 => parking.bandPrice(transport.movement[id]),
+                // Numbered item 19 traffic law on this segment: 21 lanes each
+                // way, 22 the legal limit, 23 whether it is a local override,
+                // 24 the trap's own limit (0 when it follows the law), 25
+                // whether a trap stands here, 26-28 the resolved left / right
+                // / u-turn permission (0 banned, 1 allowed), and 29-31 the raw
+                // per-segment override (0 city law, 1 allowed, 2 banned).
+                21 => @floatFromInt(r.lanes),
+                22 => traffic.speedLimitKmh(id),
+                23 => if (traffic.hasSpeedOverride(id)) 1 else 0,
+                24 => if (traffic.trapAt(id)) |t| traffic.traps[t].limit_kmh else 0,
+                25 => if (traffic.trapAt(id) != null) 1 else 0,
+                26 => if (traffic.movementAllowed(id, .left)) 1 else 0,
+                27 => if (traffic.movementAllowed(id, .right)) 1 else 0,
+                28 => if (traffic.movementAllowed(id, .uturn)) 1 else 0,
+                29 => @floatFromInt(@intFromEnum(traffic.movementPermission(id, .left))),
+                30 => @floatFromInt(@intFromEnum(traffic.movementPermission(id, .right))),
+                31 => @floatFromInt(@intFromEnum(traffic.movementPermission(id, .uturn))),
                 else => -1,
             };
         },
@@ -1035,6 +1073,24 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             // 12 measured delay, 13 responders, 14 recovery cost, 15 whether
             // the lane is blocked now, 16 the road class.
             return game.incidents.readNewest(id, field);
+        },
+        24 => {
+            // Numbered item 19: one speed trap, addressed by trap index. 0 the
+            // street it covers, 1 the posted limit (0 when it follows the
+            // street's own legal limit), 2 the limit actually enforced, 3
+            // whether it is switched on, 4 the catches recorded and 5 the fines
+            // it has collected. 24 is the first number free of the groups above.
+            if (id >= traffic.trap_count) return -1;
+            const trap = &traffic.traps[id];
+            return switch (field) {
+                0 => @floatFromInt(trap.road),
+                1 => trap.limit_kmh,
+                2 => traffic.trapLimitKmh(trap.road),
+                3 => if (trap.active) 1 else 0,
+                4 => @floatFromInt(trap.catches),
+                5 => trap.fines,
+                else => -1,
+            };
         },
         else => return -1,
     }
@@ -1598,4 +1654,97 @@ export fn crosswalk_remove_screen(x: f32, y: f32) i32 {
     if (road < 0) return -1;
     city.roads[@intCast(road)].crosswalk = false;
     return road;
+}
+
+// ---------------------------------------------------------------------------
+// Numbered item 19: traffic law, per-place overrides and speed traps.
+//
+// The city law is one record the player edits anywhere. Every override below
+// addresses one segment or one junction, so a rule can be changed back at a
+// single place without touching the rest of the city.
+// ---------------------------------------------------------------------------
+
+// The city-wide legal maximum speed, in km/h, clamped to 5-60.
+export fn traffic_set_speed(kmh: f64) f64 {
+    if (!std.math.isFinite(kmh)) return -1;
+    _ = traffic.setLawSpeed(@floatCast(kmh));
+    return traffic.laws.max_speed_kmh;
+}
+
+// The city-wide turn permissions, as three flags.
+export fn traffic_set_turns(left: u32, right: u32, uturn: u32) bool {
+    return traffic.setLawTurns(left == 1, right == 1, uturn == 1);
+}
+
+// The city-wide answer to "must cars stop at the lights".
+export fn traffic_set_stop_at_signals(stop: u32) bool {
+    return traffic.setLawStopAtSignals(stop == 1);
+}
+
+// The default rule at a junction with no signal: 1 uncontrolled, 2 give way,
+// 3 stop sign.
+export fn traffic_set_junction_rule(rule: u32) bool {
+    if (rule > 3) return false;
+    return traffic.setLawJunctionRule(@intCast(rule));
+}
+
+export fn traffic_set_enforcement(on: u32) bool {
+    return traffic.setLawEnforcement(on == 1);
+}
+
+export fn traffic_set_fine(amount: f64) f64 {
+    if (!std.math.isFinite(amount)) return -1;
+    _ = traffic.setLawFine(amount);
+    return traffic.laws.fine;
+}
+
+// One segment's own legal limit. Zero clears the override.
+export fn traffic_set_road_speed(road: u32, kmh: f64) f64 {
+    if (road >= city.road_count or !std.math.isFinite(kmh)) return -1;
+    if (!traffic.setSpeedOverride(road, @floatCast(kmh))) return -1;
+    return traffic.speedLimitKmh(road);
+}
+
+// One segment's own turn permission, movement 0 left, 1 right, 2 u-turn and
+// permission 0 inherit, 1 allowed, 2 banned.
+export fn traffic_set_road_turn(road: u32, movement: u32, permission: u32) bool {
+    if (road >= city.road_count or movement > 2 or permission > 2) return false;
+    return traffic.setMovementOverride(road, @enumFromInt(@as(u8, @intCast(movement))), @enumFromInt(@as(u8, @intCast(permission))));
+}
+
+// One junction's own control rule: 0 inherit, 1 uncontrolled, 2 give way, 3
+// stop sign.
+export fn traffic_set_junction_control(node: u32, rule: u32) bool {
+    if (node >= city.node_count or rule > 3) return false;
+    return traffic.setJunctionRule(node, @enumFromInt(@as(u8, @intCast(rule))));
+}
+
+// Install a speed trap on one segment. Returns the capital cost, or -1 when the
+// segment is out of range, already covered, or the register is full. The trap's
+// own posted limit is optional: zero follows the segment's legal limit.
+export fn traffic_place_trap(road: u32, limit_kmh: f64) f64 {
+    if (road >= city.road_count or !std.math.isFinite(limit_kmh)) return -1;
+    const cost = traffic.installTrap(road, @floatCast(limit_kmh));
+    if (cost < 0) return -1;
+    finance.record(game.elapsed, -cost, 20, -1, @intCast(road));
+    return cost;
+}
+
+export fn traffic_remove_trap(road: u32) bool {
+    return traffic.removeTrap(road);
+}
+
+export fn traffic_set_trap_limit(road: u32, limit_kmh: f64) bool {
+    if (road >= city.road_count or !std.math.isFinite(limit_kmh)) return false;
+    return traffic.setTrapLimit(road, @floatCast(limit_kmh));
+}
+
+export fn traffic_set_trap_active(road: u32, active: u32) bool {
+    return traffic.setTrapActive(road, active == 1);
+}
+
+// The number of lanes the next road draft is built with, 1-3. Zero hands the
+// choice back to the street-class default.
+export fn road_lane_count(value: u32) void {
+    game.roadworks.lane_count = @intCast(@min(value, city.max_lanes));
 }

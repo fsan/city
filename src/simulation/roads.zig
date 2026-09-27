@@ -21,10 +21,15 @@ pub var knot_count: usize = 0;
 pub var class: u8 = 1;
 // Attached lane options for the drafted road: bit 0 bus priority, bit 1 cycle.
 pub var attached_lanes: u8 = 0;
+// Numbered item 19: the number of traffic lanes each direction the drafted road
+// is built with, 1-3. Zero means "use the class default" so an older caller is
+// unchanged.
+pub var lane_count: u8 = 0;
 // 0 valid, 1 bounds/length, 2 occupied parcel, 3 grade, 4 funds,
 // 5 network capacity, 6 reserved works, 7 overlap/shallow junction, 8 disconnected.
 pub fn reset() void {
     count = 0;
+    lane_count = 0;
     knot_count = 0;
     active = false;
     cost = 0;
@@ -263,6 +268,9 @@ pub fn build(time: f64) bool {
             if (!exists) {
                 const rid = city.addRoadClass(previous, n, street, class);
                 city.roads[rid].condition = 100;
+                // The drafted lane count rides on every new segment of this
+                // street, exactly the way the attached priority lanes do.
+                if (lane_count != 0) city.roads[rid].lanes = city.clampLanes(lane_count);
             }
             previous = n;
         }
@@ -295,5 +303,6 @@ pub fn build(time: f64) bool {
     finance.record(time, -cost, 9, @intCast(street), -1);
     reset();
     attached_lanes = 0;
+    lane_count = 0;
     return true;
 }

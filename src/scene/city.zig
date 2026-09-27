@@ -95,7 +95,35 @@ pub const Kind = enum(u32) { home, shop, office, clinic, hall, park, depot, vaca
 pub const max_buildings = 900;
 pub const Building = struct { x: f32, z: f32, width: f32, depth: f32, height: f32, ground: f32, kind: Kind, district: usize, node: usize, value: f64, capacity: usize, slots: usize = 0, sun: f32 = 1, occupants: usize = 0, employer: i32 = -1, entry_x: f32 = 0, entry_z: f32 = 0, street: usize = 0, number: usize = 0, park: f32 = 0 };
 pub const Node = struct { x: f32, z: f32, y: f32, street: usize = 0, number: usize = 0 };
-pub const Road = struct { a: usize, b: usize, length: f32, slope: f32, district: usize, condition: f32, street: usize = 0, class: u8 = 1, pedestrians: bool = true, vehicles: bool = true, crosswalk: bool = false, works: bool = false };
+pub const Road = struct {
+    a: usize,
+    b: usize,
+    length: f32,
+    slope: f32,
+    district: usize,
+    condition: f32,
+    street: usize = 0,
+    class: u8 = 1,
+    // Numbered item 19: the number of traffic lanes in each direction the
+    // player built the segment with, 1-3. It is a physical property of the
+    // road, so it is serialized with the town while the traffic law is not.
+    lanes: u8 = 1,
+    pedestrians: bool = true,
+    vehicles: bool = true,
+    crosswalk: bool = false,
+    works: bool = false,
+};
+pub const min_lanes: u8 = 1;
+pub const max_lanes: u8 = 3;
+// The opening lane count follows the street class: a lane or a local street
+// is one lane each way, and the broad avenue and boulevard the author laid
+// out carry two.
+pub fn defaultLanes(class: u8) u8 {
+    return if (class >= 2) 2 else 1;
+}
+pub fn clampLanes(value: u8) u8 {
+    return std.math.clamp(value, min_lanes, max_lanes);
+}
 pub const Vec = struct { x: f32, z: f32 };
 pub var buildings: [max_buildings]Building = undefined;
 // Slice 15: `buildings.len` is the array bound (900), not the number of lots the
@@ -300,7 +328,7 @@ pub fn addRoadClass(a: usize, b: usize, street: usize, class: u8) usize {
     const planar = @sqrt(dx * dx + dz * dz);
     const district = districtAt((nodes[a].x + nodes[b].x) / 2, (nodes[a].z + nodes[b].z) / 2);
     const id = road_count;
-    road_storage[id] = .{ .a = a, .b = b, .length = @sqrt(planar * planar + dy * dy), .slope = @abs(dy) / @max(0.01, planar), .district = district, .condition = 70, .street = street, .class = @min(class, 3) };
+    road_storage[id] = .{ .a = a, .b = b, .length = @sqrt(planar * planar + dy * dy), .slope = @abs(dy) / @max(0.01, planar), .district = district, .condition = 70, .street = street, .class = @min(class, 3), .lanes = defaultLanes(@min(class, 3)) };
     road_count += 1;
     roads = road_storage[0..road_count];
     return id;

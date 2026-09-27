@@ -120,10 +120,14 @@ export function createPlanning(game, transport) {
   $('permit-tool').onclick=()=>mode==='permit'?close():begin('permit');
   $('park-tool').onclick=()=>mode==='park'?close():begin('park');
   $('planning-close').onclick=close;
-  function lanes(){game.road_lanes(($('road-lane-bus').checked?1:0)|($('road-lane-cycle').checked?2:0));}
+  // Numbered item 19: the lane count and the attached priority lanes are both
+  // properties of the draft, so they are published together whenever either
+  // changes.
+  function lanes(){game.road_lanes(($('road-lane-bus').checked?1:0)|($('road-lane-cycle').checked?2:0));game.road_lane_count(Number($('road-lane-count').value));}
   $('road-shape').onchange=()=>begin('road');
-  $('road-class').onchange=()=>{if(mode!=='road')return;game.road_class(Number($('road-class').value));status();};
+  $('road-class').onchange=()=>{if(mode!=='road')return;game.road_class(Number($('road-class').value));lanes();status();};
   $('road-lane-bus').onchange=lanes;
+  $('road-lane-count').onchange=lanes;
   $('road-lane-cycle').onchange=lanes;
   $('road-discard').onclick=()=>begin('road');
   function build(){if(!ready)return;if(game.road_build()){transport.syncNetwork();game.parking_rebuild();fixed=0;ready=false;lanes();game.road_class(Number($('road-class').value));game.road_begin(Number($('road-shape').value));$('planning-status').textContent='Road built. New roadside parcels are unzoned. Click to start another road.';$('road-build').disabled=true;}else status();}
