@@ -266,6 +266,11 @@ kbd {
 #overlay-key[data-mode="6"] .gradient {
   background: linear-gradient(90deg, #14161a, #6a5a2c, #d8b45a, #f0e2a8);
 }
+/* The service layer ramps from a clear kerb to a segment holding a live
+   incident or an unloading lorry. */
+#overlay-key[data-mode="7"] .gradient {
+  background: linear-gradient(90deg, #3d4549, #8a6a34, #d85a2a, #eb3d2e);
+}
 #overlay-key small {
   display: block;
   font-size: 9px;

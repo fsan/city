@@ -12,10 +12,11 @@ Commands: init, update, set_speed, set_funding, apply_taxes, offer, revise, canc
 
 ## Overlay modes
 
-`set_overlay(value)` clamps to 0-6. 0 off, 1 street condition, 2 traffic
+`set_overlay(value)` clamps to 0-7. 0 off, 1 street condition, 2 traffic
 intensity and queues, 3 pedestrian density, 4 park condition, 5 water, drainage
-and flooding, 6 street lighting. Group 0 field 182 returns the mode the renderer
-is painting, so a verification probe can confirm the clamp rather than infer it.
+and flooding, 6 street lighting, 7 incidents and freight. Group 0 field 182
+returns the mode the renderer is painting, so a verification probe can confirm
+the clamp rather than infer it.
 
 Mode 5 paints every eligible carriageway by its working share of drain capacity
 and pulls a segment towards a standing-water red by how much of the day's rain
@@ -27,6 +28,18 @@ diagram over the real town rather than a surveyed route.
 
 Mode 6 paints every carriageway by its current night illumination after
 coverage, and tints a segment that has a failed column.
+
+Mode 7 is the service layer. It paints a carriageway warmer the more of it is
+held - by `incidents.penalty(road)`, which sums the live severity of that
+segment's incidents, and by a lorry holding one of its loading bays - then stands
+the service markers themselves: one post per incident that has not cleared, as
+tall as its severity and coloured by kind (red collision, amber breakdown, violet
+obstruction, blue roadworks), with a lane bar across the held lane while a
+responder or the recovery crew is on scene; a badge on the apron of every
+contractor depot; a lorry for each delivery run in transit or unloading; and a
+kerbside bar on every segment whose bay a lorry currently holds. Incidents and
+freight are bounded rings read from the simulation, so the layer and the
+Incidents and Freight panels always agree.
 
 ## Water, drainage and waste additions
 
@@ -46,7 +59,7 @@ Groups 9–12 are transport policy/counters, bus lines, street nodes and vehicle
 
 Group 9 fields 0–4: fare cap, boarding subsidy, total paid subsidy, actual fare, node count; 5–8: active trips per mode; 9: people waiting at stops. Group 10 fields 0–8: active, stop count, boardings, cumulative revenue, costs, operator cash, fleet count, aboard, route version. Fields 16–31 are ordered stop node IDs. Fields 35–40 are wait starts, completed waits, capacity denials, abandoned waits, mean completed wait (seconds), and abandoned-after-capacity for the current observation record. Group 11 fields 0–4: world x/z/elevation, screen x/y. Fields 5/6 are street ID and number; 7/8 are the kerbside stop world position, 9 is valid-stop, and 10/11 are the kerbside stop screen position. Group 12 fields 0–10: active, x/z, speed, passengers, node/next, segment progress, line ID (-1 car), dwell, current lane.
 
-Commands: `transport_policy(cap, subsidy)` validates bounds; `transport_select(id)` selects an overlay; `transport_draft(count)` and `transport_stop(index,node)` populate a draft; `transport_apply(line)` validates the complete draft atomically; `transport_edit_end()` hides the draft; `transport_remove(line)` withdraws service; `transport_lane(road,allocation)` changes allocation. `route_next(from,to)` returns the street path used by the editor and buses. `focus(12,id)` locates a vehicle. Overlay modes are 0 off, 1 street condition, 2 traffic pressure, 3 pedestrian density, 4 park condition, 5 water, drainage and flooding, 6 street lighting; see the overlay section above.
+Commands: `transport_policy(cap, subsidy)` validates bounds; `transport_select(id)` selects an overlay; `transport_draft(count)` and `transport_stop(index,node)` populate a draft; `transport_apply(line)` validates the complete draft atomically; `transport_edit_end()` hides the draft; `transport_remove(line)` withdraws service; `transport_lane(road,allocation)` changes allocation. `route_next(from,to)` returns the street path used by the editor and buses. `focus(12,id)` locates a vehicle. Overlay modes are 0 off, 1 street condition, 2 traffic pressure, 3 pedestrian density, 4 park condition, 5 water, drainage and flooding, 6 street lighting, 7 incidents and freight; see the overlay section above.
 
 Avoid copying large global arrays into read paths: iterate by reference. This slice exposed WASM stack exhaustion when expanding the resident record while iterating array values; references fixed it without increasing memory limits. All reporters use the scalar interface, never struct offsets.
 

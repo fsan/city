@@ -29,7 +29,7 @@ confirm the clamp rather than infer it.
 Every eligible carriageway is painted by the share of its own drain capacity
 that is working, then pulled towards a standing-water red by how much of the
 day's rain it cannot drain. The layer also draws, as a diagram over the real
-town, the intake's own structure, a pipe run from the intake node to each
+town, the intake's own structure, a pipe run from the intake node to each (updated: pipes now follow the real walk-graph run hop by hop and carry animated flow pulses on served runs; unserved districts keep the straight red diagram line)
 district node, and a column at each district node whose height and colour are
 that district's measured supply coverage. Water is a bounded graph-distance
 pipe run, not drawn pipe geometry, so the run is a diagram rather than a

@@ -189,6 +189,7 @@ function start(renderer) {
     if (key === "f") transport.togglePedestrians();
     if (key === "l") transport.toggleLighting();
     if (key === "u") transport.toggleWater();
+    if (key === "y") transport.toggleService();
     if (["1", "2", "3"].includes(key)) speed([1, 4, 16][Number(key) - 1]);
   });
   window.addEventListener("keyup", (event) =>

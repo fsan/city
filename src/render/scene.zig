@@ -161,6 +161,7 @@ fn surfaceColor(r: city.Road, id: usize) Color {
     if (overlay == 3) return streetColor(100 * (1 - @min(1, @as(f32, @floatFromInt(game.residents.pedestrians[id])) / @max(1, r.length * 0.15))));
     if (overlay == 5) return drainColor(id, game.calendar.dayIndex(game.elapsed));
     if (overlay == 6) return lightColor(id);
+    if (overlay == 7) return serviceColor(id);
     if (overlay == 1) return streetColor(r.condition);
     return .{ 0.23, 0.25, 0.25 };
 }
@@ -691,6 +692,7 @@ pub fn draw(w: f32, h: f32) void {
         };
     }
     waterOverlay();
+    serviceOverlay();
     // Slice 11: signal heads stand back from the corner on their own arm, one
     // per branch, and only the branch holding green shows a green lamp.
     for (transport.signals.junctions[0..transport.signals.count], 0..) |junction, junction_index| {
@@ -925,22 +927,168 @@ pub fn draw(w: f32, h: f32) void {
         quad(.{ p.x - dx, y, p.z - dz }, .{ p.x + dx, y, p.z + dz }, .{ p.x + dx, y + 0.9, p.z + dz }, .{ p.x - dx, y + 0.9, p.z - dz }, color);
     }
 }
+// Numbered item 15 and 16: the service overlay. Traffic incidents and the
+// freight layer both act on a real segment, so this layer paints the roadway
+// those services are interrupting and stands a marker on the spot they hold.
+// A road with a live incident or a held loading bay reads warmer than a clear
+// one, which is what makes the two visible together as one service picture.
+fn serviceColor(road: usize) Color {
+    const clear = Color{ 0.24, 0.27, 0.29 };
+    const incident = game.incidents.penalty(road);
+    const held: f32 = if (game.freight.bayHeld(road)) 1 else 0;
+    const heat = @min(1, incident * 0.32 + held * 0.45);
+    if (heat <= 0.001) return clear;
+    return .{ clear[0] + (0.86 - clear[0]) * heat, clear[1] + (0.34 - clear[1]) * heat, clear[2] + (0.16 - clear[2]) * heat };
+}
+
+// One colour per incident kind, so a player can tell a collision from a
+// scheduled roadworks at a glance.
+fn incidentColor(kind: game.incidents.Kind) Color {
+    return switch (kind) {
+        .collision => .{ 0.92, 0.24, 0.18 },
+        .breakdown => .{ 0.94, 0.66, 0.18 },
+        .obstruction => .{ 0.72, 0.42, 0.86 },
+        .works => .{ 0.30, 0.72, 0.90 },
+    };
+}
+
+fn serviceOverlay() void {
+    if (overlay != 7) return;
+    // Traffic incidents: a post at the segment's own node, as tall and as wide
+    // as the severity, plus a lane bar while a responder or the crew is on
+    // scene. A cleared record keeps no marker, so the layer matches the panel.
+    for (game.incidents.records[0..game.incidents.count]) |record_value| {
+        if (record_value.phase == .cleared) continue;
+        if (record_value.road >= city.road_count or record_value.node >= city.node_count) continue;
+        const p = city.Vec{ .x = city.nodes[record_value.node].x, .z = city.nodes[record_value.node].z };
+        const base = city.elevation(p.x, p.z) + pavement_kerb;
+        const colour = incidentColor(record_value.kind);
+        const post: f32 = 1.1 + @as(f32, @floatFromInt(record_value.severity)) * 0.7;
+        box(p.x - 0.55, p.z - 0.55, 1.1, 1.1, post, base, colour);
+        if (game.incidents.blocks(&record_value)) {
+            const road = city.roads[record_value.road];
+            const a = city.nodes[road.a];
+            const b = city.nodes[road.b];
+            const len = city.hypot(b.x - a.x, b.z - a.z);
+            if (len > 0.001) {
+                const ux = (b.x - a.x) / len;
+                const uz = (b.z - a.z) / len;
+                // The blocked lane sits to one side of the centre line, so a
+                // single-lane incident does not close the whole carriageway.
+                const side: f32 = if (record_value.lane == 0) -0.55 else 0.55;
+                ribbon(.{ .x = p.x - ux * 1.6 + -uz * side, .z = p.z - uz * 1.6 + ux * side }, .{ .x = p.x + ux * 1.6 + -uz * side, .z = p.z + uz * 1.6 + ux * side }, 0.28, 0, pavement_ribbon, colour);
+            }
+        }
+    }
+    // Freight depots: the contractor's own works building is already drawn, so
+    // the layer only adds a badge and a loading apron in front of it.
+    for (game.residents.companies[0..game.residents.company_count]) |company| {
+        if (!company.contractor or company.building >= city.lot_count) continue;
+        const b = city.buildings[company.building];
+        const base = city.elevation(b.entry_x, b.entry_z) + pavement_kerb;
+        box(b.entry_x - 0.9, b.entry_z - 0.9, 1.8, 1.8, 1.0, base, .{ 0.78, 0.56, 0.20 });
+    }
+    // Lorries: a run in transit or unloading stands a lorry on its frontage
+    // road beside the customer's node, so the freight layer shows where the
+    // town's delivery fleet actually is instead of only counting it.
+    for (game.freight.runs[0..game.freight.count]) |run| {
+        if (run.phase != .travelling and run.phase != .loading) continue;
+        if (run.road < 0 or run.road >= city.road_count) continue;
+        const road = city.roads[@intCast(run.road)];
+        const a = city.nodes[road.a];
+        const b = city.nodes[road.b];
+        const len = city.hypot(b.x - a.x, b.z - a.z);
+        if (len < 0.001) continue;
+        const ux = (b.x - a.x) / len;
+        const uz = (b.z - a.z) / len;
+        // The lorry parks on the bay side, offset from the centre line.
+        const side: f32 = if (run.phase == .loading) -0.8 else 0.8;
+        const cx = (a.x + b.x) / 2 - uz * side;
+        const cz = (a.z + b.z) / 2 + ux * side;
+        const base = city.elevation(cx, cz) + pavement_surface;
+        const colour: Color = if (run.phase == .loading) .{ 0.92, 0.70, 0.24 } else .{ 0.62, 0.72, 0.82 };
+        vehicleBox(cx, cz, 3.4, 1.1, 1.3, base, ux, uz, colour);
+    }
+    // Held loading bays: a short kerbside bar on each segment a lorry is
+    // occupying, so a converted kerb reads as in use while it is held.
+    for (0..city.road_count) |road_index| {
+        if (!game.freight.bayHeld(road_index)) continue;
+        const road = city.roads[road_index];
+        const a = city.nodes[road.a];
+        const b = city.nodes[road.b];
+        const len = city.hypot(b.x - a.x, b.z - a.z);
+        if (len < 0.001) continue;
+        const ux = (b.x - a.x) / len;
+        const uz = (b.z - a.z) / len;
+        const cx = (a.x + b.x) / 2 - uz * 2.3;
+        const cz = (a.z + b.z) / 2 + ux * 2.3;
+        ribbon(.{ .x = cx - ux * 3, .z = cz - uz * 3 }, .{ .x = cx + ux * 3, .z = cz + uz * 3 }, 0.26, 0, pavement_ribbon, .{ 0.95, 0.78, 0.28 });
+    }
+}
+
 // Numbered item 18: the water and drainage overlay. Water is a bounded
 // graph-distance pipe run rather than drawn pipe geometry, so the layer is a
 // diagram over the real town: a run from the intake's own node to each
 // district's node, a column at that node whose height and colour are the
 // district's coverage, and the intake structure itself. The carriageway colour
 // from `surfaceColor` carries the drains and today's flooding.
+// A pipe is drawn along the real walk-graph run the supply rule measures, hop
+// by hop, so the player sees the street the water actually travels down. A
+// district the graph cannot reach keeps the straight diagram line in red.
+// Flow markers run intake-ward to district on a served pipe; they stop when
+// the intake is down or the district is cut off, so the animation is the live
+// supply state and not decoration.
+fn waterPipe(from: usize, to: usize, color: Color, animate: bool) void {
+    const phase: f32 = @floatCast(@mod(game.elapsed * 0.35, 6));
+    var node = from;
+    var travel: f32 = 0;
+    var guard: usize = 0;
+    while (node != to and guard < city.max_nodes) : (guard += 1) {
+        const next: usize = city.walk_next[node][to];
+        if (next == node or next >= city.node_count) break;
+        const a = city.nodes[node];
+        const b = city.nodes[next];
+        ribbon(.{ .x = a.x, .z = a.z }, .{ .x = b.x, .z = b.z }, 0.17, 0, pavement_ribbon, color);
+        if (animate) {
+            const ux = b.x - a.x;
+            const uz = b.z - a.z;
+            const seg = city.hypot(ux, uz);
+            if (seg > 0.001) {
+                const dx = ux / seg;
+                const dz = uz / seg;
+                var d: f32 = @mod(phase - travel, 6);
+                while (d < seg) : (d += 6) {
+                    const near_end = @min(seg, d + 1.6);
+                    ribbon(.{ .x = a.x + dx * d, .z = a.z + dz * d }, .{ .x = a.x + dx * near_end, .z = a.z + dz * near_end }, 0.09, 0, pavement_ribbon + 0.02, .{ 0.82, 0.96, 1.0 });
+                }
+            }
+            travel += seg;
+        }
+        node = next;
+    }
+    if (node != to) {
+        const a = city.nodes[from];
+        const b = city.nodes[to];
+        ribbon(.{ .x = a.x, .z = a.z }, .{ .x = b.x, .z = b.z }, 0.17, 0, pavement_ribbon, .{ 0.72, 0.34, 0.30 });
+    }
+}
+
 fn waterOverlay() void {
     if (overlay != 5) return;
     if (game.water.intake_installed and game.water.intake_node < city.node_count) {
+        // The works stands on the river; its nearest node is where the drawn
+        // pipes begin. A short collar pipe ties the two together so the intake
+        // never looks detached from the network it feeds.
         const source = city.nodes[game.water.intake_node];
-        for (game.water.supplies, 0..) |supply, district| {
-            _ = district;
+        ribbon(.{ .x = game.water.intake_x, .z = game.water.intake_z }, .{ .x = source.x, .z = source.z }, 0.17, 0, pavement_ribbon, if (game.water.intake_working) Color{ 0.32, 0.70, 0.88 } else Color{ 0.72, 0.34, 0.30 });
+        for (game.water.supplies) |supply| {
             if (supply.node >= city.node_count) continue;
-            const target = city.nodes[supply.node];
-            const pipe: Color = if (supply.served) .{ 0.32, 0.70, 0.88 } else .{ 0.72, 0.34, 0.30 };
-            ribbon(.{ .x = source.x, .z = source.z }, .{ .x = target.x, .z = target.z }, 0.17, 0, pavement_ribbon, pipe);
+            if (supply.pipe_run >= 1e9) {
+                const target = city.nodes[supply.node];
+                ribbon(.{ .x = source.x, .z = source.z }, .{ .x = target.x, .z = target.z }, 0.17, 0, pavement_ribbon, .{ 0.72, 0.34, 0.30 });
+                continue;
+            }
+            waterPipe(game.water.intake_node, supply.node, if (supply.served) .{ 0.32, 0.70, 0.88 } else .{ 0.72, 0.34, 0.30 }, supply.served);
         }
     }
     // One marker per district node: the column height and colour are the

@@ -95,8 +95,8 @@ export fn set_funding(value: u32) void {
 }
 export fn set_overlay(value: u32) void {
     // 0 off, 1 street condition, 2 traffic, 3 pedestrians, 4 park condition,
-    // 5 water and drainage, 6 street lighting.
-    scene.overlay = @min(value, 6);
+    // 5 water and drainage, 6 street lighting, 7 incidents and freight.
+    scene.overlay = @min(value, 7);
 }
 export fn apply_taxes(home: f64, commercial: f64) bool {
     return finance.applyTaxes(home, commercial);

@@ -1,3 +1,28 @@
+# Next agent kickoff - toolbar and water overlay fixes in the worktree
+
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Read this note before editing. Do not commit, reset, rewrite history or push.
+
+**A small uncommitted UI batch fixes three report items.** The Water (U), Lights (L) and Service (Y) toolbar buttons had no click handlers at all - only their keyboard shortcuts worked, because `web/transport.js` wired clicks for `pedestrian-overlay`, `traffic-overlay`, `overlay` and `park-overlay` but not for the three newer overlay buttons. Clicks now call `setOverlay(5|6|7)` like the keys do. The water overlay redrew: pipes follow the real walk-graph run from the intake node to each district node hop by hop (unserved districts keep the straight red diagram line), pale flow pulses travel downstream at `elapsed * 0.35` on served runs and stop when the intake is down, and a collar pipe ties the intake building to its source node. `web/transport.js` legend note for mode 5 mentions the pulses.
+
+**Verified.** `make build` publishes `/output/city.wasm` byte-identical to the served `/build/city.wasm`; `node --check` passes on every served `web/*.js`; in a live browser all three buttons toggle `aria-pressed` and the overlay shows animated dashes that move between frames.
+
+
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Read this note before editing. Do not commit, reset, rewrite history or push.
+
+**A bounded UI batch on top of the water and lighting overlays is complete, built, probed and documented in the worktree; it is not committed.** The user asked to close the two gaps left after the water/lighting batch: traffic incidents (slice 23) and freight (slice 24) both published per-segment state and had working panels, but nothing drew them on the map, and the Transport parking summary had no locate affordance.
+
+- `src/main.zig` clamps `set_overlay` to **0-7**; 7 is incidents and freight. Group 0 field 182 still returns the mode the renderer holds.
+- `src/render/scene.zig` adds `serviceColor(road)`, `incidentColor(kind)` and `serviceOverlay()`, called from `draw()` after `waterOverlay()`. Mode 7 warms a carriageway by `incidents.penalty(road)` and by a held loading bay, then stands a post per uncleared incident (kind-coloured, severity-scaled) with a lane bar while the lane is held, a depot badge on each contractor apron, a lorry per travelling or loading run, and a kerbside bar on every segment whose bay a lorry holds.
+- `web/transport.js` adds mode 7 to the overlay title, legend and note tables, the `service-overlay` pressed state, the `toggleService` export, and a **Delivery runs** table in the Freight panel that reads group 35 newest first with a locate action per row. The Parking summary gains a **Locate this street** button.
+- `web/index.html`, `web/main.js` and `web/style.css` add the `Service` (Y) toolbar button, the `y` shortcut, the Controls help row and the mode-7 legend gradient.
+- `docs/service-overlay-slice.md` is the slice note; `docs/abi.md`, `docs/README.md` and `README.md` are updated.
+
+**Verified.** `make build` succeeds; served `/build/city.wasm` matches published `/output/city.wasm` byte for byte (md5 `0a382edff2975762ec48120366e8aab6` at the last check; the WASM embeds build and cache paths, so compare the two copies rather than a fixed digest). Every served browser module passes `node --check`. A focused probe outside the repository reports `after set_overlay(7) field182=7` and `after set_overlay(9) field182=7 (clamped to 7)`, 13 depots, `bay designation road=0 ok=true`, `bay over-cap refusal ok=false`, and the water/lighting/drainage fields unchanged.
+
+**Limits.** Mode 7 is a diagram over the real town: a lorry is drawn from its run's frontage road rather than a tracked coordinate, and an incident post stands at its own segment node. The layer changes no rule, price or threshold; it reads the ABI the simulation already publishes.
+
+**Authorized goal:** the user's "address the missing parts" request produced this batch. Nothing else was authorized. Do not commit, reset, rewrite history or push without a request.
+
 # Next agent kickoff - water and lighting overlays, and the Water & waste window, complete in the worktree
 
 Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Read this note before editing. Do not commit, reset, rewrite history or push.

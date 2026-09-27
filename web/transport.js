@@ -5,6 +5,27 @@ export function createTransport(game, ui) {
   const $ = (id) => document.getElementById(id);
   const r = (group, id, field) => game.read(group, id, field);
   const money = (n) => `£${n.toFixed(2)}`;
+  // A depot is a contractor company; every other company is an ordinary
+  // workplace. Both flags come from the published ABI, so the freight table
+  // names a company the same way the rest of the UI does.
+  const freightCompany = (id) =>
+    id < 0
+      ? "\u2014"
+      : r(4, id, 4)
+        ? `Depot #${id + 1}`
+        : `Works ${id + 1}`;
+  // Reuse cells so a live refresh does not remove the keyboard-focused button,
+  // the same pattern the reports tables use.
+  function valuesInto(row, values) {
+    values.forEach((value, column) => {
+      const cell =
+        row.children[column] || row.appendChild(document.createElement("td"));
+      const text = String(value);
+      if (cell.textContent !== text || cell.querySelector("button"))
+        cell.textContent = text;
+    });
+    while (row.children.length > values.length) row.lastElementChild.remove();
+  }
   const decoder = new TextDecoder();
   const districtName = (id) => decoder.decode(new Uint8Array(game.memory.buffer, game.name_pointer(id), game.name_length(id)));
   let nodes = Array.from({ length: r(9, 0, 4) }, (_, id) => ({
@@ -663,6 +684,10 @@ export function createTransport(game, ui) {
   };
   $("road-locate").onclick = () =>
     game.focus(5, Number($("traffic-road").value));
+  // The parking summary is a town-wide readout, so it needs its own way to
+  // jump to the street currently selected above it.
+  $("parking-locate").onclick = () =>
+    game.focus(5, Number($("traffic-road").value));
   // Slice 24: designate loading bays on the selected street. The bays come out
   // of that segment's car supply, so the parking summary updates immediately.
   $("freight-bays-apply").onclick = () => {
@@ -729,6 +754,38 @@ export function createTransport(game, ui) {
     $("freight-message").textContent = bays < 0
       ? "This street cannot take loading bays (lanes, works and pedestrian-only segments are excluded)."
       : `Street #${road + 1}: ${bays} loading bay${bays === 1 ? "" : "s"}; measured kerbside demand ${(r(0,0,136)*100).toFixed(0)}%.`;
+    // Numbered item 16 follow-up: the delivery-run ring was counted but never
+    // listed, and nothing on the map said where a lorry actually was. The table
+    // reads group 35 newest first and gives each run a locate action.
+    const freightPhaseNames = ["dispatched", "travelling", "loading", "delivered", "failed"];
+    const runs = r(0, 0, 123);
+    const freightBody = $("freight-rows");
+    const shown = Math.min(runs, 48);
+    while (freightBody.children.length > shown) freightBody.lastElementChild.remove();
+    for (let i = 0; i < shown; i++) {
+      const row = freightBody.children[i] || freightBody.appendChild(document.createElement("tr"));
+      const depot = r(35, i, 1), customer = r(35, i, 2), phase = r(35, i, 6);
+      const node = r(35, i, 4), runRoad = r(35, i, 5);
+      // The Locate cell is written first so the number of values matches the
+      // number of columns and the held-now text never lands in the Fee cell.
+      const locate = row.children[6] || row.appendChild(document.createElement("td"));
+      valuesInto(row, [
+        `#${r(35, i, 0)}`,
+        freightCompany(depot),
+        freightCompany(customer),
+        freightPhaseNames[phase] ?? "?",
+        r(35, i, 7).toFixed(1),
+        money(r(35, i, 8)),
+        locate.textContent,
+      ]);
+      if (r(35, i, 14) === 1) locate.textContent = "held now";
+      else {
+        let button = locate.querySelector("button");
+        if (!button) { locate.replaceChildren(); button = locate.appendChild(document.createElement("button")); }
+        button.textContent = "Locate";
+        button.onclick = () => { if (node >= 0) game.focus(11, node); else if (runRoad >= 0) game.focus(5, runRoad); };
+      }
+    }
     // Slice 25: street lighting. The summary is the town total; the selected
     // street shows its own coverage, its outstanding faults and the electricity
     // it draws. Darkness is published so the panel can say whether any of this
@@ -771,6 +828,7 @@ export function createTransport(game, ui) {
     4: "PARK CONDITION",
     5: "WATER · SUPPLY & DRAINAGE",
     6: "STREET LIGHTING",
+    7: "INCIDENTS · FREIGHT",
   };
   const overlayLegends = {
     1: ["Worn", "Maintained"],
@@ -779,14 +837,16 @@ export function createTransport(game, ui) {
     4: ["Neglected", "Maintained"],
     5: ["Flooded / undrained", "Drained"],
     6: ["Dark / faulted", "Lit"],
+    7: ["Clear kerb", "Incident / lorry"],
   };
   const overlayNotes = {
     1: "",
     2: "Amber clouds: vehicle density; wider areas at city scale",
     3: "People walking or waiting outside; street intensity per 100 m² of sidewalk",
     4: "",
-    5: "Streets by drained share and today's flood; blue pipes run from the river intake to each district node",
+    5: "Streets by drained share and today's flood; blue pipes run from the river intake along the streets to each district node, with pale pulses moving downstream on a live run",
     6: "Night illumination after coverage; a red segment has a failed column",
+    7: "A post per live incident (red collision, amber breakdown, violet obstruction, blue works) and each lorry in transit or unloading, with the kerbside bays they hold",
   };
   function setOverlay(mode) {
     overlay = mode;
@@ -797,6 +857,7 @@ export function createTransport(game, ui) {
     $("park-overlay").setAttribute("aria-pressed", mode === 4);
     $("water-overlay").setAttribute("aria-pressed", mode === 5);
     $("lighting-overlay").setAttribute("aria-pressed", mode === 6);
+    $("service-overlay").setAttribute("aria-pressed", mode === 7);
     $("water-overlay-toggle").setAttribute("aria-pressed", mode === 5);
     const key = $("overlay-key");
     key.hidden = !mode;
@@ -808,6 +869,11 @@ export function createTransport(game, ui) {
   }
   $("pedestrian-overlay").onclick = () => setOverlay(overlay === 3 ? 0 : 3);
   $("traffic-overlay").onclick = () => setOverlay(overlay === 2 ? 0 : 2);
+  // The water, lighting and service buttons used to answer only their keys;
+  // they are toolbar buttons like the others and need the same click wiring.
+  $("water-overlay").onclick = () => setOverlay(overlay === 5 ? 0 : 5);
+  $("lighting-overlay").onclick = () => setOverlay(overlay === 6 ? 0 : 6);
+  $("service-overlay").onclick = () => setOverlay(overlay === 7 ? 0 : 7);
   function points() {
     return nodes.map((n) => ({ x: r(11, n.id, 3), y: r(11, n.id, 4) }));
   }
@@ -1231,6 +1297,7 @@ export function createTransport(game, ui) {
     toggleCondition: () => setOverlay(overlay === 1 ? 0 : 1),
     toggleWater: () => setOverlay(overlay === 5 ? 0 : 5),
     toggleLighting: () => setOverlay(overlay === 6 ? 0 : 6),
+    toggleService: () => setOverlay(overlay === 7 ? 0 : 7),
     setOverlay,
     currentOverlay: () => overlay,
     reset() {
