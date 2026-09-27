@@ -41,14 +41,13 @@ export function createInterface(actions) {
       );
     });
   }
+  const catMenus = [...document.querySelectorAll(".cat-menu")];
   function closeMenus() {
-    $("management-menu").hidden = true;
-    $("reports-menu").hidden = true;
+    catMenus.forEach((menu) => (menu.hidden = true));
     $("context-menu").hidden = true;
-    $("management-toggle").setAttribute("aria-expanded", "false");
-    document
-      .querySelector("[data-submenu]")
-      .setAttribute("aria-expanded", "false");
+    document.querySelectorAll(".tool-cat").forEach((toggle) =>
+      toggle.setAttribute("aria-expanded", "false"),
+    );
   }
   function bounds(panel) {
     const rect = panel.getBoundingClientRect();
@@ -148,7 +147,7 @@ export function createInterface(actions) {
     });
   }
   function escape() {
-    if (!$("management-menu").hidden || !$("context-menu").hidden) {
+    if (catMenus.some((menu) => !menu.hidden) || !$("context-menu").hidden) {
       closeMenus();
       $("city").focus();
     } else if (order.length) close(order.at(-1));
@@ -195,24 +194,31 @@ export function createInterface(actions) {
         closeMenus();
       }),
   );
-  $("management-toggle").onclick = () => {
-    const wasOpen = !$("management-menu").hidden;
-    closeMenus();
-    if (!wasOpen) {
-      $("management-menu").hidden = false;
-      $("management-toggle").setAttribute("aria-expanded", "true");
-    }
-  };
-  document.querySelector("[data-submenu]").onclick = (event) => {
-    $("reports-menu").hidden = !$("reports-menu").hidden;
-    event.currentTarget.setAttribute(
-      "aria-expanded",
-      String(!$("reports-menu").hidden),
-    );
-  };
+  // Category menus: each toolbar icon floats its popup above the toolbar,
+  // positioned over the icon that opened it.
+  document.querySelectorAll(".tool-cat").forEach((toggle) => {
+    const menu = document.getElementById(toggle.getAttribute("aria-controls"));
+    toggle.onclick = () => {
+      const wasOpen = !menu.hidden;
+      closeMenus();
+      if (!wasOpen) {
+        const rect = toggle.getBoundingClientRect();
+        menu.hidden = false;
+        const width = menu.offsetWidth;
+        menu.style.left = `${Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, innerWidth - width - 8))}px`;
+        menu.style.bottom = `${innerHeight - rect.top + 10}px`;
+        toggle.setAttribute("aria-expanded", "true");
+      }
+    };
+  });
+  catMenus.forEach((menu) =>
+    menu.addEventListener("click", (event) => {
+      if (event.target.closest("button")) closeMenus();
+    }),
+  );
   $("context-inspect").onclick = () => actions.inspect();
   document.addEventListener("pointerdown", (event) => {
-    if (!event.target.closest(".popup, #management-toggle")) closeMenus();
+    if (!event.target.closest(".popup, .tool-cat")) closeMenus();
     if (event.target !== $("city")) actions.clearInput();
   });
   document.addEventListener("focusin", () => actions.clearInput());

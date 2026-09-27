@@ -68,7 +68,7 @@ pub fn init() void {
     next_number = 1;
 }
 fn validTerms(company: usize, fleet: usize, days: f64, price: f64) bool {
-    return company < operators.accounts.len and fleet >= 1 and fleet <= transport.buses_per_line and std.math.isFinite(days) and days >= 1 and days <= 7 and @floor(days) == days and std.math.isFinite(price) and price > 0 and price <= 1e9 and finance.cents(price) > 0;
+    return company < operators.accounts.len and fleet >= 1 and fleet <= transport.buses_per_line and std.math.isFinite(days) and days >= 1 and days <= 60 and @floor(days) == days and std.math.isFinite(price) and price > 0 and price <= 1e12 and finance.cents(price) > 0;
 }
 pub fn minimum(fleet: usize, days: f64, window: u32) f64 {
     return @ceil((days * (if (window == 0) @as(f64, 480) else 320) * 0.18 + @ceil(days) * 2) * @as(f64, @floatFromInt(fleet)) * 1.15 * 100 - 1e-7) / 100;

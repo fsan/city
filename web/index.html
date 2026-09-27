@@ -189,7 +189,8 @@
               </div>
             </div>
             <p id="city-summary"></p>
-            <div class="section-title">LAND USE</div>
+            <div class="section-title">LAND USE <small class="fine">· click a bar to inspect a site, click a colour group for its role</small></div>
+            <canvas id="land-use-chart" class="chart" aria-label="Land use by category"></canvas>
             <table>
               <thead>
                 <tr>
@@ -207,6 +208,7 @@
             aria-labelledby="districts-tab"
             hidden
           >
+            <canvas id="district-chart" class="chart" aria-label="Population and employment by neighbourhood"></canvas>
             <h3>Local conditions <span class="info-tip" tabindex="0" role="button" aria-label="About local conditions" data-tip="Street condition is the mean of local segments, and trust also reads the measured park amenity in that neighbourhood. Click a neighbourhood to filter its residents, employers and streets.">?</span></h3>
             <div class="table-scroll tall"><table>
               <thead>
@@ -228,6 +230,7 @@
             hidden
           >
             <h3>Streets & access <span class="info-tip" tabindex="0" role="button" aria-label="About streets" data-tip="Routes favour shorter, better-maintained streets and gentler slopes. Click a segment to inspect it or offer repairs.">?</span></h3>
+            <canvas id="street-chart" class="chart" aria-label="Street condition by segment"></canvas>
             <div class="pager">
               <button id="street-prev">← Previous</button
               ><span id="street-page"></span
@@ -391,6 +394,7 @@
             hidden
           >
             <h3>Recorded city history <span class="info-tip" tabindex="0" role="button" aria-label="About the history table" data-tip="Actual snapshots every 30 simulation seconds; most recent 96 retained. Citywide values, independent of neighbourhood filter.">?</span></h3>
+            <canvas id="history-chart" class="chart tall" aria-label="City cash and pedestrian trend"></canvas>
             <div class="table-scroll tall"><table>
               <thead>
                 <tr>
@@ -478,7 +482,7 @@
                     aria-label="Draft residential tax percent"
                     type="number"
                     min="0"
-                    max="5"
+                    max="100"
                     step="0.1"
                     value="1.2"
                   />
@@ -494,7 +498,7 @@
                     aria-label="Draft commercial tax percent"
                     type="number"
                     min="0"
-                    max="5"
+                    max="100"
                     step="0.1"
                     value="1.8"
                   />
@@ -556,7 +560,8 @@
             TRANSACTION LEDGER <span class="info-tip" tabindex="0" role="button" aria-label="About the ledger" data-tip="Latest 80 shown; up to 1,024 retained for export. Each row shows cash after that transaction.">?</span>
             <button id="export-ledger">Export retained ledger</button>
           </div>
-          <div class="table-scroll tall"><table>
+          <div class="table-scroll tall"><canvas id="ledger-chart" class="chart tall" aria-label="Ledger movement by category"></canvas>
+          <table>
             <thead>
               <tr>
                 <th>Time</th>
@@ -602,16 +607,16 @@
               >Condition points to restore<input
                 id="work-scope"
                 type="number"
-                min="5"
-                max="60"
+                min="1"
+                max="100"
                 step="5"
                 value="30" /></label
             ><label
               >Offered payment (£)<input
                 id="work-price"
                 type="number"
-                min="100"
-                max="1000000"
+                min="1"
+                max="100000000"
                 step="500"
                 value="12000"
             /></label>
@@ -656,8 +661,8 @@
                 >Revised offer (£)<input
                   id="revised-price"
                   type="number"
-                  min="100"
-                  max="1000000"
+                  min="1"
+                  max="100000000"
                   step="500" /></label
               ><button id="revise-order">Revise unaccepted offer</button>
             </div>
@@ -789,34 +794,6 @@
         </div>
       </section>
 
-      <div id="management-menu" class="popup" hidden>
-        <div class="popup-title">MUNICIPAL MANAGEMENT</div>
-        <button
-          data-submenu="reports-menu"
-          aria-expanded="false"
-          aria-controls="reports-menu"
-        >
-          City reports <kbd>C</kbd><span>›</span>
-        </button>
-        <button data-open="budget">Treasury <kbd>B</kbd><span>↗</span></button>
-        <button data-open="works">
-          Public works <kbd>J</kbd><span>↗</span>
-        </button>
-        <button
-          data-toggle="water"
-          aria-controls="water-window"
-          aria-expanded="false"
-        >
-          Water &amp; waste <kbd>U</kbd><span>↗</span>
-        </button>
-        <button data-open="help">Save / load town <span>↗</span></button>
-        <div id="reports-menu" class="submenu" hidden>
-          <div class="popup-title">REPORTS</div>
-          <button data-report-link="overview">City overview</button
-          ><button data-report-link="districts">Neighbourhoods</button
-          ><button data-report-link="mobility">Mobility</button>
-        </div>
-      </div>
       <div id="context-menu" class="popup" hidden>
         <div class="popup-title">CITY TOOLS</div>
         <button id="context-inspect">Inspect location <kbd>I</kbd></button
@@ -826,81 +803,125 @@
       </div>
       <nav class="toolbar" aria-label="City tools">
         <button
-          id="management-toggle"
+          class="tool-cat"
+          id="cat-info"
           aria-expanded="false"
-          aria-controls="management-menu"
+          aria-controls="menu-info"
+          title="Information & reports — population, businesses, housing, history (C)"
         >
-          <span class="tool-icon">▥</span> Management <span>▴</span>
+          ℹ<small>INFO</small>
         </button>
-        <span class="divider"></span
-        ><button
-          data-toggle="reports"
-          aria-controls="reports-window"
+        <button
+          class="tool-cat"
+          id="cat-money"
           aria-expanded="false"
+          aria-controls="menu-money"
+          title="Finance & municipal — treasury, taxes, works, water budget (B)"
         >
-          Reports <kbd>C</kbd></button
-        ><button
-          data-toggle="budget"
-          aria-controls="budget-window"
-          aria-expanded="false"
-        >
-          Treasury <kbd>B</kbd></button
-        ><button
-          data-toggle="works"
-          aria-controls="works-window"
-          aria-expanded="false"
-        >
-          Works <kbd>J</kbd>
+          £<small>FINANCE</small>
         </button>
-        <span class="divider"></span
-        ><label
-          ><select id="city-plan" aria-label="City plan" title="City plan">
+        <button
+          class="tool-cat"
+          id="cat-transport"
+          aria-expanded="false"
+          aria-controls="menu-transport"
+          title="Transport — bus lines, agreements, fleet, signals, incidents (T)"
+        >
+          ⇆<small>TRANSIT</small>
+        </button>
+        <button
+          class="tool-cat"
+          id="cat-build"
+          aria-expanded="false"
+          aria-controls="menu-build"
+          title="Planning & construction — roads, zoning, permits, parks (N)"
+        >
+          ✚<small>BUILD</small>
+        </button>
+        <button
+          class="tool-cat"
+          id="cat-map"
+          aria-expanded="false"
+          aria-controls="menu-map"
+          title="Map & overlays — condition, traffic, lighting, water, camera"
+        >
+          ◎<small>MAP</small>
+        </button>
+        <button
+          class="tool-cat"
+          id="cat-town"
+          aria-expanded="false"
+          aria-controls="menu-town"
+          title="Town & session — save, load, restart, controls"
+        >
+          ⚙<small>TOWN</small>
+        </button>
+      </nav>
+      <div id="menu-info" class="popup cat-menu" hidden>
+        <div class="popup-title">INFORMATION &amp; REPORTS</div>
+        <button data-toggle="reports">City reports <kbd>C</kbd></button>
+        <div class="popup-title">OPEN A SECTION</div>
+        <button data-report-link="overview">City overview</button>
+        <button data-report-link="districts">Neighbourhoods</button>
+        <button data-report-link="mobility">Streets &amp; access</button>
+        <button data-report-link="people">Residents</button>
+        <button data-report-link="companies">Companies</button>
+        <button data-report-link="housing">Housing &amp; occupancy</button>
+        <button data-report-link="households">Household budgets</button>
+        <button data-report-link="parking">Parking</button>
+        <button data-report-link="history">Recorded history</button>
+      </div>
+      <div id="menu-money" class="popup cat-menu" hidden>
+        <div class="popup-title">FINANCE &amp; MUNICIPAL</div>
+        <button data-toggle="budget">Treasury &amp; taxes <kbd>B</kbd></button>
+        <button data-toggle="works">Public works &amp; repair offers <kbd>J</kbd></button>
+        <button data-toggle="water">Water &amp; waste <kbd>U</kbd></button>
+      </div>
+      <div id="menu-transport" class="popup cat-menu" hidden>
+        <div class="popup-title">TRANSPORT</div>
+        <button data-toggle="transport">Transport &amp; signals <kbd>T</kbd></button>
+        <button id="menu-lane-tools" data-transport-tab-link="lines">Bus lines &amp; routes</button>
+        <button data-transport-tab-link="agreements">Service agreements</button>
+        <button data-transport-tab-link="fleet">Fleet &amp; staff</button>
+        <button data-transport-tab-link="stops">Stops &amp; riders</button>
+        <button data-transport-tab-link="streets">Streets &amp; lanes</button>
+        <button data-transport-tab-link="signals">Traffic signals</button>
+        <button data-transport-tab-link="incidents">Incidents &amp; freight</button>
+      </div>
+      <div id="menu-build" class="popup cat-menu" hidden>
+        <div class="popup-title">PLANNING &amp; CONSTRUCTION</div>
+        <button id="road-tool" aria-pressed="false">Build roads <kbd>N</kbd></button>
+        <button id="zone-tool" aria-pressed="false">Zoning <kbd>Z</kbd></button>
+        <button id="permit-tool" aria-pressed="false">Development permits <kbd>P</kbd></button>
+        <button id="park-tool" aria-pressed="false">Parks &amp; public space <kbd>G</kbd></button>
+      </div>
+      <div id="menu-map" class="popup cat-menu" hidden>
+        <div class="popup-title">MAP &amp; OVERLAYS</div>
+        <label class="menu-field"
+          >Town layout
+          <select id="city-plan" aria-label="City plan" title="City plan">
             <option value="1" selected>Camden Quarter</option>
             <option value="0">Bellwether (whole board)</option>
             <option value="2">Integration Yard (all features)</option>
           </select></label
-        ><button id="overlay" aria-pressed="false">Streets <kbd>O</kbd></button
-        ><button id="reset-camera" title="Recenter camera (R)">
-          Recenter <kbd>R</kbd>
-        </button>
-        <button data-toggle="transport" title="Transport (T)">
-          Transport <kbd>T</kbd></button
-        ><button
-          id="traffic-overlay"
-          aria-pressed="false"
-          title="Traffic map (V)"
         >
-          Traffic <kbd>V</kbd>
-        </button
-        ><button
-          id="park-overlay"
-          aria-pressed="false"
-          title="Park condition map (K)"
-        >
-          Parks <kbd>K</kbd>
-        </button
-        ><button
-          id="lighting-overlay"
-          aria-pressed="false"
-          title="Street lighting map (L)"
-        >
-          Lights <kbd>L</kbd>
-        </button
-        ><button
-          id="water-overlay"
-          aria-pressed="false"
-          title="Water and drainage map (U)"
-        >
-          Water <kbd>U</kbd>
-        </button
-        ><button
-          id="service-overlay"
-          aria-pressed="false"
-          title="Incidents and freight map (Y)"
-        >
-          Service <kbd>Y</kbd>
-        </button>
-      </nav>
+        <button id="reset-camera" title="Recenter camera (R)">Recenter camera <kbd>R</kbd></button>
+        <div class="popup-title">OVERLAYS</div>
+        <button id="overlay" aria-pressed="false">Street condition <kbd>O</kbd></button>
+        <button id="traffic-overlay" aria-pressed="false" title="Traffic map (V)">Traffic <kbd>V</kbd></button>
+        <button id="pedestrian-overlay" aria-pressed="false">Pedestrians <kbd>F</kbd></button>
+        <button id="park-overlay" aria-pressed="false" title="Park condition map (K)">Park condition <kbd>K</kbd></button>
+        <button id="lighting-overlay" aria-pressed="false" title="Street lighting map (L)">Street lighting <kbd>L</kbd></button>
+        <button id="water-overlay" aria-pressed="false" title="Water and drainage map (U)">Water &amp; drainage <kbd>U</kbd></button>
+        <button id="service-overlay" aria-pressed="false" title="Incidents and freight map (Y)">Incidents &amp; freight <kbd>Y</kbd></button>
+      </div>
+      <div id="menu-town" class="popup cat-menu" hidden>
+        <div class="popup-title">TOWN &amp; SESSION</div>
+        <button id="menu-save-town">Save town file</button>
+        <button id="menu-load-town">Load town file</button>
+        <button id="menu-restart">Restart town</button>
+        <button data-toggle="help">Controls &amp; help <kbd>H</kbd></button>
+      </div>
       <div class="status-line">
         <span id="simulation-status">SIMULATION RUNNING</span
         ><span id="fps"></span><span>H · CONTROLS</span>
@@ -939,6 +960,7 @@
               Water overlay <kbd>U</kbd>
             </button>
           </div>
+          <canvas id="water-district-chart" class="chart" aria-label="Water coverage by district"></canvas>
           <h3>District supply <span class="info-tip" tabindex="0" role="button" aria-label="About district supply" data-tip="A district is served when the intake is working and the pipe run from the intake's node to the district's own node through the real walk graph is within the published bound. A district across the river with no crossing, or beyond the bound, is unserved.">?</span></h3>
           <div class="table-scroll"><table>
             <thead>
@@ -954,6 +976,7 @@
             </thead>
             <tbody id="water-district-rows"></tbody>
           </table></div>
+          <canvas id="water-drain-chart" class="chart" aria-label="Drain coverage by street"></canvas>
           <h3>Drainage by street <span class="info-tip" tabindex="0" role="button" aria-label="About drainage" data-tip="Two drains are keyed to every eligible carriageway; a drain blocks at most once a segment per day and a crew clears a bounded number each operating pass. A blocked segment floods once the day's rain exceeds its own drain coverage, raising driver travel time until it is clear.">?</span></h3>
           <label>Street segment <select id="water-street"></select></label>
           <p class="note" id="water-street-summary"></p>
@@ -1022,7 +1045,7 @@
                   id="fare-cap"
                   type="number"
                   min="0"
-                  max="10"
+                  max="1000"
                   step="0.1"
                   value="2" /></label
               ><label
@@ -1031,12 +1054,13 @@
                   id="bus-subsidy"
                   type="number"
                   min="0"
-                  max="10"
+                  max="1000"
                   step="0.1"
                   value="1" /></label
               ><button id="transport-policy">Apply policy</button>
             </div>
             <h3>Bus lines</h3>
+            <canvas id="lines-chart" class="chart" aria-label="Rider outcomes by line, click to select"></canvas>
             <div class="transport-controls">
               <select id="bus-line" aria-label="Bus line"></select
               ><button id="line-new">New line</button
@@ -1069,9 +1093,9 @@
             <label>Operator <select id="service-operator"><option value="0">Bellwether Transit</option><option value="1">Ridgeway Passenger</option><option value="2">Community Bus</option></select></label>
             <label>Required buses <input id="service-fleet" type="number" min="1" max="3" value="2"></label>
             <label>Service hours <select id="service-window"><option value="1">Daytime · 06:00–22:00</option><option value="0">All day · 00:00–24:00</option></select></label>
-            <label>Duration (days) <input id="service-days" type="number" min="1" max="7" value="1"></label>
-            <label>Maximum interval (simulation seconds; 0 = off) <input id="service-interval" type="number" min="0" max="600" step="1" value="0"></label>
-            <label>Maximum payment (£) <input id="service-price" type="number" min="0.01" max="1000000000" step="0.01" value="240"></label>
+            <label>Duration (days) <input id="service-days" type="number" min="1" max="60" value="1"></label>
+            <label>Maximum interval (simulation seconds; 0 = off) <input id="service-interval" type="number" min="0" max="3600" step="1" value="0"></label>
+            <label>Maximum payment (£) <input id="service-price" type="number" min="0.01" max="1000000000000" step="0.01" value="240"></label>
             </div>
             <div class="section-title">DRAFT TERMS <span class="info-tip" tabindex="0" role="button" aria-label="About agreement terms" data-tip="Abstract driver cohorts: day 06:00-22:00, night 22:00-06:00. Operation costs 0.06 pounds vehicle + 0.12 pounds labour per bus-second; dispatch prepays 2 pounds for eventual safe clearance and relief overtime. No advances: future public payments are earned through service. Funds are reserved on offer, and offers need operating cost plus 15 percent margin. Compare fewer buses, daytime hours or another solvent operator if refused.">?</span></div>
             <p id="operator-receipts" class="note"></p>
@@ -1331,13 +1355,6 @@
         </div>
       </section>
 
-      <div id="planning-tools" aria-label="City planning">
-        <button id="road-tool" aria-pressed="false">Build roads <kbd>N</kbd></button>
-        <button id="zone-tool" aria-pressed="false">Zoning <kbd>Z</kbd></button>
-        <button id="pedestrian-overlay" aria-pressed="false">Pedestrians <kbd>F</kbd></button>
-        <button id="permit-tool" aria-pressed="false">Permits <kbd>P</kbd></button>
-        <button id="park-tool" aria-pressed="false">Parks <kbd>G</kbd></button>
-      </div>
       <section id="planning-panel" hidden aria-label="Road and zoning planner">
         <header><strong>STREETS &amp; LAND USE</strong><button id="planning-close" aria-label="Close planner">×</button></header>
         <div id="road-options">

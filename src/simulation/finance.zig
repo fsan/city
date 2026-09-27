@@ -151,7 +151,7 @@ pub fn operating(time: f64) void {
     if (payment > 0) record(time, -payment, 4, -1, -1);
 }
 pub fn applyTaxes(home: f64, commercial: f64) bool {
-    if (!std.math.isFinite(home) or !std.math.isFinite(commercial) or home < 0 or home > 5 or commercial < 0 or commercial > 5) return false;
+    if (!std.math.isFinite(home) or !std.math.isFinite(commercial) or home < 0 or commercial < 0) return false;
     residential_rate = home;
     commercial_rate = commercial;
     return true;

@@ -1,4 +1,5 @@
 import {createAgreements} from "./agreements.js";
+import {barChart} from "./charts.js";
 import {streetName} from "./data.js";
 // Game windows and map gestures; all traffic, fares and passengers live in Zig.
 export function createTransport(game, ui) {
@@ -658,12 +659,12 @@ export function createTransport(game, ui) {
     message(
       game.transport_policy(cap, sub)
         ? "Fare cap and boarding subsidy applied."
-        : "Enter amounts from £0 to £10.",
+        : "Enter amounts of £0 or more.",
     );
   };
   const chooseRoad = (id) => {
     $("traffic-road").value = id;
-    $("traffic-lane").value = r(5, id, 13);
+    if (document.activeElement !== $("traffic-lane")) $("traffic-lane").value = r(5, id, 13);
     update();
   };
   $("traffic-road").onchange = () =>
@@ -750,7 +751,7 @@ export function createTransport(game, ui) {
     ].join(" · ");
     const road = Number($("traffic-road").value);
     const bays = r(5, road, 17);
-    $("freight-bays").value = String(bays);
+    if (document.activeElement !== $("freight-bays")) $("freight-bays").value = String(bays);
     $("freight-message").textContent = bays < 0
       ? "This street cannot take loading bays (lanes, works and pedestrian-only segments are excluded)."
       : `Street #${road + 1}: ${bays} loading bay${bays === 1 ? "" : "s"}; measured kerbside demand ${(r(0,0,136)*100).toFixed(0)}%.`;
@@ -798,7 +799,7 @@ export function createTransport(game, ui) {
       `faults today ${r(0,0,146)} · repairs today ${r(0,0,147)} · works £${r(0,0,148).toFixed(2)} today, £${r(0,0,149).toFixed(2)} lifetime · darkness ${(dusk*100).toFixed(0)}%`,
     ].join(" · ");
     const columns = r(36, road, 7);
-    $("lighting-lamps").value = String(columns < 0 ? 0 : columns);
+    if (document.activeElement !== $("lighting-lamps")) $("lighting-lamps").value = String(columns < 0 ? 0 : columns);
     $("lighting-message").textContent = columns < 0
       ? "This street cannot take lighting columns (lanes, works and pedestrian-only segments are excluded)."
       : `Street #${road + 1}: ${columns} of ${r(36,road,8)} columns · ${r(36,road,9)} working · ${r(36,road,10)} failed · ${(r(36,road,11)*100).toFixed(0)}% coverage · illumination ${(r(36,road,12)*100).toFixed(0)}% · electricity £${r(36,road,13).toFixed(2)}/day · ${r(36,road,14)} repairs recorded.`;
@@ -815,7 +816,7 @@ export function createTransport(game, ui) {
       `works £${r(0,0,164).toFixed(2)} today, £${r(0,0,165).toFixed(2)} lifetime`,
     ].join(" · ");
     const drainCount = r(38, road, 5);
-    $("water-drains").value = String(drainCount < 0 ? 0 : drainCount);
+    if (document.activeElement !== $("water-drains")) $("water-drains").value = String(drainCount < 0 ? 0 : drainCount);
     $("water-message").textContent = drainCount < 0
       ? "This street cannot take drains (lanes, works and pedestrian-only segments are excluded)."
       : `Street #${road + 1}: ${drainCount} of ${r(38,road,6)} drains · ${r(38,road,7)} working · ${r(38,road,8)} blocked · ${(r(38,road,9)*100).toFixed(0)}% drained · flood factor ${r(38,road,10).toFixed(2)}x · ${r(38,road,11)} clears recorded · rain ${(r(38,road,12)*100).toFixed(0)}%.`;
@@ -1178,7 +1179,31 @@ export function createTransport(game, ui) {
       button.textContent = `Bus ${slot + 1} · ${active ? `${r(12, id, 4)}/24 aboard · ${r(12, id, 3).toFixed(1)} m/s · locate` : "Out of service"}`;
     });
     if (transportTab === "lines") {
-      // summary handled below; nothing heavy here yet
+      const lineIds = Array.from({ length: 8 }, (_, i) => i).filter((i) => r(10, i, 0));
+      barChart(
+        $("lines-chart"),
+        lineIds.flatMap((i) => [
+          {
+            label: `Line ${i + 1} riders`,
+            value: r(10, i, 2),
+            group: "Boardings",
+            onPick: () => inspectLine(i),
+          },
+          {
+            label: `Line ${i + 1} riders now`,
+            value: r(10, i, 7),
+            group: "Aboard",
+            onPick: () => inspectLine(i),
+          },
+        ]),
+        {
+          legend: true,
+          onPickGroup: () => {
+            setOverlay(0);
+          },
+          selected: selected >= 0 ? `Line ${selected + 1} riders` : null,
+        },
+      );
     }
     if (transportTab === "signals") {
       if (signal >= 0) showSignal(signal);
@@ -1270,6 +1295,13 @@ export function createTransport(game, ui) {
   game.transport_select(-1);
   syncParking();
   update();
+  document.querySelectorAll("[data-transport-tab-link]").forEach((button) => {
+    button.onclick = () => {
+      showTransportTab(button.dataset.transportTabLink);
+      update();
+      ui.open("transport");
+    };
+  });
   return {
     update,
     syncNetwork,

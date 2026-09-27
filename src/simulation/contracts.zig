@@ -22,7 +22,7 @@ pub fn siteBusy(road: usize) bool {
 }
 // Return codes are explained in the UI; a failed command never changes funds.
 pub fn offer(road: usize, scope: f32, price: f64, time: f64) u32 {
-    if (road >= city.roads.len or !std.math.isFinite(scope) or scope < 5 or scope > 60 or !std.math.isFinite(price) or price < 100 or price > 1000000) return 1;
+    if (road >= city.roads.len or !std.math.isFinite(scope) or scope <= 0 or !std.math.isFinite(price) or price < 1) return 1;
     if (count == orders.len) return 2;
     if (siteBusy(road)) return 3;
     if (price > finance.available()) return 4;
@@ -34,7 +34,7 @@ pub fn offer(road: usize, scope: f32, price: f64, time: f64) u32 {
     return 0;
 }
 pub fn revise(id: usize, price: f64) u32 {
-    if (id >= count or orders[id].status != .offered or !std.math.isFinite(price) or price < 100 or price > 1000000) return 1;
+    if (id >= count or orders[id].status != .offered or !std.math.isFinite(price) or price <= 0) return 1;
     const difference = finance.cents(price) - orders[id].price;
     if (difference > finance.available()) return 4;
     finance.reserved = finance.cents(finance.reserved + difference);

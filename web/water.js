@@ -1,3 +1,4 @@
+import { barChart } from "./charts.js";
 import { streetName } from "./data.js";
 // Water & waste window. Every rule, price and refusal comes from Zig; this
 // module only lays out the scalar reads the ABI already publishes.
@@ -67,6 +68,38 @@ export function createWater(game, transport) {
       : "No intake is installed in this town.";
     $("water-locate-intake").disabled = !installed;
     $("water-overlay-toggle").setAttribute("aria-pressed", transport.currentOverlay() === 5 ? "true" : "false");
+    barChart(
+      $("water-district-chart"),
+      districtRows.map((_, id) => ({
+        label: districtName(id),
+        value: r(37, id, 4) * 100,
+        text: `${(r(37, id, 4) * 100).toFixed(0)}%`,
+        group: r(37, id, 5) === 1 ? "Served" : "Unserved",
+        onPick: () => {
+          const node = r(37, id, 1);
+          if (node >= 0) game.focus(11, node);
+        },
+      })),
+      {
+        legend: true,
+        onPickGroup: (name) => {
+          if (name === "Unserved") transport.toggleWater();
+        },
+      },
+    );
+    barChart(
+      $("water-drain-chart"),
+      drainRows
+        .map((_, id) => ({ id, eligible: r(38, id, 4) === 1, count: r(38, id, 5) }))
+        .filter((d) => d.eligible && d.count >= 0)
+        .map((d) => ({
+          label: `#${d.id + 1}`,
+          value: r(38, d.id, 9) * 100,
+          text: `${(r(38, d.id, 9) * 100).toFixed(0)}%`,
+          group: r(38, d.id, 8) > 0 ? "Blocked" : "Clear",
+          onPick: () => game.focus(5, d.id),
+        })),
+    );
     districtRows.forEach(({ cells, locate }, id) => {
       const demand = r(37, id, 2), working = r(37, id, 3), coverage = r(37, id, 4);
       const node = r(37, id, 1), run = r(37, id, 6), served = r(37, id, 5) === 1;
@@ -81,7 +114,7 @@ export function createWater(game, transport) {
     });
     const road = Number($("water-street").value);
     const drains = road >= 0 ? r(38, road, 5) : -1;
-    $("water-window-drains").value = String(drains < 0 ? 0 : drains);
+    if (document.activeElement !== $("water-window-drains")) $("water-window-drains").value = String(drains < 0 ? 0 : drains);
     $("water-window-drains").disabled = drains < 0;
     $("water-window-drains-apply").disabled = drains < 0;
     $("water-locate-street").disabled = road < 0;

@@ -48,7 +48,7 @@ export function createPlanning(game, transport) {
   function parkSummary(){
     const agg=(field)=>r(0,0,field);
     const coverage=agg(97), funding=parkFunding[Math.round(agg(101))]||'Standard';
-    $('park-funding').value=String(Math.round(agg(101)));
+    if(document.activeElement!==$('park-funding'))$('park-funding').value=String(Math.round(agg(101)));
     $('park-summary').textContent=`${agg(90).toFixed(0)} public spaces · mean condition ${agg(91).toFixed(0)}% · ${agg(98).toFixed(0)} below standard. Funding ${funding.toLowerCase()}: ${money(agg(96))} paid today of ${money(agg(95))} needed (${(coverage*100).toFixed(0)}% covered), ${money(agg(94))} lifetime maintenance and ${money(agg(103))} construction. ${agg(99).toFixed(0)} homes (${agg(104).toFixed(0)} residents) within walking reach · mean amenity ${agg(100).toFixed(2)} · ${agg(93).toFixed(0)} visits today, ${agg(92).toFixed(0)} ever.`;
     $('park-apply').disabled=parcel<0||r(16,parcel,3)>=0||r(16,parcel,2)!==5;
   }

@@ -1,3 +1,4 @@
+import {barChart, lineChart} from "./charts.js";
 import {operatorNames} from "./agreements.js";
 import {
   createData,
@@ -201,7 +202,7 @@ export function createReports(game, ui, transport) {
       game.apply_taxes(home, business);
     $("tax-status").textContent = valid
       ? "Policy applied. Next collection at midnight."
-      : "Enter rates between 0% and 5%.";
+      : "Enter rates of 0% or above.";
     updateBudget();
   };
   $("funding").onchange = () => {
@@ -278,6 +279,42 @@ export function createReports(game, ui, transport) {
       const sites = buildings.filter((b) => inDistrict(b.district));
       $("city-summary").textContent =
         `${district() < 0 ? "Whole city" : districts[district()]} · ${sites.length} buildings · ${filteredPeople.filter((p) => p.employer < 0).length} jobseekers. Town elevation ranges from 0 to 24 metres.`;
+      const landRoles = [
+        "Housing","Employment","Employment","Civic workplace","Government",
+        "Recreation","Street contractor","Undeveloped","Parking","Parking",
+        "Housing","Employment","Recreation","Public space",
+      ];
+      barChart(
+        $("land-use-chart"),
+        kinds.map((kind, id) => ({
+          label: kind,
+          value: sites.filter((b) => b.kind === id).length,
+          group: landRoles[id],
+          onPick: () => {
+            const first = sites.find((b) => b.kind === id);
+            if (first) inspect(1, first.id);
+          },
+        })).filter((item) => item.value > 0),
+        {
+          onPickGroup: (role) => {
+            // Category pick: jump to the report section that lists that role.
+            const target = {
+              Housing: "housing",
+              Employment: "companies",
+              "Street contractor": "companies",
+              Recreation: "overview",
+              "Public space": "overview",
+              "Civic workplace": "companies",
+              Government: "overview",
+              Parking: "parking",
+              Undeveloped: "overview",
+            }[role] || "overview";
+            if (role === "Street contractor") $("contractors-only").checked = true;
+            ui.showReport(target);
+            if (role === "Street contractor") updateReports();
+          },
+        },
+      );
       rows(
         "land-use",
         kinds.map((kind, id) => [
@@ -302,7 +339,29 @@ export function createReports(game, ui, transport) {
         ]),
       );
     }
-    if (visible("districts-report"))
+    if (visible("districts-report")) {
+      barChart(
+        $("district-chart"),
+        districts.flatMap((name, id) =>
+          inDistrict(id) || district() < 0
+            ? [
+                {
+                  label: name,
+                  value: r(2, id, 2),
+                  group: "People",
+                  onPick: () => showDistrict(id),
+                },
+                {
+                  label: `${name} jobs`,
+                  value: r(2, id, 3),
+                  group: "Employed",
+                  onPick: () => showDistrict(id),
+                },
+              ]
+            : [],
+        ).filter((item) => item.value > 0),
+        { legend: true, onPickGroup: () => showDistrict(-1) },
+      );
       rows(
         "district-rows",
         districts.flatMap((name, id) =>
@@ -319,8 +378,39 @@ export function createReports(game, ui, transport) {
             : [],
         ),
       );
+    }
     if (visible("mobility-report")) {
-      const ids = streetIds.filter((id) => inDistrict(r(5, id, 4)));
+      let ids = streetIds.filter((id) => inDistrict(r(5, id, 4)));
+      // 1,600+ segments cannot be read as individual bars: aggregate to one
+      // mean-condition bar per neighbourhood; a single neighbourhood's filter
+      // keeps per-street bars. Click an aggregate bar to focus its filter.
+      let chartItems;
+      if (district() < 0 && ids.length > 40) {
+        chartItems = districts.flatMap((name, did) => {
+          const mine = streetIds.filter((id) => r(5, id, 4) === did);
+          if (!mine.length) return [];
+          const mean = mine.reduce((sum, id) => sum + r(5, id, 5), 0) / mine.length;
+          return [{
+            label: `${name} · ${mine.length} streets`,
+            value: Math.round(mean),
+            text: `${mean.toFixed(1)}% mean`,
+            color: mean < 40 ? "#b8503a" : mean < 70 ? "#ada45c" : "#379b6b",
+            group: name,
+            onPick: () => showDistrict(did),
+          }];
+        });
+        barChart($("street-chart"), chartItems, { legend: true, onPickGroup: (name) => showDistrict(districts.indexOf(name)) });
+      } else {
+        chartItems = ids.map((id) => ({
+          label: `#${id + 1}`,
+          value: Math.round(r(5, id, 5)),
+          text: `${r(5, id, 5).toFixed(1)}%`,
+          color: r(5, id, 5) < 40 ? "#b8503a" : r(5, id, 5) < 70 ? "#ada45c" : "#379b6b",
+          group: districts[r(5, id, 4)],
+          onPick: () => inspect(5, id),
+        }));
+        barChart($("street-chart"), chartItems, { legend: chartItems.length > 1, onPickGroup: (name) => showDistrict(districts.indexOf(name)) });
+      }
       streetPage = Math.min(
         streetPage,
         Math.max(0, Math.ceil(ids.length / pageSize) - 1),
@@ -483,7 +573,13 @@ export function createReports(game, ui, transport) {
         "Availability columns are the four daily arrival buckets travellers have learned.";
       rows("parking-rows", values);
     }
-    if (visible("history-report"))
+    if (visible("history-report")) {
+      const n = Math.min(96, m(19));
+      const build = (field) => Array.from({ length: n }, (_, id) => r(8, n - 1 - id, field));
+      lineChart($("history-chart"), [
+        { label: "Cash", points: build(1), color: "#379b6b" },
+        { label: "Committed", points: build(2), color: "#ada45c" },
+      ]);
       rows(
         "history-rows",
         Array.from({ length: Math.min(96, m(19)) }, (_, id) => [
@@ -494,6 +590,7 @@ export function createReports(game, ui, transport) {
           `${r(8, id, 4).toFixed(1)}%`,
         ]).reverse(),
       );
+    }
   }
   function taxPreview() {
     const home = Number($("home-tax").value),
@@ -552,7 +649,7 @@ export function createReports(game, ui, transport) {
     $("business-base").textContent = money(m(23));
     $("home-rate").textContent = m(20).toFixed(2) + "%";
     $("business-rate").textContent = m(21).toFixed(2) + "%";
-    $("funding").value = String(m(11));
+    if (document.activeElement !== $("funding")) $("funding").value = String(m(11));
     $("funding-note").textContent =
       `Operating payments occur every 30 simulation seconds. Current maintenance coverage: ${(m(12) * 100).toFixed(0)}%. Unfunded maintenance allows deterioration. Contract reserves are protected.`;
     $("projected-revenue").textContent = money(m(4));
@@ -570,7 +667,35 @@ export function createReports(game, ui, transport) {
     $("employment-note").textContent =
       `${m(38).toLocaleString()} jobseekers · ${m(39).toLocaleString()} open posts · last day ${m(40)} hires, ${m(41)} dismissals · ${money(m(42))} wages paid. Unpaid employer wages are wage arrears, not municipal debt.`;
     taxPreview();
-    if (visible("budget-ledger"))
+    if (visible("budget-ledger")) {
+      const total = Math.min(80, m(18));
+      const byKind = new Map();
+      for (let id = 0; id < total; id++) {
+        const kind = r(7, id, 3);
+        byKind.set(kind, (byKind.get(kind) || 0) + r(7, id, 1));
+      }
+      barChart(
+        $("ledger-chart"),
+        [...byKind.entries()]
+          .map(([kind, sum]) => ({
+            label: ledgerKinds[kind] ?? `Kind ${kind}`,
+            value: Math.round(Math.abs(sum)),
+            text: signedMoney(sum),
+            group: sum >= 0 ? "In" : "Out",
+          }))
+          .filter((item) => item.value > 0)
+          .sort((a, b) => b.value - a.value),
+        {
+          onPick: (entry) => {
+            const kind = ledgerKinds.indexOf(entry.label);
+            const hit = Array.from({ length: total }, (_, id) => id).find((id) => r(7, id, 3) === kind);
+            if (hit !== undefined) {
+              const party = r(7, hit, 4);
+              if (party >= 0 && r(7, hit, 3) !== 8 && r(7, hit, 3) !== 10) inspect(4, party);
+            }
+          },
+        },
+      );
       rows(
         "ledger-rows",
         ledgerValues(Math.min(80, m(18))).map((v) => [
@@ -581,6 +706,7 @@ export function createReports(game, ui, transport) {
           v[5],
         ]),
       );
+    }
   }
   function updateWorks() {
     if (!visible("works-window")) return;

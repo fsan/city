@@ -80,6 +80,10 @@ function start(renderer) {
   const water = createWater(game, transport);
   reports = createReports(game, ui, transport);
   planning = createPlanning(game, transport);
+  // Bottom-bar TOWN menu forwards to the real handlers inside the help window.
+  $("menu-save-town").onclick = () => $("save-town").click();
+  $("menu-load-town").onclick = () => $("load-town").click();
+  $("menu-restart").onclick = () => $("restart").click();
   $("restart").onclick = () => {
     game.init();
     lastSpeed = 1;

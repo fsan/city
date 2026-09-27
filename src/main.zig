@@ -1145,7 +1145,7 @@ export fn select_resident(id: u32) void {
 }
 
 export fn transport_policy(cap: f64, subsidy: f64) bool {
-    if (!std.math.isFinite(cap) or !std.math.isFinite(subsidy) or cap < 0 or cap > 10 or subsidy < 0 or subsidy > 10) return false;
+    if (!std.math.isFinite(cap) or !std.math.isFinite(subsidy) or cap < 0 or subsidy < 0) return false;
     transport.fare_cap = finance.cents(cap);
     transport.subsidy = finance.cents(subsidy);
     return true;
