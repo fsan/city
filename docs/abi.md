@@ -372,6 +372,35 @@ designated bay comes out of that segment's car parking supply, so freight access
 and parking capacity compete for the same kerbside. Freight fees are a private
 transfer from the customer to its depot and never enter the municipal ledger.
 
+## Water, drainage and waste
+
+**Group 0 fields 153-177** are the water, drainage and waste totals: 153 the
+intake working, 154 districts served, 155 mean supply coverage, 156 the day's
+demand, 157 units served, 158 the shortfall, 159 the day's pumping electricity
+need, 160 the day's pumping paid, 161 lifetime pumping, 162 intake faults today,
+163 intake repairs today, 164 works paid today, 165 works paid in total, 166 mean
+drain coverage, 167 drains installed, 168 drains blocked now, 169 the day's rain
+(0-1), 170 the day's waste, 171 waste collected today, 172 the waste backlog,
+173 tipping paid today, 174 tipping paid in total, 175 collection rounds, 176
+drains blocked today and 177 drains cleared today.
+
+**New group 37** reads one district's supply by district index: 0 district, 1
+the district's representative node, 2 demand, 3 working units, 4 coverage
+(0-1), 5 whether it is served, 6 the measured pipe run in metres (-1 when
+unreachable), 7 residents and 8 staffed workplaces.
+
+**New group 38** reads one segment's drainage by road index: 0 road, 1 district,
+2 class, 3 node, 4 whether drainage is eligible, 5 drains installed, 6 drains
+required by the street class, 7 drains working, 8 drains blocked, 9 drain
+coverage, 10 the flood speed factor today (1 dry or drained), 11 clears recorded
+there and 12 the day's rain.
+
+Command: `water_set_drains(road, drains)` designates 0 up to the class capacity
+(2 on an avenue, 1 on a street) and returns the capital cost booked as ledger
+kind 19, 0 when nothing changed, or -1 when the segment or count is refused. The
+Streets tab gains a **Water, drainage and waste** block with the town totals, the
+selected segment's drains and a drain control.
+
 ## Street lighting
 
 **Group 0 fields 137-152** are the streetlighting totals: 137 lit segments, 138
@@ -401,7 +430,7 @@ of the segment and the day index, and a crew reaches a bounded number of failed
 columns per operating pass in segment order. Coverage, illumination and the
 night collision multiplier are derived each step and never trusted from a file.
 
-Save schema is version 20, rules `bellwether-2028-06-v20`; version 19 and older
+Save schema is version 21, rules `bellwether-2028-07-v21`; version 20 and older
 are rejected with result 3. The incident ring, its numbering and its running
 totals are serialized and validated field by field; lane penalties and the
 blocking state are derived each step and never trusted from a file.
@@ -716,7 +745,7 @@ Commands: `road_class(value)` sets the class (0-2) used by the next
 `road_begin`; `parking_rebuild()` re-seeds facilities after a road is built and
 reposts kerbside prices.
 
-Save schema is version 20, rules `bellwether-2028-06-v20`; version 19 and older
+Save schema is version 21, rules `bellwether-2028-07-v21`; version 20 and older
 are rejected with result 3. The bounded development queue, its physical
 construction account, its measured sunlight/shadow trade-off, counters and
 district rotation are serialized and validated field by field; each stored

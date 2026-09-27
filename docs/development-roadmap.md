@@ -19,7 +19,7 @@ This is a proposed dependency order against the canonical scope, not authorizati
 15. **Traffic incidents — complete:** collisions, blocked lanes, response and clearance, with a bounded recovery ledger and schema v18. See [traffic-incidents-slice.md](traffic-incidents-slice.md).
 16. **Parking and freight — complete:** deliveries, loading bays, measured parking demand and business access, with schema v19. See [parking-freight-slice.md](parking-freight-slice.md).
 17. **Streetlighting — complete:** coverage, electricity costs, faults and nighttime conditions, with a bounded works and electricity ledger and schema v20. See [streetlighting-slice.md](streetlighting-slice.md).
-18. **Water, drainage and waste:** networks, capacity, maintenance and failures.
+18. **Water, drainage and waste — complete:** a river intake, per-district supply through the street graph, drains that flood in rain, bounded waste collection and tipping, with schema v21. See [water-drainage-waste-slice.md](water-drainage-waste-slice.md).
 19. **Municipal financial planning:** recurring departmental budgets, forecasts, debt and reserves.
 20. **Population life stages:** children, students, caregivers, retirees and demographic change.
 21. **Schools and skills:** catchments, staff, capacity, attendance and outcomes.

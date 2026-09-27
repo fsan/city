@@ -10,6 +10,8 @@ const transport = game.transport;
 const signals = transport.signals;
 const parking = game.parking;
 const travel = game.travel;
+const water = game.water;
+const calendar = game.calendar;
 var speed: f32 = 1;
 var resume_speed: f32 = 1;
 var accumulator: f32 = 0;
@@ -327,6 +329,40 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             150 => game.lighting.read0(13, game.elapsed),
             151 => game.lighting.read0(14, game.elapsed),
             152 => game.lighting.read0(15, game.elapsed),
+            // Numbered item 18 water, drainage and waste. 153 intake working,
+            // 154 districts served, 155 mean supply coverage, 156 the day's
+            // demand, 157 served units, 158 shortfall, 159/160 the day's
+            // pumping need and paid amount, 161 lifetime pumping, 162/163
+            // intake faults and repairs today, 164/165 works paid today and
+            // lifetime, 166 mean drain coverage, 167 drains installed, 168
+            // drains blocked now, 169 the day's rain, 170 the day's waste,
+            // 171 collected today, 172 the backlog and 173/174 tipping paid
+            // today and lifetime.
+            153 => water.read0(0, calendar.dayIndex(game.elapsed)),
+            154 => water.read0(1, calendar.dayIndex(game.elapsed)),
+            155 => water.read0(2, calendar.dayIndex(game.elapsed)),
+            156 => water.read0(3, calendar.dayIndex(game.elapsed)),
+            157 => water.read0(4, calendar.dayIndex(game.elapsed)),
+            158 => water.read0(5, calendar.dayIndex(game.elapsed)),
+            159 => water.read0(6, calendar.dayIndex(game.elapsed)),
+            160 => water.read0(7, calendar.dayIndex(game.elapsed)),
+            161 => water.read0(8, calendar.dayIndex(game.elapsed)),
+            162 => water.read0(9, calendar.dayIndex(game.elapsed)),
+            163 => water.read0(10, calendar.dayIndex(game.elapsed)),
+            164 => water.read0(11, calendar.dayIndex(game.elapsed)),
+            165 => water.read0(12, calendar.dayIndex(game.elapsed)),
+            166 => water.read0(13, calendar.dayIndex(game.elapsed)),
+            167 => water.read0(14, calendar.dayIndex(game.elapsed)),
+            168 => water.read0(15, calendar.dayIndex(game.elapsed)),
+            169 => water.read0(16, calendar.dayIndex(game.elapsed)),
+            170 => water.read0(17, calendar.dayIndex(game.elapsed)),
+            171 => water.read0(18, calendar.dayIndex(game.elapsed)),
+            172 => water.read0(19, calendar.dayIndex(game.elapsed)),
+            173 => water.read0(20, calendar.dayIndex(game.elapsed)),
+            174 => water.read0(21, calendar.dayIndex(game.elapsed)),
+            175 => water.read0(22, calendar.dayIndex(game.elapsed)),
+            176 => water.read0(23, calendar.dayIndex(game.elapsed)),
+            177 => water.read0(24, calendar.dayIndex(game.elapsed)),
             else => -1,
         },
         1 => {
@@ -956,6 +992,21 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             // recorded here and 15 the current darkness.
             return game.lighting.readRoad(id, field, game.elapsed);
         },
+        37 => {
+            // Numbered item 18: one district's water supply, read by district
+            // index: 0 district, 1 node, 2 demand, 3 working units, 4 coverage,
+            // 5 whether it is served, 6 the measured pipe run in metres (-1
+            // when unreachable), 7 residents and 8 workplaces.
+            return water.readDistrict(id, field);
+        },
+        38 => {
+            // Numbered item 18: one segment's drainage, read by road index: 0
+            // road, 1 district, 2 class, 3 node, 4 eligible, 5 drains
+            // installed, 6 drains required, 7 working, 8 blocked, 9 coverage,
+            // 10 the flood speed factor today, 11 clears recorded here and 12
+            // the day's rain.
+            return water.readRoad(id, field, calendar.dayIndex(game.elapsed));
+        },
         35 => {
             // Numbered item 16: one delivery run, newest first. 0 number, 1
             // depot, 2 customer, 3 delivery lot, 4 node, 5 frontage road, 6
@@ -1279,6 +1330,18 @@ export fn lighting_set(road: u32, lamps: u32) f64 {
 
 export fn parks_set_funding(level: u32) bool {
     return game.parks.setFunding(level);
+}
+
+// Numbered item 18: designate 0..capacity drains on one eligible segment. New
+// drains are charged to the municipal ledger as works (kind 19) and the return
+// value is that capital cost, 0 when nothing changed, or -1 when the segment or
+// the count is refused.
+export fn water_set_drains(road: u32, drains: u32) f64 {
+    if (road >= city.road_count) return -1;
+    const cost = water.setDrains(road, drains);
+    if (cost < 0) return -1;
+    if (cost > 0) finance.record(game.elapsed, -cost, 19, -1, -1);
+    return cost;
 }
 
 // Slice 11: the traffic submenu places crosswalks and signals by clicking the

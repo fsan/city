@@ -20,3 +20,4 @@ regularity-target-slice.md records optional agreement interval targets and diagn
 - [Crossings and junction behaviour](crossings-junctions-slice.md)
 - [Traffic incidents](traffic-incidents-slice.md)
 - [Streetlighting](streetlighting-slice.md)
+- [Water, drainage and waste](water-drainage-waste-slice.md)

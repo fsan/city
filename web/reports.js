@@ -518,6 +518,11 @@ export function createReports(game, ui, transport) {
     "Development levy",
     "Park maintenance",
     "Public-space construction",
+    "Incident recovery",
+    "Streetlighting electricity",
+    "Streetlighting works",
+    "Water and waste",
+    "Water works",
   ];
   function ledgerValues(limit) {
     return Array.from({ length: limit }, (_, id) => {

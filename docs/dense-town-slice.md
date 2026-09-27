@@ -75,11 +75,14 @@ fresh `/output/city.wasm`.
 
 ## Limits
 
-- The probe's *combined* run still reports `load result=4` when the save is
-  taken after the renderer has drawn a frame, although saving and loading the
-  same town immediately after `init` round-trips with result 0. The renderer is
-  therefore touching state that the snapshot captures; the next agent should
-  treat that as an open defect rather than a passing check.
+- The probe's *combined* run still reported `load result=4` when the save was
+  taken after the renderer had drawn a frame, although saving and loading the
+  same town immediately after `init` round-tripped with result 0. **Re-tested
+  later, and no longer reproducing:** on the current v21 code the browser save
+  path (`persistence.write` / `persistence.load`, behind `save_write` and
+  `save_load`) returns 0 for a save taken after `init`, after six simulated
+  days, after a draw of 995,118 vertices and after draw/update/draw. A later
+  slice repaired the defect, so the check that once failed now passes.
 - Bus ridership remains in single figures to low double figures, the structural
   limit recorded in the slice-14 note: the town is about 1.3 km across with
   free-flowing traffic, so a bus cannot beat a car on time.

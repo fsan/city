@@ -1038,6 +1038,15 @@
               <button id="lighting-apply">Set columns</button>
             </div>
             <p class="note" id="lighting-message"></p>
+            <h3>Water, drainage and waste <span class="info-tip" tabindex="0" role="button" aria-label="About water, drainage and waste" data-tip="One intake on the river lifts water for the whole town and serves each district through the real street graph, so a district cut off from a crossing loses supply. Two drains are keyed to every street and avenue; a drain blocks from time to time, and a blocked drain floods its segment on a wet day, slowing traffic until a crew clears it. Households and businesses also make waste every day, and one bounded collection round tips what it can and leaves the rest as a backlog.">?</span></h3>
+            <div id="water-summary" class="note"></div>
+            <div class="transport-controls">
+              <label>Drains on this street
+                <input id="water-drains" type="number" min="0" max="2" step="1" value="0">
+              </label>
+              <button id="water-drains-apply">Set drains</button>
+            </div>
+            <p class="note" id="water-message"></p>
             <hr>
             <h3>Current queues</h3>
             <div id="traffic-hotspots"></div>

@@ -124,12 +124,20 @@ budget as it becomes available and booked as ledger kind 16, and columns fail
 over time until a crew repairs them for a bounded cost booked as kind 17. After
 dusk an unlit segment runs slower and is measurably more likely to raise a
 collision, so extending coverage is a real trade-off.
-Manual save files use schema version 20, bellwether-2028-06-v20; older files are
+Water, drainage and waste are live too. One intake on the river serves each
+district through the real street graph, so a district cut off from a crossing
+genuinely loses supply; pumping is booked as ledger kind 18. Two drains are
+keyed to every street and avenue, a blocked drain floods its segment on a wet
+day and slows traffic until a crew clears it (works are kind 19), and one
+bounded collection round a day tips what it can and leaves the rest as a
+visible backlog.
+Manual save files use schema version 21, bellwether-2028-07-v21; older files are
 rejected. See [street types and parking](docs/street-types-parking-learning-slice.md),
 [crossings and junction behaviour](docs/crossings-junctions-slice.md),
 [traffic incidents](docs/traffic-incidents-slice.md),
-[parking and freight](docs/parking-freight-slice.md) and
-[streetlighting](docs/streetlighting-slice.md).
+[parking and freight](docs/parking-freight-slice.md),
+[streetlighting](docs/streetlighting-slice.md) and
+[water, drainage and waste](docs/water-drainage-waste-slice.md).
 
 
 ## Housing and occupancy

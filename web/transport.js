@@ -684,6 +684,20 @@ export function createTransport(game, ui) {
     else message(`Street #${road + 1} now has ${lamps} column${lamps === 1 ? "" : "s"}; £${cost.toFixed(2)} of works booked.`);
     update();
   };
+  // Numbered item 18: designate drains on the selected street. New drains are
+  // charged as municipal works, and a street that is drained keeps its speed in
+  // heavy rain while an undrained one floods.
+  $("water-drains-apply").onclick = () => {
+    const road = Number($("traffic-road").value);
+    const drains = Number($("water-drains").value);
+    const cost = game.water_set_drains(road, drains);
+    if (cost < 0)
+      message("That street cannot take drains (lanes, works and pedestrian-only segments are excluded, and the count is capped by street class).");
+    else if (cost === 0) message(`Street #${road + 1} already has ${drains} drain${drains === 1 ? "" : "s"}.`);
+    else message(`Street #${road + 1} now has ${drains} drain${drains === 1 ? "" : "s"}; £${cost.toFixed(2)} of works booked.`);
+    update();
+  };
+
   function syncParking() {
     const facilities = r(0, 0, 55);
     const slots = r(0, 0, 56);
@@ -731,6 +745,23 @@ export function createTransport(game, ui) {
     $("lighting-message").textContent = columns < 0
       ? "This street cannot take lighting columns (lanes, works and pedestrian-only segments are excluded)."
       : `Street #${road + 1}: ${columns} of ${r(36,road,8)} columns · ${r(36,road,9)} working · ${r(36,road,10)} failed · ${(r(36,road,11)*100).toFixed(0)}% coverage · illumination ${(r(36,road,12)*100).toFixed(0)}% · electricity £${r(36,road,13).toFixed(2)}/day · ${r(36,road,14)} repairs recorded.`;
+    // Numbered item 18: water, drainage and waste. The summary is the town
+    // total; the selected street shows its own drains, the flood factor today
+    // and how much of the day's rain the segment is carrying.
+    const rain = r(0,0,169);
+    $("water-summary").textContent = [
+      `${r(0,0,153) ? "intake working" : "intake down"} · ${r(0,0,154)}/12 districts served · mean coverage ${(r(0,0,155)*100).toFixed(0)}%`,
+      `today ${r(0,0,157).toFixed(2)} of ${r(0,0,156).toFixed(2)} units served · shortfall ${r(0,0,158).toFixed(2)}`,
+      `pumping £${r(0,0,160).toFixed(2)} of £${r(0,0,159).toFixed(2)} paid today · £${r(0,0,161).toFixed(2)} lifetime · faults ${r(0,0,162)} · repairs ${r(0,0,163)}`,
+      `drain coverage ${(r(0,0,166)*100).toFixed(0)}% · ${r(0,0,167)} drains · ${r(0,0,168)} blocked now · rain ${(rain*100).toFixed(0)}%`,
+      `waste ${r(0,0,170).toFixed(2)} units today · collected ${r(0,0,171).toFixed(2)} · backlog ${r(0,0,172).toFixed(2)} · tipping £${r(0,0,173).toFixed(2)} today, £${r(0,0,174).toFixed(2)} lifetime`,
+      `works £${r(0,0,164).toFixed(2)} today, £${r(0,0,165).toFixed(2)} lifetime`,
+    ].join(" · ");
+    const drainCount = r(38, road, 5);
+    $("water-drains").value = String(drainCount < 0 ? 0 : drainCount);
+    $("water-message").textContent = drainCount < 0
+      ? "This street cannot take drains (lanes, works and pedestrian-only segments are excluded)."
+      : `Street #${road + 1}: ${drainCount} of ${r(38,road,6)} drains · ${r(38,road,7)} working · ${r(38,road,8)} blocked · ${(r(38,road,9)*100).toFixed(0)}% drained · flood factor ${r(38,road,10).toFixed(2)}x · ${r(38,road,11)} clears recorded · rain ${(r(38,road,12)*100).toFixed(0)}%.`;
   }
 
   function setOverlay(mode) {

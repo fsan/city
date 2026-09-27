@@ -18,6 +18,7 @@ pub const parks = @import("parks.zig");
 pub const incidents = @import("incidents.zig");
 pub const freight = @import("freight.zig");
 pub const lighting = @import("lighting.zig");
+pub const water = @import("water.zig");
 pub var elapsed: f64 = 160;
 pub var trust: [city.district_count]f32 = undefined;
 pub const Sample = struct { time: f64, cash: f64, reserved: f64, walking: usize, condition: f32 };
@@ -52,6 +53,7 @@ pub fn init() void {
     incidents.init();
     freight.init();
     lighting.init();
+    water.init();
     development.init();
     roadworks.reset();
     parcels.init();
@@ -82,6 +84,7 @@ pub fn update(dt: f32) void {
         // be reached trades at a bounded loss.
         freight.daily(elapsed);
         lighting.daily(calendar.dayIndex(elapsed));
+        water.daily(calendar.dayIndex(elapsed));
         for (residents.companies[0..residents.company_count], 0..) |*c, i| {
             // Explicit simplified local trading: a staffed non-contractor position
             // earns its posted wage plus the documented GBP 12 daily surplus, so
@@ -131,6 +134,12 @@ pub fn update(dt: f32) void {
         const lighting_spend = lighting.update(dt, elapsed, finance.available());
         if (lighting_spend.electricity > 0) finance.record(elapsed, -lighting_spend.electricity, 16, -1, -1);
         if (lighting_spend.works > 0) finance.record(elapsed, -lighting_spend.works, 17, -1, -1);
+        // Numbered item 18: the water utility's pumping electricity and waste
+        // tipping are ledger kind 18; intake repairs, drain clearing and new
+        // drains are kind 19.
+        const water_spend = water.update(dt, elapsed, finance.available());
+        if (water_spend.electricity > 0 or water_spend.tipping > 0) finance.record(elapsed, -(water_spend.electricity + water_spend.tipping), 18, -1, -1);
+        if (water_spend.works > 0) finance.record(elapsed, -water_spend.works, 19, -1, -1);
         next_operating = elapsed + 30;
     }
     if (elapsed >= next_week) {

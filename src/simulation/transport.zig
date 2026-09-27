@@ -5,6 +5,8 @@ pub const operators = @import("operators.zig");
 pub const signals = @import("signals.zig");
 pub const incidents = @import("incidents.zig");
 pub const lighting = @import("lighting.zig");
+pub const water = @import("water.zig");
+pub const calendar = @import("calendar.zig");
 pub var clock: f64 = 160;
 // Numbered item 15: a monotonic step counter feeds the deterministic incident
 // hash, so a collision is a pure function of the live congestion and the step.
@@ -501,7 +503,10 @@ pub fn update(dt: f32, elapsed: f64) void {
         // no lighting to see by. The multiplier is 1 in daylight and at full
         // coverage, so an unlit street is genuinely slower after dusk.
         const night_factor: f32 = lighting.nightSpeed(r, elapsed);
-        const limit: f32 = (if (bus) travel.busSpeed(road.class, road.condition, road.slope, road.works) else travel.classSpeed(road.class, road.condition, road.slope, road.works)) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1) * caution * incident_factor * night_factor;
+        // Numbered item 18: an undrained segment floods in heavy rain, so the
+        // day's rain and the drain coverage are a second bounded speed factor.
+        const flood_factor: f32 = water.floodFactor(r, calendar.dayIndex(elapsed));
+        const limit: f32 = (if (bus) travel.busSpeed(road.class, road.condition, road.slope, road.works) else travel.classSpeed(road.class, road.condition, road.slope, road.works)) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1) * caution * incident_factor * night_factor * flood_factor;
         var target = limit;
         if (must_stop or following) target = @min(target, @sqrt(6 * free));
         if (v.speed < target) v.speed = @min(target, v.speed + dt * 2) else v.speed = @max(target, v.speed - dt * 3);
