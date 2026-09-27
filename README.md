@@ -137,7 +137,8 @@ rejected. See [street types and parking](docs/street-types-parking-learning-slic
 [traffic incidents](docs/traffic-incidents-slice.md),
 [parking and freight](docs/parking-freight-slice.md),
 [streetlighting](docs/streetlighting-slice.md) and
-[water, drainage and waste](docs/water-drainage-waste-slice.md).
+[water, drainage and waste](docs/water-drainage-waste-slice.md) and the
+[water and lighting overlays](docs/utilities-overlay-slice.md).
 
 
 ## Housing and occupancy

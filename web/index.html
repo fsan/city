@@ -757,6 +757,14 @@
                 <td>O / F / K</td>
               </tr>
               <tr>
+                <td>Water &amp; waste map and window</td>
+                <td>U</td>
+              </tr>
+              <tr>
+                <td>Street lighting map</td>
+                <td>L</td>
+              </tr>
+              <tr>
                 <td>Planning (roads / zoning / permits / parks)</td>
                 <td>N / Z / P / G</td>
               </tr>
@@ -789,6 +797,13 @@
         <button data-open="budget">Treasury <kbd>B</kbd><span>↗</span></button>
         <button data-open="works">
           Public works <kbd>J</kbd><span>↗</span>
+        </button>
+        <button
+          data-toggle="water"
+          aria-controls="water-window"
+          aria-expanded="false"
+        >
+          Water &amp; waste <kbd>U</kbd><span>↗</span>
         </button>
         <button data-open="help">Save / load town <span>↗</span></button>
         <div id="reports-menu" class="submenu" hidden>
@@ -859,6 +874,20 @@
           title="Park condition map (K)"
         >
           Parks <kbd>K</kbd>
+        </button
+        ><button
+          id="lighting-overlay"
+          aria-pressed="false"
+          title="Street lighting map (L)"
+        >
+          Lights <kbd>L</kbd>
+        </button
+        ><button
+          id="water-overlay"
+          aria-pressed="false"
+          title="Water and drainage map (U)"
+        >
+          Water <kbd>U</kbd>
         </button>
       </nav>
       <div class="status-line">
@@ -874,6 +903,79 @@
         ><button id="route-save-map">Apply route</button
         ><button id="route-cancel-map">Cancel · Esc</button>
       </div>
+      <section
+        class="game-window wide"
+        id="water-window"
+        role="dialog"
+        aria-labelledby="water-title"
+        tabindex="-1"
+        hidden
+      >
+        <header class="window-title">
+          <h2 id="water-title">Water &amp; waste</h2>
+          <span class="window-number">04 / UTILITIES</span
+          ><button data-close="water" aria-label="Close water and waste">
+            ×
+          </button>
+        </header>
+        <div class="window-body">
+          <div class="note" id="water-window-summary"></div>
+          <h3>River intake <span class="info-tip" tabindex="0" role="button" aria-label="About the intake" data-tip="One works sits on the river's own centreline and lifts water for the whole town. It loses pressure at most once a day from a deterministic function of the day index; a failed works is repaired by the ordinary operating pass and booked as municipal works.">?</span></h3>
+          <p class="note" id="water-intake"></p>
+          <div class="report-links">
+            <button id="water-locate-intake">Locate intake</button
+            ><button id="water-overlay-toggle" aria-pressed="false">
+              Water overlay <kbd>U</kbd>
+            </button>
+          </div>
+          <h3>District supply <span class="info-tip" tabindex="0" role="button" aria-label="About district supply" data-tip="A district is served when the intake is working and the pipe run from the intake's node to the district's own node through the real walk graph is within the published bound. A district across the river with no crossing, or beyond the bound, is unserved.">?</span></h3>
+          <div class="table-scroll"><table>
+            <thead>
+              <tr>
+                <th>District · locate</th>
+                <th>Demand</th>
+                <th>Served</th>
+                <th>Coverage</th>
+                <th>Pipe run</th>
+                <th>Residents</th>
+                <th>Workplaces</th>
+              </tr>
+            </thead>
+            <tbody id="water-district-rows"></tbody>
+          </table></div>
+          <h3>Drainage by street <span class="info-tip" tabindex="0" role="button" aria-label="About drainage" data-tip="Two drains are keyed to every eligible carriageway; a drain blocks at most once a segment per day and a crew clears a bounded number each operating pass. A blocked segment floods once the day's rain exceeds its own drain coverage, raising driver travel time until it is clear.">?</span></h3>
+          <label>Street segment <select id="water-street"></select></label>
+          <p class="note" id="water-street-summary"></p>
+          <div class="transport-controls">
+            <label>Drains on this street
+              <input id="water-window-drains" type="number" min="0" max="2" step="1" value="0">
+            </label>
+            <button id="water-window-drains-apply">Set drains</button>
+            <button id="water-locate-street">Locate street</button>
+          </div>
+          <div class="table-scroll"><table>
+            <thead>
+              <tr>
+                <th>Street · locate</th>
+                <th>Drains</th>
+                <th>Working</th>
+                <th>Blocked</th>
+                <th>Coverage</th>
+                <th>Flood</th>
+                <th>Clears</th>
+              </tr>
+            </thead>
+            <tbody id="water-drain-rows"></tbody>
+          </table></div>
+          <h3>Waste collection <span class="info-tip" tabindex="0" role="button" aria-label="About waste" data-tip="Every occupied home and staffed workplace makes a bounded daily amount of waste. One collection round per day tips what its capacity covers at the published fee; the remainder stays as an explicit backlog a later round can clear. Tipping is paid with the pumping bill as ledger kind 18.">?</span></h3>
+          <div class="note" id="water-waste"></div>
+          <p id="water-window-message" role="status"></p>
+        </div>
+        <div class="window-footer">
+          MUNICIPAL UTILITIES
+          <span>Reads the same ABI the simulation publishes</span>
+        </div>
+      </section>
       <section
         class="game-window wide"
         id="transport-window"

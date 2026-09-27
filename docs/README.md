@@ -21,3 +21,4 @@ regularity-target-slice.md records optional agreement interval targets and diagn
 - [Traffic incidents](traffic-incidents-slice.md)
 - [Streetlighting](streetlighting-slice.md)
 - [Water, drainage and waste](water-drainage-waste-slice.md)
+- [Water and lighting overlays, and the Water & waste window](utilities-overlay-slice.md)

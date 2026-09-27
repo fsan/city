@@ -4,6 +4,7 @@ import { createOperators } from "./operators.js";
 import { createRenderer } from "./renderer.js";
 import { createInterface } from "./ui.js";
 import { createReports } from "./reports.js";
+import { createWater } from "./water.js";
 const $ = (id) => document.getElementById(id);
 const canvas = $("city");
 let game;
@@ -50,6 +51,7 @@ function start(renderer) {
     reports.update();
     transport?.update();
     operators?.update();
+    water?.update();
     planning?.refresh();
   };
   const speed = (value) => {
@@ -75,6 +77,7 @@ function start(renderer) {
   });
   transport = createTransport(game, ui);
   const operators = createOperators(game, (text) => { $("operator-message").textContent = text; });
+  const water = createWater(game, transport);
   reports = createReports(game, ui, transport);
   planning = createPlanning(game, transport);
   $("restart").onclick = () => {
@@ -84,6 +87,7 @@ function start(renderer) {
     planning.reset();
     transport.reset();
     operators.reset();
+    water.reset();
     refresh();
   };
   const saveStatus = text => { $("save-status").textContent = text; };
@@ -131,7 +135,7 @@ function start(renderer) {
       restored = true;
       keys.clear(); drag = null; uiElapsed = 0;
       lastSpeed = game.saved_resume_speed();
-      reports.reset(); planning.reset(); transport.reset(); operators.reset();
+      reports.reset(); planning.reset(); transport.reset(); operators.reset(); water.reset();
       refresh();
       saveStatus(`Loaded ${file.name}. Day ${Math.floor(metric(0)/480)+1}; ${metric(13) ? `running at ${metric(13)}×` : "paused"}. Unapplied drafts cleared.`);
     } catch (error) {
@@ -161,6 +165,7 @@ function start(renderer) {
       i: "inspector",
       h: "help",
       t: "transport",
+      u: "water",
     };
     if (shortcuts[key]) {
       if (!event.repeat) ui.toggle(shortcuts[key]);
@@ -182,6 +187,8 @@ function start(renderer) {
     if (key === "k") transport.toggleParkCondition();
     if (key === "v") transport.toggleTraffic();
     if (key === "f") transport.togglePedestrians();
+    if (key === "l") transport.toggleLighting();
+    if (key === "u") transport.toggleWater();
     if (["1", "2", "3"].includes(key)) speed([1, 4, 16][Number(key) - 1]);
   });
   window.addEventListener("keyup", (event) =>

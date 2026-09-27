@@ -257,6 +257,15 @@ kbd {
   background: linear-gradient(90deg, #b8503a, #ada45c, #379b6b);
   margin: 12px 0 7px;
 }
+/* The water layer ramps from flooded / undrained to drained, and the lighting
+   layer from a dark or faulted segment to a fully lit one, so the legend strip
+   matches the colour the map actually paints. */
+#overlay-key[data-mode="5"] .gradient {
+  background: linear-gradient(90deg, #b82a24, #c8952f, #2f83b5, #4ba3d6);
+}
+#overlay-key[data-mode="6"] .gradient {
+  background: linear-gradient(90deg, #14161a, #6a5a2c, #d8b45a, #f0e2a8);
+}
 #overlay-key small {
   display: block;
   font-size: 9px;

@@ -110,14 +110,57 @@ fn parkColor(condition: f32) Color {
     return .{ 0.80 - amount * 0.49, 0.34 + amount * 0.16, 0.24 + amount * 0.08 };
 }
 
+// Water and drainage overlay: the share of a segment's own drain capacity that
+// is working, with today's flood pulled towards a standing-water red. A street
+// with no drains and no rain stays a neutral slate, so the layer reads as
+// "carrying water away" only where there is water to carry.
+fn drainColor(road: usize, day: u32) Color {
+    const cover = game.water.coverage(road);
+    const flood = game.water.floodFactor(road, day);
+    const wet = game.water.rain(day);
+    const drained = Color{ 0.20, 0.44, 0.60 };
+    const exposed = Color{ 0.58, 0.47, 0.30 };
+    var base = Color{
+        exposed[0] + (drained[0] - exposed[0]) * cover,
+        exposed[1] + (drained[1] - exposed[1]) * cover,
+        exposed[2] + (drained[2] - exposed[2]) * cover,
+    };
+    // A flooded segment is the one thing the player must be able to pick out at
+    // a glance: mix towards a deep standing-water red by how much of the day's
+    // rain the segment cannot drain.
+    const flood_amount = (1 - flood) * wet;
+    base = .{
+        base[0] + (0.72 - base[0]) * flood_amount * 3,
+        base[1] + (0.16 - base[1]) * flood_amount * 3,
+        base[2] + (0.14 - base[2]) * flood_amount * 3,
+    };
+    return base;
+}
+
+// Street-lighting overlay: what a driver actually gets after dark, which is the
+// segment's coverage scaled by the current darkness. A faulted or unlit street
+// falls to near black, a fully covered one stays warm.
+fn lightColor(road: usize) Color {
+    const lit = game.lighting.illumination(road, game.elapsed);
+    const failed = game.lighting.failed(road);
+    const base = Color{ 0.12 + 0.72 * lit, 0.13 + 0.66 * lit, 0.14 + 0.46 * lit };
+    // A segment with a failed column keeps a visible fault tint, so a fault is
+    // readable even in daylight when illumination is otherwise unremarkable.
+    if (failed == 0) return base;
+    return .{ base[0] + (0.85 - base[0]) * 0.5, base[1] + (0.30 - base[1]) * 0.5, base[2] + (0.20 - base[2]) * 0.5 };
+}
+
 // The carriageway surface a street takes: an active work order's orange wins
-// over the overlays, then the condition, traffic and pedestrian views, then the
-// base pavement. The junction join paints itself with the same function, so a
-// junction can never keep a colour the streets around it have left.
+// over the overlays, then the condition, traffic, pedestrian, park, water and
+// lighting views, then the base pavement. The junction join paints itself with
+// the same function, so a junction can never keep a colour the streets around
+// it have left.
 fn surfaceColor(r: city.Road, id: usize) Color {
     if (r.works) return .{ 0.66, 0.46, 0.18 };
     if (overlay == 2) return streetColor(100 * (1 - transport.congestion[id]));
     if (overlay == 3) return streetColor(100 * (1 - @min(1, @as(f32, @floatFromInt(game.residents.pedestrians[id])) / @max(1, r.length * 0.15))));
+    if (overlay == 5) return drainColor(id, game.calendar.dayIndex(game.elapsed));
+    if (overlay == 6) return lightColor(id);
     if (overlay == 1) return streetColor(r.condition);
     return .{ 0.23, 0.25, 0.25 };
 }
@@ -647,6 +690,7 @@ pub fn draw(w: f32, h: f32) void {
             }
         };
     }
+    waterOverlay();
     // Slice 11: signal heads stand back from the corner on their own arm, one
     // per branch, and only the branch holding green shows a green lamp.
     for (transport.signals.junctions[0..transport.signals.count], 0..) |junction, junction_index| {
@@ -881,6 +925,44 @@ pub fn draw(w: f32, h: f32) void {
         quad(.{ p.x - dx, y, p.z - dz }, .{ p.x + dx, y, p.z + dz }, .{ p.x + dx, y + 0.9, p.z + dz }, .{ p.x - dx, y + 0.9, p.z - dz }, color);
     }
 }
+// Numbered item 18: the water and drainage overlay. Water is a bounded
+// graph-distance pipe run rather than drawn pipe geometry, so the layer is a
+// diagram over the real town: a run from the intake's own node to each
+// district's node, a column at that node whose height and colour are the
+// district's coverage, and the intake structure itself. The carriageway colour
+// from `surfaceColor` carries the drains and today's flooding.
+fn waterOverlay() void {
+    if (overlay != 5) return;
+    if (game.water.intake_installed and game.water.intake_node < city.node_count) {
+        const source = city.nodes[game.water.intake_node];
+        for (game.water.supplies, 0..) |supply, district| {
+            _ = district;
+            if (supply.node >= city.node_count) continue;
+            const target = city.nodes[supply.node];
+            const pipe: Color = if (supply.served) .{ 0.32, 0.70, 0.88 } else .{ 0.72, 0.34, 0.30 };
+            ribbon(.{ .x = source.x, .z = source.z }, .{ .x = target.x, .z = target.z }, 0.17, 0, pavement_ribbon, pipe);
+        }
+    }
+    // One marker per district node: the column height and colour are the
+    // measured coverage, so a cut-off district reads as a short red stump.
+    for (game.water.supplies) |supply| {
+        if (supply.node >= city.node_count) continue;
+        const n = city.nodes[supply.node];
+        const cover: f32 = if (supply.demand <= 0) 1 else std.math.clamp(@as(f32, @floatCast(supply.working / supply.demand)), 0, 1);
+        box(n.x - 0.7, n.z - 0.7, 1.4, 1.4, 1.0 + cover * 2.6, n.y + pavement_kerb, .{ 0.28 + (1 - cover) * 0.60, 0.34 + cover * 0.34, 0.34 + cover * 0.30 });
+    }
+    // The intake: a works building on the bank with a pump column that turns
+    // red when the works is down. This is the one water structure with a fixed
+    // authored position, so it is drawn even before the layer colours anything.
+    if (game.water.intake_installed) {
+        const base = city.elevation(game.water.intake_x, game.water.intake_z) + pavement_kerb;
+        box(game.water.intake_x - 2.0, game.water.intake_z - 1.5, 4.0, 3.0, 2.2, base, .{ 0.36, 0.40, 0.38 });
+        const pump: Color = if (game.water.intake_working) .{ 0.30, 0.78, 0.92 } else .{ 0.90, 0.28, 0.20 };
+        box(game.water.intake_x - 0.85, game.water.intake_z - 0.55, 1.7, 1.1, 3.0, base, pump);
+        box(game.water.intake_x - 0.3, game.water.intake_z + 1.5, 0.6, 1.4, 1.5, base, .{ 0.55, 0.52, 0.44 });
+    }
+}
+
 // Heads are addressed by a flat index: junctions in order, then their arms.
 pub fn signal_index(junction_index: usize, slot: usize) usize {
     var index: usize = 0;

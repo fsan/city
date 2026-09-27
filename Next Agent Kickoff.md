@@ -1,3 +1,21 @@
+# Next agent kickoff - water and lighting overlays, and the Water & waste window, complete in the worktree
+
+Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Read this note before editing. Do not commit, reset, rewrite history or push.
+
+**A bounded UI batch on top of slice 26 is complete, built, probed and documented in the worktree; it is not committed.** The user asked for the UI overlay and menu the water slice never had, and for any other missing overlay from earlier slices. The two gaps found were water (item 18) and street lighting (item 17): both published per-segment state to the browser but had no map layer, and water had no window of its own.
+
+- `src/main.zig` clamps `set_overlay` to 0-6: 5 is water, drainage and flooding, 6 is street lighting. Group 0 gains fields 178-181 (the intake's installed flag, world x/z and nearest walk-graph node) and 182 (the overlay mode the renderer currently holds).
+- `src/render/scene.zig` adds the two layers. Mode 5 paints each eligible carriageway by the working share of its drain capacity, pulled towards a standing-water red by how much of the day's rain it cannot drain, then draws the intake's own structure, a pipe run from the intake node to each district node, and a column at each district node whose height and colour are that district's measured coverage. Mode 6 paints each carriageway by its current night illumination after coverage, with an alarm tint on a segment holding a failed column. The intake was simulated but never drawn before this batch.
+- `web/water.js` (new) renders the **Water & waste** window (04 / UTILITIES, `U`): the intake and its position, the running totals, one row per district from group 37, one row per street from group 38 with the drain control that writes `water_set_drains(road, drains)`, and the waste and tipping account.
+- `web/index.html`, `web/transport.js`, `web/main.js` and `web/style.css` add the window markup, the `Water` (U) and `Lights` (L) toolbar buttons, the management-menu entry, the help rows, the mode-aware legend and the per-mode legend gradients.
+- `docs/utilities-overlay-slice.md` is the slice note; `docs/abi.md`, `docs/README.md` and `README.md` are updated.
+
+**Verified.** `make build` publishes `/output/city.wasm` byte-identical to the served `/build/city.wasm` (md5 `7537b334ffac8f04d82f7ef13342a9be` at the last check; the WASM embeds build and cache paths, so compare the two copies rather than a fixed digest). Every served browser module passes `node --check`. A focused probe outside the repository reports `after set_overlay(9) field182=6 (clamped)`; the intake installed at x=611.0, z=513.6 with node 1126; 12/12 districts served with demand 47.85 matching the published total; group 38 returning 320 drain-eligible roads, 307 with drains and 1611 fully drained of 1624; and the lighting and waste fields reading.
+
+**Limits.** Water is a bounded graph-distance pipe run, not drawn pipe geometry, so the overlay's pipe lines are a diagram over the real town rather than a surveyed route. The lighting layer has no lamp geometry of its own and paints the carriageway. Neither layer changes a rule, price or threshold; both read the ABI the simulation already publishes.
+
+**Authorized goal:** the user's "do the UI overlay and menu for the water system" request produced this batch. Nothing else was authorized. Do not commit, reset, rewrite history or push without a request.
+
 # Next agent kickoff - slice 26 (numbered item 18, water, drainage and waste) complete in the worktree; item 19 is next
 
 Continue Common Ground in /Users/fox/Documents/ChatGPT/city. Read this note before editing. Slices 1-22 remain as recorded below; do not reset, rewrite history or push.

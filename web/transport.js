@@ -764,6 +764,30 @@ export function createTransport(game, ui) {
       : `Street #${road + 1}: ${drainCount} of ${r(38,road,6)} drains · ${r(38,road,7)} working · ${r(38,road,8)} blocked · ${(r(38,road,9)*100).toFixed(0)}% drained · flood factor ${r(38,road,10).toFixed(2)}x · ${r(38,road,11)} clears recorded · rain ${(r(38,road,12)*100).toFixed(0)}%.`;
   }
 
+  const overlayTitles = {
+    1: "STREET CONDITION",
+    2: "TRAFFIC · INTENSITY & QUEUES",
+    3: "PEDESTRIAN DENSITY",
+    4: "PARK CONDITION",
+    5: "WATER · SUPPLY & DRAINAGE",
+    6: "STREET LIGHTING",
+  };
+  const overlayLegends = {
+    1: ["Worn", "Maintained"],
+    2: ["Queued", "Flowing"],
+    3: ["Busy", "Quiet"],
+    4: ["Neglected", "Maintained"],
+    5: ["Flooded / undrained", "Drained"],
+    6: ["Dark / faulted", "Lit"],
+  };
+  const overlayNotes = {
+    1: "",
+    2: "Amber clouds: vehicle density; wider areas at city scale",
+    3: "People walking or waiting outside; street intensity per 100 m² of sidewalk",
+    4: "",
+    5: "Streets by drained share and today's flood; blue pipes run from the river intake to each district node",
+    6: "Night illumination after coverage; a red segment has a failed column",
+  };
   function setOverlay(mode) {
     overlay = mode;
     game.set_overlay(mode);
@@ -771,13 +795,16 @@ export function createTransport(game, ui) {
     $("traffic-overlay").setAttribute("aria-pressed", mode === 2);
     $("overlay").setAttribute("aria-pressed", mode === 1);
     $("park-overlay").setAttribute("aria-pressed", mode === 4);
-    $("overlay-key").hidden = !mode;
-    $("overlay-key").querySelector("strong").textContent =
-      mode === 3 ? "PEDESTRIAN DENSITY" : mode === 2 ? "TRAFFIC · INTENSITY & QUEUES" : mode === 4 ? "PARK CONDITION" : "STREET CONDITION";
-    $("overlay-key").querySelector("small").innerHTML =
-      mode === 3 ? "Busy <span>Quiet</span><br>People walking or waiting outside; street intensity per 100 m² of sidewalk" : mode === 2
-        ? "Queued <span>Flowing</span><br>Amber clouds: vehicle density; wider areas at city scale"
-        : mode === 4 ? "Neglected <span>Maintained</span>" : "Worn <span>Maintained</span>";
+    $("water-overlay").setAttribute("aria-pressed", mode === 5);
+    $("lighting-overlay").setAttribute("aria-pressed", mode === 6);
+    $("water-overlay-toggle").setAttribute("aria-pressed", mode === 5);
+    const key = $("overlay-key");
+    key.hidden = !mode;
+    key.dataset.mode = String(mode);
+    key.querySelector("strong").textContent = overlayTitles[mode] ?? "STREET CONDITION";
+    const [low, high] = overlayLegends[mode] ?? overlayLegends[1];
+    const note = overlayNotes[mode] ?? "";
+    key.querySelector("small").innerHTML = `${low} <span>${high}</span><br>${note}`;
   }
   $("pedestrian-overlay").onclick = () => setOverlay(overlay === 3 ? 0 : 3);
   $("traffic-overlay").onclick = () => setOverlay(overlay === 2 ? 0 : 2);
@@ -865,7 +892,7 @@ export function createTransport(game, ui) {
       gesture = { index };
       return true;
     }
-    if (overlay === 2 || overlay === 3) {
+    if (overlay === 2 || overlay === 3 || overlay === 5 || overlay === 6) {
       let best = null,
         min = 10;
       for (const road of roads) {
@@ -1202,6 +1229,10 @@ export function createTransport(game, ui) {
     toggleTraffic: () => setOverlay(overlay === 2 ? 0 : 2),
     toggleParkCondition: () => setOverlay(overlay === 4 ? 0 : 4),
     toggleCondition: () => setOverlay(overlay === 1 ? 0 : 1),
+    toggleWater: () => setOverlay(overlay === 5 ? 0 : 5),
+    toggleLighting: () => setOverlay(overlay === 6 ? 0 : 6),
+    setOverlay,
+    currentOverlay: () => overlay,
     reset() {
       tool = null;
       showSignal(-1);

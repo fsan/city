@@ -94,7 +94,9 @@ export fn set_funding(value: u32) void {
     finance.funding = @min(value, 2);
 }
 export fn set_overlay(value: u32) void {
-    scene.overlay = @min(value, 4);
+    // 0 off, 1 street condition, 2 traffic, 3 pedestrians, 4 park condition,
+    // 5 water and drainage, 6 street lighting.
+    scene.overlay = @min(value, 6);
 }
 export fn apply_taxes(home: f64, commercial: f64) bool {
     return finance.applyTaxes(home, commercial);
@@ -338,6 +340,18 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             // drains blocked now, 169 the day's rain, 170 the day's waste,
             // 171 collected today, 172 the backlog and 173/174 tipping paid
             // today and lifetime.
+            // Numbered item 18 (continued): the intake's own published
+            // position, so the overlay and the window can draw and locate the
+            // abstraction the renderer otherwise has no geometry for. 178
+            // installed, 179/180 world x/z, 181 its nearest walk-graph node.
+            178 => if (water.intake_installed) 1 else 0,
+            179 => water.intake_x,
+            180 => water.intake_z,
+            181 => @floatFromInt(water.intake_node),
+            // 182 the overlay the renderer is currently painting, so the
+            // browser and any verification probe can confirm the mode the
+            // simulation actually holds.
+            182 => @floatFromInt(scene.overlay),
             153 => water.read0(0, calendar.dayIndex(game.elapsed)),
             154 => water.read0(1, calendar.dayIndex(game.elapsed)),
             155 => water.read0(2, calendar.dayIndex(game.elapsed)),
