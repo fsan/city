@@ -17,6 +17,9 @@ const travel = game.travel;
 const signals = game.transport.signals;
 const development = game.development;
 const parks = game.parks;
+const incidents = game.incidents;
+const freight = game.freight;
+const lighting = game.lighting;
 
 // JSON fields, not native struct bytes. Bump version/rules when changing this contract.
 pub const capacity = 16 * 1024 * 1024;
@@ -127,6 +130,54 @@ const PublicSpace = struct {
     created_total: u32,
     construction_spent_total: f64,
 };
+// Numbered item 15: the bounded incident ring and its running counters. The
+// per-record life-cycle times and the deterministic collision step are saved;
+// lane penalties are derived each step and never trusted from a file.
+const Incidents = struct {
+    records: []const incidents.Record,
+    next_number: u32,
+    raised_total: u32,
+    cleared_total: u32,
+    collisions_total: u32,
+    cost_total: f64,
+    blocked_seconds_total: f32,
+    delay_total: f32,
+    last_raised: f64,
+};
+// Numbered item 16: the loading-bay designations, the bounded delivery-run ring
+// and its running counters. Bay occupancy and access scores are derived, so
+// they are never saved.
+const Freight = struct {
+    runs: []const freight.Run,
+    next_number: u32,
+    loading_bays: []const u8,
+    dispatched_total: u32,
+    delivered_total: u32,
+    failed_total: u32,
+    goods_total: f64,
+    fee_total: f64,
+    bay_seconds_total: f64,
+    travelled_total: f64,
+    demand_today: f64,
+    delivered_today: f64,
+    last_dispatch: f64,
+};
+// Numbered item 17: the installed and working column counts per segment, the
+// per-segment repair counters and the running totals. Coverage, illumination
+// and the night collision multiplier are derived, so they are never saved.
+const Lighting = struct {
+    lamps: []const u8,
+    lit: []const u8,
+    repairs: []const u32,
+    faults_total: u32,
+    repairs_total: u32,
+    installed_total: u32,
+    electricity_paid_total: f64,
+    electricity_paid_today: f64,
+    works_paid_total: f64,
+    works_paid_today: f64,
+    electricity_need_today: f64,
+};
 const Development = struct {
     proposals: []const development.Proposal,
     count: u32,
@@ -170,6 +221,9 @@ const State = struct {
     services: Services,
     development: Development,
     public_space: PublicSpace,
+    incidents: Incidents,
+    freight: Freight,
+    lighting: Lighting,
     trust: []const f32,
     history: []const game.Sample,
     history_count: usize,
@@ -206,8 +260,8 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
     for (transport.lanes[0..city.road_count], 0..) |lane, i| lane_values[i] = lane;
     return .{
         .format = "Common Ground town",
-        .version = 17,
-        .rules = "bellwether-2028-03-v17",
+        .version = 20,
+        .rules = "bellwether-2028-06-v20",
         .clock = .{ .elapsed = game.elapsed, .speed = speed, .resume_speed = resume_speed, .accumulator = accumulator, .next_sample = game.next_sample, .next_routes = game.next_routes, .next_operating = game.next_operating, .next_week = game.next_week },
         .camera = .{ .x = scene.camera_x, .z = scene.camera_z, .zoom = scene.zoom, .angle = scene.angle },
         .town = .{ .revision = city.revision, .street_count = city.street_count, .nodes = city.nodes, .roads = city.roads, .buildings = city.lots(), .parcels = parcels.storage[0..parcels.count] },
@@ -231,6 +285,9 @@ fn capture(speed: f32, resume_speed: f32, accumulator: f32) State {
         .services = .{ .orders = contracts.orders[0..contracts.count], .next_review = contracts.next_review, .current = &agreements.agreements, .history = agreements.history[0..@min(agreements.history_count, agreements.history.len)], .history_count = agreements.history_count, .next_number = agreements.next_number },
         .development = .{ .proposals = development.storage[0..@min(@as(usize, development.count), development.storage.len)], .count = development.count, .next_number = development.next_number, .lodged_total = development.lodged_total, .approved_total = development.approved_total, .refused_total = development.refused_total, .lapsed_total = development.lapsed_total, .built_total = development.built_total, .levies_collected = development.levies_collected, .lodged_today = development.lodged_today, .building = development.building, .cursor = development.cursor, .construction_spent_total = development.construction_spent_total, .materials_delivered_total = development.materials_delivered_total, .shadow_compensation_total = development.shadow_compensation_total, .shadow_loss_total = development.shadow_loss_total },
         .public_space = .{ .records = parks.records[0..parks.count], .funding = parks.funding, .maintenance_spent_total = parks.maintenance_spent_total, .maintenance_need_today = parks.maintenance_need_today, .maintenance_paid_today = parks.maintenance_paid_today, .created_total = parks.created_total, .construction_spent_total = parks.construction_spent_total },
+        .freight = .{ .runs = freight.runs[0..freight.count], .next_number = freight.next_number, .loading_bays = freight.loading_bays[0..city.road_count], .dispatched_total = freight.dispatched_total, .delivered_total = freight.delivered_total, .failed_total = freight.failed_total, .goods_total = freight.goods_total, .fee_total = freight.fee_total, .bay_seconds_total = freight.bay_seconds_total, .travelled_total = freight.travelled_total, .demand_today = freight.demand_today, .delivered_today = freight.delivered_today, .last_dispatch = freight.last_dispatch },
+        .lighting = .{ .lamps = lighting.lamps[0..city.road_count], .lit = lighting.lit[0..city.road_count], .repairs = lighting.repairs[0..city.road_count], .faults_total = lighting.faults_total, .repairs_total = lighting.repairs_total, .installed_total = lighting.installed_total, .electricity_paid_total = lighting.electricity_paid_total, .electricity_paid_today = lighting.electricity_paid_today, .works_paid_total = lighting.works_paid_total, .works_paid_today = lighting.works_paid_today, .electricity_need_today = lighting.electricity_need_today },
+        .incidents = .{ .records = incidents.records[0..incidents.count], .next_number = incidents.next_number, .raised_total = incidents.raised_total, .cleared_total = incidents.cleared_total, .collisions_total = incidents.collisions_total, .cost_total = incidents.cost_total, .blocked_seconds_total = incidents.blocked_seconds_total, .delay_total = incidents.delay_total, .last_raised = incidents.last_raised },
         .trust = &game.trust,
         .history = game.history[0..@min(game.history_count, game.history.len)],
         .history_count = game.history_count,
@@ -392,7 +449,7 @@ fn validate(s: *const State) bool {
     // snapshot. Writing them cost 53% of the file and made the node count the
     // thing that decided whether a town could be saved at all.
     for (town.buildings) |b| {
-        if (b.node >= n or b.district >= 12 or b.street >= town.street_count or !index(b.employer, companies.len) or b.width <= 0 or b.depth <= 0 or b.value < 0 or b.capacity > city.population or b.occupants > city.population or !between(b.sun, city.shadow_floor, 1) or !between(b.park, 0, 1)) return false;
+            if (b.node >= n or b.district >= 12 or b.street >= town.street_count or !index(b.employer, companies.len) or b.width <= 0 or b.depth <= 0 or b.value < 0 or b.capacity > city.population or b.occupants > city.population or !between(b.sun, city.shadow_floor, 1) or !between(b.park, 0, 1)) return false;
         // Slice 20: an assessed lot stays inside the measured model. The base
         // value is multiplied by 0.97..1.10 sunlight and a 0.81..1.06 access
         // factor, so the stored value is bounded rather than arbitrary.
@@ -414,12 +471,67 @@ fn validate(s: *const State) bool {
         if (record.maintenance_paid_total < 0 or record.maintenance_paid_total > 1e15) return false;
         for (public_space.records[0..i]) |old| if (old.building == record.building) return false;
     }
+    // Numbered item 15: the incident ring is bounded and self-consistent. A
+    // record must name a real segment and node, its phases must be ordered in
+    // time, and its counters must not exceed the running totals.
+    const incident_roll = &s.incidents;
+    if (incident_roll.records.len > incidents.max_incidents or incident_roll.next_number == 0 or incident_roll.raised_total > 1000000000 or incident_roll.cleared_total > incident_roll.raised_total or incident_roll.collisions_total > incident_roll.raised_total or incident_roll.cost_total < 0 or incident_roll.blocked_seconds_total < 0 or incident_roll.delay_total < 0 or !between(incident_roll.last_raised, -1e9, c.elapsed)) return false;
+    for (incident_roll.records, 0..) |record_value, i| {
+        if (record_value.number == 0 or record_value.number >= incident_roll.next_number or record_value.road >= roads.len or record_value.node >= n or record_value.lane > 2 or record_value.severity > incidents.max_severity or record_value.responders > 4) return false;
+        if (!between(record_value.reported, 0, c.elapsed) or !between(record_value.responded, 0, c.elapsed) or !between(record_value.arrived, 0, c.elapsed) or !between(record_value.cleared, 0, c.elapsed) or record_value.blocked_seconds < 0 or record_value.delay_total < 0 or record_value.cost < 0) return false;
+        if (record_value.responded > 0 and record_value.responded < record_value.reported) return false;
+        if (record_value.cleared > 0 and record_value.cleared < record_value.responded) return false;
+        for (incident_roll.records[0..i]) |old| if (old.number == record_value.number) return false;
+    }
+    // Numbered item 16: the freight layer is bounded and self-consistent. Every
+    // run names a real depot, a real customer, a real frontage road and a
+    // bounded load, and the phases stay ordered in time. Bay occupancy and the
+    // access score are derived, so they are not validated from the file.
+    const cargo = &s.freight;
+    if (cargo.runs.len > freight.max_runs or cargo.next_number == 0 or cargo.dispatched_total > 1000000000 or cargo.delivered_total > cargo.dispatched_total or cargo.failed_total > cargo.dispatched_total or cargo.goods_total < 0 or cargo.fee_total < 0 or cargo.bay_seconds_total < 0 or cargo.travelled_total < 0 or cargo.demand_today < 0 or cargo.delivered_today < 0 or !between(cargo.last_dispatch, -1e9, c.elapsed)) return false;
+    if (cargo.loading_bays.len != roads.len) return false;
+    for (cargo.loading_bays, 0..) |value, i| {
+        if (value > freight.max_bays_per_road or (value > 0 and !freight.eligible(i))) return false;
+    }
+    for (cargo.runs, 0..) |run, i| {
+        if (run.number == 0 or run.number >= cargo.next_number or run.depot >= companies.len or run.customer >= companies.len or run.lot >= town.buildings.len or run.node >= n or run.road >= @as(i32, @intCast(roads.len))) return false;
+        if (run.goods < 0 or run.goods > 100000 or !between(run.fee, 0, 1e9) or run.travel_seconds < 0 or run.travel_seconds > 1e6 or run.dwell_seconds < 0 or run.dwell_seconds > 1e6) return false;
+        if (!between(run.dispatched, 0, c.elapsed) or !between(run.arrived, 0, c.elapsed) or !between(run.departed, 0, c.elapsed)) return false;
+        if (run.arrived > 0 and run.arrived < run.dispatched) return false;
+        if (run.departed > 0 and run.departed < run.arrived) return false;
+        const run_road: usize = @intCast(run.road);
+        if (run_road >= cargo.loading_bays.len) return false;
+        for (cargo.runs[0..i]) |old| if (old.number == run.number) return false;
+    }
+    // Kerbside supply must match the bays the player designated: a segment's car
+    // spaces are its class capacity minus the loading bays on it.
+    for (s.parked.facilities) |facility| {
+        if (facility.building >= 0 or facility.road < 0 or facility.kind != .car) continue;
+        const road: usize = @intCast(facility.road);
+        if (road >= roads.len) return false;
+        const base: u16 = if (roads[road].class >= 2) 4 else 2;
+        if (facility.slots != base -| @as(u16, cargo.loading_bays[road])) return false;
+    }
+    // Numbered item 17: the lighting layer is bounded and self-consistent. A
+    // segment may not hold more columns than its class allows, more working
+    // columns than installed ones, or any column at all where lighting is not
+    // eligible. Coverage and illumination are derived and never trusted.
+    const street_light = &s.lighting;
+    if (street_light.lamps.len != roads.len or street_light.lit.len != roads.len or street_light.repairs.len != roads.len) return false;
+    if (street_light.faults_total < 0 or street_light.repairs_total > street_light.faults_total or street_light.electricity_paid_total < 0 or street_light.electricity_paid_today < 0 or street_light.works_paid_total < 0 or street_light.works_paid_today < 0 or street_light.electricity_need_today < 0) return false;
+    if (street_light.electricity_paid_today > street_light.electricity_need_today + 0.011) return false;
+    for (street_light.lamps, 0..) |value, i| {
+        if (value > lighting.max_lamps_per_road or value > lighting.capacity(i)) return false;
+        if (value > 0 and !lighting.eligible(i)) return false;
+        if (street_light.lit[i] > value) return false;
+        if (street_light.repairs[i] > street_light.faults_total) return false;
+    }
     for (town.parcels) |p| if (p.node >= n or p.street >= town.street_count or p.zone > 5 or !index(p.building, town.buildings.len) or !index(p.block, 128) or p.width <= 0 or p.depth <= 0) return false;
     var riders: [transport.vehicles.len]usize = @splat(0);
     var employees: [city.buildings.len]usize = @splat(0);
     var occupants: [city.buildings.len]usize = @splat(0);
     for (people, 0..) |*p, person_index| {
-        if (p.phase > 3 or p.mode > 3 or p.bus_stage > 2 or p.shift > 2 or p.routine > 5 or p.skill > 2 or p.node >= n or p.next >= n or p.destination >= n or p.origin >= n or p.car_node >= n or p.bike_node >= n or p.boarding >= n or p.exit_node >= n or
+            if (p.phase > 3 or p.mode > 3 or p.bus_stage > 2 or p.shift > 2 or p.routine > 5 or p.skill > 2 or p.node >= n or p.next >= n or p.destination >= n or p.origin >= n or p.car_node >= n or p.bike_node >= n or p.boarding >= n or p.exit_node >= n or
             p.home >= town.buildings.len or p.current_building >= town.buildings.len or p.origin_building >= town.buildings.len or p.destination_building >= town.buildings.len or
             !index(p.employer, companies.len) or !validWorkRef(s, p.order, services.orders.len) or !index(p.bus_line, 8) or !index(p.bus, m.vehicles.len) or p.wallet < 0 or p.income < 0 or p.bus_wait < 0 or p.travel < 0 or p.last_trip < 0 or
             !between(p.bus_wait_start, -1, c.elapsed) or p.bus_full_mask > 7 or
@@ -457,7 +569,7 @@ fn validate(s: *const State) bool {
     }
     var employed: usize = 0;
     for (companies, 0..) |*company, i| {
-        if (company.building >= town.buildings.len or company.cash < 0 or company.costs < 0 or company.margin < 1 or company.labour <= 0 or company.crew_count > 4 or company.employees != employees[i] or company.employees > company.capacity or !validWorkRef(s, company.order, services.orders.len) or town.buildings[company.building].employer != @as(i32, @intCast(i)) or company.wage <= 0 or company.wage > 1000 or company.skill_required > 2 or company.wage_arrears < 0 or company.wage_arrears > @as(f64, @floatFromInt(company.employees)) * company.wage + 0.001 or !between(company.staffing_pressure, 0, 1)) return false;
+            if (company.building >= town.buildings.len or company.cash < 0 or company.costs < 0 or company.margin < 1 or company.labour <= 0 or company.crew_count > 4 or company.employees != employees[i] or company.employees > company.capacity or !validWorkRef(s, company.order, services.orders.len) or town.buildings[company.building].employer != @as(i32, @intCast(i)) or company.wage <= 0 or company.wage > 1000 or company.skill_required > 2 or company.wage_arrears < 0 or company.wage_arrears > @as(f64, @floatFromInt(company.employees)) * company.wage + 0.001 or !between(company.staffing_pressure, 0, 1)) return false;
         if (company.capacity != town.buildings[company.building].capacity) return false;
         employed += employees[i];
         for (company.crew[0..company.crew_count], 0..) |id, k| {
@@ -633,7 +745,7 @@ fn validate(s: *const State) bool {
         }
     }
     for (m.vehicles, 0..) |v, i| {
-        if (v.node >= n or v.next >= n or v.target >= n or v.company >= 3 or v.lane > 1 or !index(v.line, 8) or v.stop >= 16 or !between(v.dwell, 0, 5) or v.speed < 0 or v.progress < 0 or v.passengers != riders[i] or v.passengers > 24 or (!v.active and v.passengers != 0)) return false;
+            if (v.node >= n or v.next >= n or v.target >= n or v.company >= 3 or v.lane > 1 or !index(v.line, 8) or v.stop >= 16 or !between(v.dwell, 0, 5) or v.speed < 0 or v.progress < 0 or v.passengers != riders[i] or v.passengers > 24 or (!v.active and v.passengers != 0)) return false;
         if (i < city.population) {
             // Parked personal cars never hold an owned bus unit.
             if (v.unit != -1) return false;
@@ -658,7 +770,7 @@ fn validate(s: *const State) bool {
     var revenue: f64 = 0;
     var costs: f64 = 0;
     for (m.lines) |l| {
-        if (l.company >= 3 or l.window > 1 or l.fleet < 1 or l.fleet > 3 or l.count > 16 or (l.active and (l.count < 2 or l.version == 0)) or l.revenue < 0 or l.costs < 0 or l.delivered < 0) return false;
+                if (l.company >= 3 or l.window > 1 or l.fleet < 1 or l.fleet > 3 or l.count > 16 or (l.active and (l.count < 2 or l.version == 0)) or l.revenue < 0 or l.costs < 0 or l.delivered < 0) return false;
         for (l.stops[0..l.count], 0..) |node, i| {
             if (node >= n) return false;
             for (l.stops[0..i]) |old| if (old == node) return false;
@@ -711,7 +823,7 @@ fn validate(s: *const State) bool {
     };
     var reserved: f64 = 0;
     for (services.orders, 0..) |o, i| {
-        if (o.road >= roads.len or !index(o.company, companies.len) or !between(o.scope, 1, 60) or !between(o.progress, 0, 1) or !between(o.price, 100, 1e6) or !between(o.paid, 0, o.price) or o.costs < 0 or o.reason > 5 or !between(o.created, 0, c.elapsed) or !between(o.accepted, 0, c.elapsed) or !between(o.finished, 0, c.elapsed)) return false;
+                if (o.road >= roads.len or !index(o.company, companies.len) or !between(o.scope, 1, 60) or !between(o.progress, 0, 1) or !between(o.price, 100, 1e6) or !between(o.paid, 0, o.price) or o.costs < 0 or o.reason > 5 or !between(o.created, 0, c.elapsed) or !between(o.accepted, 0, c.elapsed) or !between(o.finished, 0, c.elapsed)) return false;
         if (contracts.active(o)) {
             reserved += o.price;
             for (services.orders[0..i]) |old| if (contracts.active(old) and old.road == o.road) return false;
@@ -735,7 +847,7 @@ fn validate(s: *const State) bool {
         }
     };
     for (services.current, 0..) |*a, i| {
-        if (!validAgreement(a, s, false) or (a.status > 0 and a.line != i)) return false;
+                if (!validAgreement(a, s, false) or (a.status > 0 and a.line != i)) return false;
         if ((a.status == 1 or a.status == 2) and !m.lines[i].active) return false;
         if (a.status == 2 and (a.company != m.lines[i].company or a.window != m.lines[i].window or a.fleet != m.lines[i].fleet or !near(a.baseline, m.lines[i].delivered))) return false;
         for (services.current[0..i]) |other| if (a.number != 0 and a.number == other.number) return false;
@@ -769,7 +881,7 @@ fn validate(s: *const State) bool {
     const first = f.entry_count - f.entries.len;
     for (first..f.entry_count) |i| {
         const e = f.entries[i % 1024];
-        if (!between(e.time, 0, c.elapsed) or e.kind > 14 or e.balance < 0) return false;
+        if (!between(e.time, 0, c.elapsed) or e.kind > 17 or e.balance < 0) return false;
         switch (e.kind) {
             1, 2 => if (e.party < 0 or !index(e.party, town.buildings.len) or e.order != -1) return false,
             5, 6 => if (e.party < 0 or !index(e.party, companies.len) or e.order < 0 or !index(e.order, services.orders.len)) return false,
@@ -781,6 +893,12 @@ fn validate(s: *const State) bool {
             // names the civic-reserve lot that was converted.
             13 => if (e.party != -1 or e.order != -1 or e.amount >= 0) return false,
             14 => if (e.party < 0 or !index(e.party, town.buildings.len) or e.order != -1 or e.amount >= 0) return false,
+            // Slice 23 (item 15): incident recovery is a city expense.
+            15 => if (e.party != -1 or e.order != -1 or e.amount >= 0) return false,
+            // Numbered item 17: streetlighting electricity (16) and lighting
+            // works - capital columns and repairs (17) - are city expenses.
+            16 => if (e.party != -1 or e.order != -1 or e.amount >= 0) return false,
+            17 => if (e.party != -1 or e.order != -1 or e.amount >= 0) return false,
             9 => if (e.party < 0 or !index(e.party, town.street_count) or e.order != -1) return false,
             else => if (e.party != -1 or e.order != -1) return false,
         }
@@ -912,6 +1030,14 @@ fn commit(s: *const State) void {
     development.measure();
     const public_space = &s.public_space;
     parks.restore(public_space.records, public_space.funding, public_space.maintenance_spent_total, public_space.created_total, public_space.construction_spent_total);
+    freight.restore(s.freight.runs, s.freight.next_number, s.freight.loading_bays, s.freight.dispatched_total, s.freight.delivered_total, s.freight.failed_total, s.freight.goods_total, s.freight.fee_total, s.freight.bay_seconds_total, s.freight.travelled_total, s.freight.demand_today, s.freight.delivered_today, s.freight.last_dispatch);
+    // Numbered item 16: rebuild the kerbside supply so it matches the restored
+    // loading bays exactly. `rebuild` carries occupancy and prices by identity.
+    parking.rebuild();
+    incidents.restore(s.incidents.records, s.incidents.next_number, s.incidents.raised_total, s.incidents.cleared_total, s.incidents.collisions_total, s.incidents.cost_total, s.incidents.blocked_seconds_total, s.incidents.delay_total, s.incidents.last_raised);
+    // Numbered item 17: the installed and working column counts come back
+    // exactly as saved; coverage and illumination are recomputed from them.
+    lighting.restore(s.lighting.lamps, s.lighting.lit, s.lighting.repairs, s.lighting.faults_total, s.lighting.repairs_total, s.lighting.installed_total, s.lighting.electricity_paid_total, s.lighting.electricity_paid_today, s.lighting.works_paid_total, s.lighting.works_paid_today, s.lighting.electricity_need_today);
     game.elapsed = s.clock.elapsed;
     game.next_sample = s.clock.next_sample;
     game.next_routes = s.clock.next_routes;
@@ -936,7 +1062,7 @@ fn commit(s: *const State) void {
 // 0 success, 1 size, 2 malformed/bounded-parser failure, 3 incompatible, 4 inconsistent.
 const Header = struct { format: []const u8, version: u32, rules: []const u8 };
 fn supported(version: u32, rules: []const u8) bool {
-    return version == 17 and std.mem.eql(u8, rules, "bellwether-2028-03-v17");
+    return version == 20 and std.mem.eql(u8, rules, "bellwether-2028-06-v20");
 }
 // A file whose metadata already declares another schema is incompatible, not
 // malformed. This second scan runs only after the strict parse has failed, so a

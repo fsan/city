@@ -872,23 +872,14 @@ fn forceAllFeatures() void {
             b.value = lotValue(.depot);
         }
     }
-    // A crosswalk on every junction arm, and one work order on a street near the
-    // centre so the works surface, the works colours and the join pass all run.
-    var works_marked: usize = 0;
-    const centre_x = origin_x + size_x * 0.5;
-    const centre_z = origin_z + size_z * 0.5;
-    for (roads, 0..) |*r, i| {
+    // A crosswalk on every junction arm, so the crossing paint, the signals and
+    // the walkers all have somewhere to meet. The works surface is deliberately
+    // NOT set here: a works flag must be owned by a live contract order (the
+    // snapshot validator enforces the pairing, and `game.init` clears an orphan
+    // flag), so the development town instead seeds a real work order through the
+    // ordinary offer path - see `seedDevelopmentFeatures` in game.zig.
+    for (roads) |*r| {
         if (degree(r.a) >= 3 or degree(r.b) >= 3) r.crosswalk = true;
-        if (works_marked < 2 and i % 7 == 3) {
-            const a = nodes[r.a];
-            const b = nodes[r.b];
-            const mid_x = (a.x + b.x) * 0.5;
-            const mid_z = (a.z + b.z) * 0.5;
-            if (hypot(mid_x - centre_x, mid_z - centre_z) < 220) {
-                r.works = true;
-                works_marked += 1;
-            }
-        }
     }
 }
 

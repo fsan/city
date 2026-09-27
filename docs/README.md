@@ -18,3 +18,5 @@ regularity-target-slice.md records optional agreement interval targets and diagn
 - [Parks and public spaces](parks-public-spaces-slice.md)
 - [UI navigation batch](ui-navigation-slice.md)
 - [Crossings and junction behaviour](crossings-junctions-slice.md)
+- [Traffic incidents](traffic-incidents-slice.md)
+- [Streetlighting](streetlighting-slice.md)

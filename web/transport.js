@@ -663,6 +663,27 @@ export function createTransport(game, ui) {
   };
   $("road-locate").onclick = () =>
     game.focus(5, Number($("traffic-road").value));
+  // Slice 24: designate loading bays on the selected street. The bays come out
+  // of that segment's car supply, so the parking summary updates immediately.
+  $("freight-bays-apply").onclick = () => {
+    const road = Number($("traffic-road").value);
+    const count = Number($("freight-bays").value);
+    if (game.freight_set_bays(road, count)) message(`Street #${road + 1} now has ${count} loading bay${count === 1 ? "" : "s"}.`);
+    else message("That street cannot take loading bays.");
+    update();
+  };
+  // Slice 25: designate lighting columns on the selected street. New columns
+  // are charged as municipal works, and the summary reflects coverage at once.
+  $("lighting-apply").onclick = () => {
+    const road = Number($("traffic-road").value);
+    const lamps = Number($("lighting-lamps").value);
+    const cost = game.lighting_set(road, lamps);
+    if (cost < 0)
+      message("That street cannot take lighting (lanes, works and pedestrian-only segments are excluded, and the count is capped by street class).");
+    else if (cost === 0) message(`Street #${road + 1} already has ${lamps} column${lamps === 1 ? "" : "s"}.`);
+    else message(`Street #${road + 1} now has ${lamps} column${lamps === 1 ? "" : "s"}; £${cost.toFixed(2)} of works booked.`);
+    update();
+  };
   function syncParking() {
     const facilities = r(0, 0, 55);
     const slots = r(0, 0, 56);
@@ -677,7 +698,39 @@ export function createTransport(game, ui) {
       `attempts ${r(0,0,58)} · parked ${r(0,0,59)} · searched on ${r(0,0,60)} · no space ${r(0,0,61)}`,
       `kerbside spaces in use ${r(0,0,67)} · parking receipts £${r(0,0,62).toFixed(2)}`,
       `learned arrivals folded in ${r(0,0,68)} (${r(0,0,69)} dropped)`,
+      `measured kerbside demand ${(r(0,0,136) * 100).toFixed(0)}%`,
     ].join(" · ");
+    // Slice 24: freight is a bounded private delivery layer over the same
+    // kerbside. The summary is the town total; the selected street shows its
+    // own loading bays and the parking demand the conversion is costing.
+    $("freight-summary").textContent = [
+      `${r(0,0,124)} depots · ${r(0,0,123)} runs recorded · ${r(0,0,125)} dispatched · ${r(0,0,126)} delivered`,
+      `goods ${r(0,0,127).toFixed(1)} units · fees £${r(0,0,128).toFixed(2)} private · bay-seconds held ${r(0,0,129).toFixed(1)}`,
+      `today demand ${r(0,0,131).toFixed(1)} delivered ${r(0,0,132).toFixed(1)} · mean business access ${(r(0,0,133)*100).toFixed(0)}%`,
+      `loading bays designated ${r(0,0,134)} · held now ${r(0,0,135)}`,
+    ].join(" · ");
+    const road = Number($("traffic-road").value);
+    const bays = r(5, road, 17);
+    $("freight-bays").value = String(bays);
+    $("freight-message").textContent = bays < 0
+      ? "This street cannot take loading bays (lanes, works and pedestrian-only segments are excluded)."
+      : `Street #${road + 1}: ${bays} loading bay${bays === 1 ? "" : "s"}; measured kerbside demand ${(r(0,0,136)*100).toFixed(0)}%.`;
+    // Slice 25: street lighting. The summary is the town total; the selected
+    // street shows its own coverage, its outstanding faults and the electricity
+    // it draws. Darkness is published so the panel can say whether any of this
+    // is currently visible on the road.
+    const dusk = r(0,0,151);
+    $("lighting-summary").textContent = [
+      `${r(0,0,137)} lit segments · ${r(0,0,139)}/${r(0,0,138)} columns working · ${r(0,0,140)} failed`,
+      `mean coverage ${(r(0,0,141)*100).toFixed(0)}% · mean night illumination ${(r(0,0,142)*100).toFixed(0)}% · night risk ${r(0,0,152).toFixed(2)}x`,
+      `electricity £${r(0,0,144).toFixed(2)} of £${r(0,0,143).toFixed(2)} paid today · £${r(0,0,145).toFixed(2)} lifetime`,
+      `faults today ${r(0,0,146)} · repairs today ${r(0,0,147)} · works £${r(0,0,148).toFixed(2)} today, £${r(0,0,149).toFixed(2)} lifetime · darkness ${(dusk*100).toFixed(0)}%`,
+    ].join(" · ");
+    const columns = r(36, road, 7);
+    $("lighting-lamps").value = String(columns < 0 ? 0 : columns);
+    $("lighting-message").textContent = columns < 0
+      ? "This street cannot take lighting columns (lanes, works and pedestrian-only segments are excluded)."
+      : `Street #${road + 1}: ${columns} of ${r(36,road,8)} columns · ${r(36,road,9)} working · ${r(36,road,10)} failed · ${(r(36,road,11)*100).toFixed(0)}% coverage · illumination ${(r(36,road,12)*100).toFixed(0)}% · electricity £${r(36,road,13).toFixed(2)}/day · ${r(36,road,14)} repairs recorded.`;
   }
 
   function setOverlay(mode) {
@@ -1010,6 +1063,8 @@ export function createTransport(game, ui) {
       if (!signalTabViews.map.hidden) syncSignalMap();
     }
     if (transportTab === "streets") syncParking();
+    if (transportTab === "incidents") updateIncidents();
+    if (transportTab === "incidents") updateIncidents();
     const road = Number($("traffic-road").value);
     crossing.textContent = r(5,road,14) ? "Remove crosswalk" : "Add crosswalk";
     $("traffic-road-stats").textContent =
@@ -1037,6 +1092,56 @@ export function createTransport(game, ui) {
       button.textContent = `Street #${top[i].id + 1} · ${r(5, top[i].id, 11)} queued`;
     });
   }
+  // Numbered item 15: traffic incidents. A live view, the full ring, and a
+  // raise button that reports on the street currently selected in Streets.
+  const incidentTabButtons = { live: $("incident-tab-live"), all: $("incident-tab-all") };
+  const incidentTabViews = { live: $("incident-view-live"), all: $("incident-view-all") };
+  const incidentKindNames = ["collision", "breakdown", "obstruction", "roadworks"];
+  const incidentPhaseNames = ["reported", "responding", "clearing", "cleared"];
+  function showIncidentTab(name) {
+    for (const key of Object.keys(incidentTabViews)) {
+      const on = key === name;
+      incidentTabButtons[key].setAttribute("aria-selected", on ? "true" : "false");
+      incidentTabViews[key].hidden = !on;
+    }
+    updateIncidents();
+  }
+  for (const key of Object.keys(incidentTabButtons)) incidentTabButtons[key].onclick = () => showIncidentTab(key);
+  function updateIncidents() {
+    const recorded = r(0, 0, 106);
+    $("incident-summary").textContent =
+      `${recorded} recorded · ${r(0,0,107)} open · ${r(0,0,108)} holding a lane · ${r(0,0,111)} collisions · ${r(0,0,112)} responders on scene · recovery spend ${money(r(0,0,113))} · ${r(0,0,114).toFixed(0)} blocked lane-seconds.`;
+    const live = $("incident-live");
+    const active = [];
+    for (let i = 0; i < recorded && i < 64; i++) if (r(34, i, 15) === 1) active.push(i);
+    live.textContent = recorded === 0
+      ? "No incidents recorded in this session. A congested segment raises collisions on its own; the buttons below report one by hand."
+      : active.length === 0
+        ? "Nothing is holding a lane right now."
+        : active.map(i => `#${r(34,i,0)} ${incidentKindNames[r(34,i,1)] ?? "?"} on street #${r(34,i,3)+1} lane ${r(34,i,5)} · severity ${r(34,i,6)} · ${incidentPhaseNames[r(34,i,2)] ?? "?"} · ${r(34,i,11).toFixed(0)} lane-seconds blocked`).join(" | ");
+    if (!incidentTabViews.all.hidden) {
+      const rows = [];
+      for (let i = 0; i < recorded && i < 64; i++) {
+        rows.push(`<tr><td>#${r(34,i,0)}</td><td>${incidentKindNames[r(34,i,1)] ?? "?"}</td><td>${incidentPhaseNames[r(34,i,2)] ?? "?"}</td><td>street #${r(34,i,3)+1}</td><td>${r(34,i,6)}</td><td>${r(34,i,13)}</td><td>${money(r(34,i,14))}</td></tr>`);
+      }
+      $("incident-list").innerHTML = rows.length === 0 ? "<p class='note'>Nothing recorded yet.</p>"
+        : `<div class="table-scroll"><table><thead><tr><th>#</th><th>Kind</th><th>Phase</th><th>Where</th><th>Severity</th><th>Responders</th><th>Cost</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+    }
+  }
+  function reportIncident(kind) {
+    const road = Number($("traffic-road").value);
+    const node = r(5, road, 0);
+    const lane = r(5, road, 13) >= 1 ? 1 : 0;
+    const severity = Math.max(0, Math.min(3, Math.round(r(5, road, 12) * 3)));
+    const cost = game.incident_raise(kind, road, node, lane, severity);
+    $("incident-message").textContent = cost < 0
+      ? "Could not report that incident: the ring is full or the segment is invalid."
+      : `Reported a ${incidentKindNames[kind]} on street #${road + 1}; expected recovery cost about ${money(cost)}.`;
+    updateIncidents();
+  }
+  [["incident-raise-collision",0],["incident-raise-breakdown",1],["incident-raise-obstruction",2],["incident-raise-works",3]].forEach(([id, kind]) => {
+    $(id).onclick = () => reportIncident(kind);
+  });
   syncLines();
   game.transport_select(-1);
   syncParking();

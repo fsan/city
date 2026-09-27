@@ -309,6 +309,103 @@ are rejected with result 3. The public-space ring, its funding and its money
 counters are serialized and validated field by field, and every derived
 catchment and amenity value is recomputed on load.
 
+## Traffic incidents
+
+Numbered list item 15 adds explicit incidents with a life cycle and a blocked
+lane. Group 34 reads one incident, newest first.
+
+| Field | Value |
+| --- | --- |
+| 0 | Incident number (one-based) |
+| 1 | Kind: 0 collision, 1 breakdown, 2 obstruction, 3 roadworks |
+| 2 | Phase: 0 reported, 1 responding, 2 clearing, 3 cleared |
+| 3 | Road/segment index |
+| 4 | Junction node |
+| 5 | Lane held (0, 1 or 2 for the whole carriageway) |
+| 6 | Severity 0-3 |
+| 7-10 | Reported, responded, arrived and cleared simulation times |
+| 11 | Blocked lane-seconds for this incident |
+| 12 | Measured vehicle-delay seconds for this incident |
+| 13 | Responders on scene (2 for a collision, 1 otherwise) |
+| 14 | Recovery cost booked so far |
+| 15 | 1 when the lane is blocked now |
+| 16 | The road's class |
+
+Group 0 fields 106-122 add: 106 recorded incidents, 107 active, 108 holding a
+lane, 109 raised, 110 cleared, 111 collisions, 112 responders on scene, 113
+recovery spend, 114 blocked lane-seconds, 115 measured vehicle-delay seconds,
+116-118 the newest incident's kind/phase/severity, and 119-122 the published
+response and clearance bounds (6-120 s and 6-240 s).
+
+Command: `incident_raise(kind, road, node, lane, severity)` reports an incident
+on a real segment and returns the expected recovery cost, or -1 when the kind,
+segment, lane or severity is invalid or the ring is full. Recovery is booked
+through the municipal ledger as kind 15, a city expense with no party and no
+order. A collision is also raised automatically from measured congestion by a
+deterministic function of the simulation step, so a loaded town replays the same
+sequence.
+
+## Parking and freight
+
+**Group 0 fields 123-136** are the freight and parking-demand totals: 123
+delivery runs recorded, 124 depots, 125 dispatched, 126 delivered, 127 goods
+units carried, 128 private freight fees paid, 129 held bay-seconds, 130 lorry
+travel seconds, 131 the day's demand, 132 the day's delivered goods, 133 mean
+business access, 134 loading bays designated, 135 bays held now and 136 the mean
+measured kerbside parking demand.
+
+**Group 28** (one parking facility) gains field 12: the measured parking demand
+on that facility's own segment, 0 for a building-anchored park. It combines the
+segment's occupancy with the day's failed kerbside searches, so it comes from
+the same parking search the residents already run.
+
+**New group 35** reads one delivery run, newest first: 0 number, 1 depot, 2
+customer, 3 delivery lot, 4 node, 5 the kerbside frontage road the lorry parks
+on, 6 phase (0 dispatched, 1 travelling, 2 loading, 3 delivered, 4 failed), 7
+goods units, 8 the private fee, 9-11 the dispatched/arrived/departed times, 12
+travel seconds, 13 dwell seconds and 14 whether the bay is held now.
+
+Command: `freight_set_bays(road, count)` designates 0-6 kerbside loading bays on
+one segment that already allows kerbside parking, and returns false when the
+road is a lane, is under works, has no pavement or carries no vehicles. Each
+designated bay comes out of that segment's car parking supply, so freight access
+and parking capacity compete for the same kerbside. Freight fees are a private
+transfer from the customer to its depot and never enter the municipal ledger.
+
+## Street lighting
+
+**Group 0 fields 137-152** are the streetlighting totals: 137 lit segments, 138
+columns installed, 139 columns working, 140 columns failed, 141 mean coverage,
+142 mean night illumination, 143 the day's electricity need, 144 the day's
+electricity paid, 145 lifetime electricity, 146 faults today, 147 repairs today,
+148 works paid today, 149 works paid in total, 150 columns ever installed, 151
+the current darkness and 152 the mean night collision risk multiplier.
+
+**New group 36** reads one segment's lighting by road index: 0 road, 1 district,
+2 street, 3 class, 4 length, 5 node, 6 whether lighting is eligible, 7 columns
+installed, 8 columns required by the street class, 9 columns working, 10 columns
+failed, 11 coverage, 12 current illumination, 13 the segment's own daily
+electricity, 14 the repairs recorded there and 15 the current darkness.
+
+Command: `lighting_set(road, lamps)` designates 0 up to the class capacity (2 on
+a street, 4 on an avenue) on a segment that carries vehicles and pedestrians and
+is neither a lane nor under works. New columns are charged to the municipal
+ledger as works, and the command returns that capital cost, 0 when nothing
+changed, or -1 when the segment or the count is refused. Electricity is paid in
+bounded instalments through the ordinary operating pass as ledger **kind 16**;
+capital columns and fault repairs are ledger **kind 17**. Both are city expenses
+with no party and no order, and both are capped by the cash actually available.
+
+A column fails at most once per segment per day, from a deterministic function
+of the segment and the day index, and a crew reaches a bounded number of failed
+columns per operating pass in segment order. Coverage, illumination and the
+night collision multiplier are derived each step and never trusted from a file.
+
+Save schema is version 20, rules `bellwether-2028-06-v20`; version 19 and older
+are rejected with result 3. The incident ring, its numbering and its running
+totals are serialized and validated field by field; lane penalties and the
+blocking state are derived each step and never trusted from a file.
+
 ## Agreement review additions
 
 `service_quote(operator,fleet,days,price,field)` is read-only: fields 0 minimum acceptable penny price, 1 reason (0 eligible, 1 capacity, 2 price, 3 invalid terms), 2 available fleet/drivers. Invalid terms return -1 for other fields. Offer and acceptance share this validation. Price must round to a positive penny and be at most £1 billion.
@@ -619,7 +716,7 @@ Commands: `road_class(value)` sets the class (0-2) used by the next
 `road_begin`; `parking_rebuild()` re-seeds facilities after a road is built and
 reposts kerbside prices.
 
-Save schema is version 16, rules `bellwether-2028-02-v16`; version 15 and older
+Save schema is version 20, rules `bellwether-2028-06-v20`; version 19 and older
 are rejected with result 3. The bounded development queue, its physical
 construction account, its measured sunlight/shadow trade-off, counters and
 district rotation are serialized and validated field by field; each stored

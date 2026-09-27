@@ -261,6 +261,72 @@ export fn read(group: u32, id: u32, field: u32) f64 {
             // construction spend, 104 residents within a catchment and 105
             // the green area in square metres.
             90...105 => game.parks.read0(field - 90),
+            // Numbered item 15 traffic incidents. 106 is the recorded count,
+            // 107 active, 108 blocking a lane, 109/110 raised/cleared, 111
+            // collisions, 112 responders on scene, 113 recovery spend, 114
+            // blocked lane-seconds, 115 measured vehicle-delay seconds, 116-118
+            // the newest incident's kind/phase/severity and 119-122 the
+            // published response and clearance bounds.
+            106 => @floatFromInt(game.incidents.count),
+            107 => @floatFromInt(game.incidents.activeCount()),
+            108 => @floatFromInt(game.incidents.blockingCount()),
+            109 => @floatFromInt(game.incidents.raised_total),
+            110 => @floatFromInt(game.incidents.cleared_total),
+            111 => @floatFromInt(game.incidents.collisions_total),
+            112 => @floatFromInt(game.incidents.respondersActive()),
+            113 => game.incidents.cost_total,
+            114 => game.incidents.blocked_seconds_total,
+            115 => game.incidents.delay_total,
+            116 => if (game.incidents.count > 0) @floatFromInt(@intFromEnum(game.incidents.records[game.incidents.count - 1].kind)) else -1,
+            117 => if (game.incidents.count > 0) @floatFromInt(@intFromEnum(game.incidents.records[game.incidents.count - 1].phase)) else -1,
+            118 => if (game.incidents.count > 0) @floatFromInt(game.incidents.records[game.incidents.count - 1].severity) else -1,
+            119 => game.incidents.min_response,
+            120 => game.incidents.max_response,
+            121 => game.incidents.min_clear,
+            122 => game.incidents.max_clear,
+            // Numbered item 16 parking and freight. 123 runs recorded, 124
+            // depots, 125/126 dispatched/delivered, 127 goods units carried,
+            // 128 private freight fees, 129 held bay-seconds, 130 lorries'
+            // travel seconds, 131 the day's demand, 132 the day's delivered
+            // goods, 133 mean business access, 134 loading bays designated,
+            // 135 bays held now and 136 the mean measured parking demand.
+            123 => @floatFromInt(game.freight.count),
+            124 => @floatFromInt(game.freight.depotCount()),
+            125 => @floatFromInt(game.freight.dispatched_total),
+            126 => @floatFromInt(game.freight.delivered_total),
+            127 => game.freight.goods_total,
+            128 => game.freight.fee_total,
+            129 => game.freight.bay_seconds_total,
+            130 => game.freight.travelled_total,
+            131 => game.freight.demand_today,
+            132 => game.freight.delivered_today,
+            133 => game.freight.accessMean(),
+            134 => game.freight.read0(11),
+            135 => game.freight.read0(12),
+            136 => game.parking.demandMean(),
+            // Numbered item 17 streetlighting. 137 lit segments, 138 columns
+            // installed, 139 working, 140 failed, 141 mean coverage, 142 mean
+            // night illumination, 143/144 the day's electricity need and paid
+            // amount, 145 lifetime electricity, 146/147 faults and repairs
+            // today, 148/149 works paid today and lifetime, 150 columns ever
+            // installed, 151 the current darkness and 152 the mean night
+            // collision risk multiplier.
+            137 => game.lighting.read0(0, game.elapsed),
+            138 => game.lighting.read0(1, game.elapsed),
+            139 => game.lighting.read0(2, game.elapsed),
+            140 => game.lighting.read0(3, game.elapsed),
+            141 => game.lighting.read0(4, game.elapsed),
+            142 => game.lighting.read0(5, game.elapsed),
+            143 => game.lighting.read0(6, game.elapsed),
+            144 => game.lighting.read0(7, game.elapsed),
+            145 => game.lighting.read0(8, game.elapsed),
+            146 => game.lighting.read0(9, game.elapsed),
+            147 => game.lighting.read0(10, game.elapsed),
+            148 => game.lighting.read0(11, game.elapsed),
+            149 => game.lighting.read0(12, game.elapsed),
+            150 => game.lighting.read0(13, game.elapsed),
+            151 => game.lighting.read0(14, game.elapsed),
+            152 => game.lighting.read0(15, game.elapsed),
             else => -1,
         },
         1 => {
@@ -688,6 +754,9 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 9 => @floatFromInt(f.observed[1]),
                 10 => @floatFromInt(f.observed[2]),
                 11 => @floatFromInt(f.observed[3]),
+                // Numbered item 16: the measured parking demand on this
+                // facility's own segment (0 for a building-anchored park).
+                12 => if (f.road >= 0) parking.demand(@intCast(f.road)) else 0,
                 else => -1,
             };
         },
@@ -877,6 +946,30 @@ export fn read(group: u32, id: u32, field: u32) f64 {
                 10 => signals.turnOffset(kind),
                 else => -1,
             };
+        },
+        36 => {
+            // Numbered item 17: one segment's streetlighting record, read by
+            // road index: 0 road, 1 district, 2 street, 3 class, 4 length, 5
+            // node, 6 eligible, 7 columns installed, 8 columns required, 9
+            // columns working, 10 columns failed, 11 coverage, 12 current
+            // illumination, 13 this segment's daily electricity, 14 repairs
+            // recorded here and 15 the current darkness.
+            return game.lighting.readRoad(id, field, game.elapsed);
+        },
+        35 => {
+            // Numbered item 16: one delivery run, newest first. 0 number, 1
+            // depot, 2 customer, 3 delivery lot, 4 node, 5 frontage road, 6
+            // phase, 7 goods, 8 fee, 9 dispatched, 10 arrived, 11 departed, 12
+            // travel seconds, 13 dwell seconds, 14 whether the bay is held now.
+            return game.freight.readNewest(id, field);
+        },
+        34 => {
+            // Numbered item 15: one incident, newest first. 0 number, 1 kind,
+            // 2 phase, 3 road, 4 node, 5 lane, 6 severity, 7-10 the reported,
+            // responded, arrived and cleared times, 11 blocked lane-seconds,
+            // 12 measured delay, 13 responders, 14 recovery cost, 15 whether
+            // the lane is blocked now, 16 the road class.
+            return game.incidents.readNewest(id, field);
         },
         else => return -1,
     }
@@ -1148,6 +1241,40 @@ export fn parks_create(parcel: u32, kind: u32) f64 {
 export fn parks_quote(parcel: u32, kind: u32) f64 {
     if (parcel >= city.lot_count or parcel >= game.parcels.count) return -1;
     return game.parks.constructionCostFor(parcel, kind);
+}
+
+// Numbered item 15: raise an incident on the segment the player is inspecting.
+// kind 0 collision, 1 breakdown, 2 obstruction, 3 roadworks. The lane and
+// severity are bounded here; the simulation then owns the life cycle.
+export fn incident_raise(kind: u32, road: u32, node: u32, lane: u32, severity: u32) f64 {
+    if (kind > 3 or road >= city.road_count or node >= city.node_count or lane > 2 or severity > game.incidents.max_severity) return -1;
+    if (game.incidents.count >= game.incidents.max_incidents) return -1;
+    const number = game.incidents.raise(@enumFromInt(@as(u8, @intCast(kind))), road, node, @intCast(lane), @intCast(severity), game.elapsed);
+    return if (number == 0) -1 else game.incidents.clearCost(@enumFromInt(@as(u8, @intCast(kind))), @intCast(severity));
+}
+
+// Numbered item 16: designate 0-6 kerbside loading bays on one eligible segment.
+// The same bays come out of that segment's car parking supply, so freight access
+// and parking capacity compete for the same kerbside. Returns false when the
+// road cannot take bays or the count is out of range.
+export fn freight_set_bays(road: u32, count: u32) bool {
+    if (road >= city.road_count) return false;
+    if (!game.freight.setBays(road, count)) return false;
+    game.parking.rebuild();
+    game.parking.refreshPrices(&transport.movement);
+    return true;
+}
+
+// Numbered item 17: designate 0..capacity lighting columns on one eligible
+// segment. New columns are charged to the municipal ledger as works (kind 17)
+// and the return value is that capital cost, 0 when nothing changed, or -1 when
+// the segment or the count is refused.
+export fn lighting_set(road: u32, lamps: u32) f64 {
+    if (road >= city.road_count) return -1;
+    const cost = game.lighting.setLamps(road, lamps);
+    if (cost < 0) return -1;
+    if (cost > 0) finance.record(game.elapsed, -cost, 17, -1, -1);
+    return cost;
 }
 
 export fn parks_set_funding(level: u32) bool {

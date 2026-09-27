@@ -3,7 +3,12 @@ const city = @import("../scene/city.zig");
 const travel = @import("travel.zig");
 pub const operators = @import("operators.zig");
 pub const signals = @import("signals.zig");
+pub const incidents = @import("incidents.zig");
+pub const lighting = @import("lighting.zig");
 pub var clock: f64 = 160;
+// Numbered item 15: a monotonic step counter feeds the deterministic incident
+// hash, so a collision is a pure function of the live congestion and the step.
+pub var tick: u64 = 0;
 pub const max_lines = 8;
 pub const max_stops = 16;
 pub const buses_per_line = 3;
@@ -323,6 +328,7 @@ pub fn board(bus: usize) bool {
 }
 pub fn update(dt: f32, elapsed: f64) void {
     clock = elapsed;
+    tick +%= 1;
     arrival_count = 0;
     entries = @splat(false);
     heads = @splat(-1);
@@ -338,6 +344,16 @@ pub fn update(dt: f32, elapsed: f64) void {
         if (v.speed < 0.6) queues[r] += 1;
     }
     for (&congestion, 0..) |*c, i| c.* += (@min(1, @as(f32, @floatFromInt(queues[i])) / 5) - c.*) * @min(1, dt / 3);
+    // Numbered item 15: a genuinely congested segment can raise a collision.
+    // The decision is deterministic in the step, so a save/load replays the
+    // same incidents rather than depending on a floating-point random stream.
+    for (city.roads, 0..) |r, i| {
+        if (occupancy[i] < 2 or congestion[i] < incidents.collision_congestion_floor) continue;
+        _ = r;
+        // Numbered item 17: a dark segment raises collisions more readily than
+        // a lit one, so the multiplier is 1 in daylight and at full coverage.
+        _ = incidents.maybeCollide(i, city.roads[i].a, congestion[i], elapsed, tick, lighting.riskMultiplier(i, elapsed));
+    }
     // Junction pressure for pedestrian gap acceptance, and the measured movement
     // that bands kerbside parking prices.
     junction_traffic = @splat(0);
@@ -478,7 +494,14 @@ pub fn update(dt: f32, elapsed: f64) void {
         // Slice 12: a flashing-amber junction is a caution, not a green, so
         // approaching drivers slow to about half speed and yield.
         const caution: f32 = if (city.degree(v.next) >= 3 and signals.flashingAt(v.next, elapsed)) 0.5 else 1;
-        const limit: f32 = (if (bus) travel.busSpeed(road.class, road.condition, road.slope, road.works) else travel.classSpeed(road.class, road.condition, road.slope, road.works)) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1) * caution;
+        // Numbered item 15: a live incident on this segment holds its lane and
+        // slows everyone routed through it, with the penalty scaled by severity.
+        const incident_factor: f32 = 1 / (1 + incidents.penalty(r) * 0.12);
+        // Numbered item 17: drivers slow down on a dark segment where there is
+        // no lighting to see by. The multiplier is 1 in daylight and at full
+        // coverage, so an unlit street is genuinely slower after dusk.
+        const night_factor: f32 = lighting.nightSpeed(r, elapsed);
+        const limit: f32 = (if (bus) travel.busSpeed(road.class, road.condition, road.slope, road.works) else travel.classSpeed(road.class, road.condition, road.slope, road.works)) * (if (lanes[r] != 0 and !bus) @as(f32, 0.8) else 1) * caution * incident_factor * night_factor;
         var target = limit;
         if (must_stop or following) target = @min(target, @sqrt(6 * free));
         if (v.speed < target) v.speed = @min(target, v.speed + dt * 2) else v.speed = @max(target, v.speed - dt * 3);

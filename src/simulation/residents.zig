@@ -900,6 +900,9 @@ fn settleParking(p: *Person, kind: parking.Kind, elapsed: f64) void {
         } else {
             p.last_facility = @intCast(@min(planned, parking.max_facilities - 1));
             p.last_outcome = 2;
+            // Numbered item 16: a failed first choice is the measured kerbside
+            // demand the parking panel reports for that segment.
+            if (planned < parking.count and parking.kerbside(planned)) parking.noteKerbsideFailure(parking.facilities[planned].road);
         }
     }
     if (chosen < 0) {

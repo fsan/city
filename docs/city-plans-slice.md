@@ -25,7 +25,7 @@ maintaining a second plan.
   values rather than fixed constants.
 - `setPlan(plan)`, which selects the window; `insideWindow(x, z, margin)`,
   which every seeding pass uses for its bounds; `developmentPlan()`, which the
-  development plan will use to switch every authored feature on; and
+  development plan uses to switch every authored feature on; and
   `planName`/`planCount` for the UI and the ABI.
 - Every bound check in the street, river-setback, ring, park, building, parcel
   and stop passes now tests the window instead of `0..size`, and the renderer's
@@ -61,19 +61,41 @@ place, so one session exercises the features and the integrations between them.
 Everything it does is an ordinary authored record, so the snapshot, the
 renderer and every report agree by construction:
 
-- `forceAllFeatures` gives every district green space, taking the largest
-  vacant lot where the authored search found none, so no ward is without a
-  park.
-- It guarantees one depot to staff, so the operator, employment and contract
-  paths have somewhere to run.
-- Every junction arm carries a crosswalk, so the crossing paint, the signals
-  and the pedestrian overlay all meet at the same corners.
-- Two streets within 220 m of the centre carry an active work order, so the
-  works surface, the works colours and the junction join all render live.
+- `forceAllFeatures` (in `src/scene/city.zig`) gives every district green
+  space, taking the largest vacant lot where the authored search found none, so
+  no ward is without a park; it guarantees one depot to staff, so the operator,
+  employment and contract paths have somewhere to run; and every junction arm
+  carries a crosswalk, so the crossing paint, the signals and the pedestrian
+  overlay all meet at the same corners.
+- `seedIntegrationTown` (in `src/simulation/game.zig`) then switches the
+  remaining feature layers on with ordinary records: it zones every vacant
+  parcel residential, commercial, industrial or mixed so the permit queue has
+  buildable sites, designates loading bays on the central streets so freight
+  holds a real kerbside bay and the parking supply pays for it, and lodges two
+  work orders on central streets through the ordinary offer and review path.
+- `lighting.seed` lights every eligible segment to its street-class capacity
+  when the development plan is selected, instead of only the segments that
+  carry frontage.
 
-Verified in the served page: the whole board with the river and its four
-bridges, parks visible in every district and the works strip along a central
-street.
+The works surface is deliberately **not** forced directly. A `road.works` flag
+must be owned by a live contract order - the snapshot validator enforces the
+pairing and `game.init` clears an orphan flag - so the development town lodges
+a real order instead. A contractor is genuinely assigned, its four-person crew
+genuinely travels to the site, the road carries works while the crew builds,
+and the flag clears when the contract settles.
+
+**Measured.** A focused ReleaseSafe probe outside the repository boots each
+plan in its own process and reports the feature layers. The default Camden
+Quarter is unchanged: 817 lots, 928 roads, 234 lit segments at 0.947 mean
+coverage, no loading bays, no works streets, no eligible development sites, 8
+of 12 districts with green space. Integration Yard now carries 820 lots across
+1,624 roads and 416 junctions with 64 signals, **full lighting coverage**
+(320 lit segments, 846 columns), **16 loading bays**, **10 eligible development
+sites**, green space in **all 12 districts**, 1,324 crosswalks, and both seeded
+work orders running to completion - the works surface is live for 1,124
+simulation steps and both contracts settle at progress 1.00. `make build`
+publishes `/output/city.wasm` (sha256 `82d714344a042ab491b2ba079cda199af02cfd17965df66b36bc3a29ef422819`),
+byte-identical to the served `/build/city.wasm`.
 
 ## Limits carried forward
 

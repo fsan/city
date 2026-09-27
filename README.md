@@ -65,7 +65,7 @@ The map now spans 1,320 × 1,040 metres with low-rise suburbs and room within bl
 
 Public space is measured too: every park, playground and plaza has a condition maintained from a municipal budget paid as ledger kind 13, a walking catchment drawn from the same graph residents use, and a bounded amenity value that lifts its neighbours' assessment and district trust. A civic-reserve parcel can be converted into new public space for a municipal cost (kind 14). See [parks and public spaces](docs/parks-public-spaces-slice.md).
 
-No complete household finances, intersection collision physics, elections, full service simulation, procedural generation or backend authority yet. Manual versioned save/load is available (town format version 7); see `docs/save-load-slice.md`. Routines are shortened and all residents are adult placeholders. Refreshed tabs restart the town. Contracts retain 64 orders per session; the ledger retains 1,024 entries and history retains 96 samples.
+No complete household finances, elections, full service simulation, procedural generation or backend authority yet. Manual versioned save/load is available (town format version 7); see `docs/save-load-slice.md`. Routines are shortened and all residents are adult placeholders. Refreshed tabs restart the town. Contracts retain 64 orders per session; the ledger retains 1,024 entries and history retains 96 samples.
 
 The HTTP container is a static server. Zig compilation stays inside Docker; no additional host toolchains are required. No test suite is included, as requested. The accepted design is in `docs/next-slice.md`; current implementation details are in `docs/scene.md`, `docs/economy.md`, `docs/transport.md` and `docs/abi.md`.
 
@@ -102,9 +102,34 @@ junction can hold all of its vehicle arms red for a pedestrian-only walk and an
 all-red clearance, so people cross on their own stage; turning drivers yield to
 the crosswalk they actually drive over and to the traffic already in the box,
 and every movement carries a measured turn radius and its approach lane offset.
-Manual save files use schema version 17, bellwether-2028-03-v17; older files are
-rejected. See [street types and parking](docs/street-types-parking-learning-slice.md)
-and [crossings and junction behaviour](docs/crossings-junctions-slice.md).
+Traffic incidents are physical too: a genuinely congested segment raises
+collisions on its own, and breakdowns, obstructions and roadworks hold a real
+lane, slow the traffic routed through it and are cleared by a bounded response
+whose recovery spend is booked as ledger kind 15. The Incidents tab in the
+Transport Authority lists what is holding a lane, the full recorded ring and a
+report button for each kind. See [traffic incidents](docs/traffic-incidents-slice.md).
+Businesses are supplied by a bounded freight layer: contractor depots
+dispatch delivery runs once a day to staffed shops, offices and markets.
+Each run travels a real route, then holds a kerbside **loading bay** at its
+customer's frontage while it unloads, and the customer pays its depot a
+private fee, so no municipal money moves. The player designates loading
+bays per street, and every bay comes out of that segment's car parking
+supply, so freight access and parking demand compete for the same kerbside.
+A business that could not be delivered to trades at a measured loss, and
+the parking panel reports the kerbside demand each segment is facing.
+Streets are lit too. Every street and avenue carries a bounded number of
+lighting columns, and the authored town already lights the segments that have
+frontage. Working columns draw electricity every day, paid from the municipal
+budget as it becomes available and booked as ledger kind 16, and columns fail
+over time until a crew repairs them for a bounded cost booked as kind 17. After
+dusk an unlit segment runs slower and is measurably more likely to raise a
+collision, so extending coverage is a real trade-off.
+Manual save files use schema version 20, bellwether-2028-06-v20; older files are
+rejected. See [street types and parking](docs/street-types-parking-learning-slice.md),
+[crossings and junction behaviour](docs/crossings-junctions-slice.md),
+[traffic incidents](docs/traffic-incidents-slice.md),
+[parking and freight](docs/parking-freight-slice.md) and
+[streetlighting](docs/streetlighting-slice.md).
 
 
 ## Housing and occupancy

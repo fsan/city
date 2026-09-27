@@ -896,6 +896,7 @@
           <button id="transport-stops-tab" role="tab" aria-selected="false" aria-controls="tpanel-stops" data-transport-tab="stops" tabindex="-1">Stops &amp; riders</button>
           <button id="transport-streets-tab" role="tab" aria-selected="false" aria-controls="tpanel-streets" data-transport-tab="streets" tabindex="-1">Streets</button>
           <button id="transport-signals-tab" role="tab" aria-selected="false" aria-controls="tpanel-signals" data-transport-tab="signals" tabindex="-1">Signals</button>
+          <button id="transport-incidents-tab" role="tab" aria-selected="false" aria-controls="tpanel-incidents" data-transport-tab="incidents" tabindex="-1">Incidents</button>
         </div>
         <div class="window-body">
           <div id="transport-summary" class="note"></div>
@@ -1019,6 +1020,25 @@
             </div>
             <h3>Parking and street types <span class="info-tip" tabindex="0" role="button" aria-label="About parking" data-tip="Bicycle parks and car parks are seeded where districts are busy; every space has a hard slot count. Cyclists and drivers aim for the nearest place they expect to be free, fall back to the closest free space, and walk the rest of the way. Streets and avenues sell kerbside car spaces at a price banded by the movement actually observed on that segment, capped at 1.20 pounds. Lanes never allow kerbside parking.">?</span></h3>
             <div id="parking-summary" class="note"></div>
+            <h3>Freight and loading <span class="info-tip" tabindex="0" role="button" aria-label="About freight and loading" data-tip="Depots dispatch bounded delivery runs to staffed businesses once a day. A run travels a real route, then holds a kerbside loading bay at its customer's frontage while it unloads, and the customer pays the depot a private fee. Loading bays are designated on the street selected above; each bay comes out of that segment's car parking supply, so freight access and parking demand compete for the same kerbside. A business that could not be delivered to trades at a bounded loss.">?</span></h3>
+            <div id="freight-summary" class="note"></div>
+            <div class="transport-controls">
+              <label>Loading bays on this street
+                <input id="freight-bays" type="number" min="0" max="6" step="1" value="0">
+              </label>
+              <button id="freight-bays-apply">Set loading bays</button>
+            </div>
+            <p class="note" id="freight-message"></p>
+            <h3>Street lighting <span class="info-tip" tabindex="0" role="button" aria-label="About street lighting" data-tip="Every street and avenue carries bounded lighting columns; the authored town lights the segments with frontage and leaves the rest dark. A working column draws electricity each day, paid from the municipal budget as it becomes available, and columns fail over time until a crew repairs them. After dusk a dark segment runs slower and is more likely to raise a collision, so coverage is a real trade-off rather than decoration.">?</span></h3>
+            <div id="lighting-summary" class="note"></div>
+            <div class="transport-controls">
+              <label>Lighting columns on this street
+                <input id="lighting-lamps" type="number" min="0" max="6" step="1" value="0">
+              </label>
+              <button id="lighting-apply">Set columns</button>
+            </div>
+            <p class="note" id="lighting-message"></p>
+            <hr>
             <h3>Current queues</h3>
             <div id="traffic-hotspots"></div>
           </div>
@@ -1144,6 +1164,28 @@
             </div>
             <p class="note" id="signal-map-note"></p>
           </div>
+          </div>
+          <div id="tpanel-incidents" role="tabpanel" aria-labelledby="transport-incidents-tab" hidden>
+            <h3>Traffic incidents <span class="info-tip" tabindex="0" role="button" aria-label="About traffic incidents" data-tip="Congested segments raise collisions; breakdowns, obstructions and roadworks also hold a lane. An incident is reported, attended, then cleared, and the recovery crew's bounded spend is booked to the municipal ledger as kind 15. Every incident is deterministic in the simulation step, so a saved town replays the same sequence.">?</span></h3>
+            <div id="incident-summary" class="note"></div>
+            <div class="transport-tabs" role="tablist" aria-label="Incident views">
+              <button id="incident-tab-live" role="tab" aria-selected="true">Live</button>
+              <button id="incident-tab-all" role="tab" aria-selected="false">All recorded</button>
+            </div>
+            <div id="incident-view-live" role="tabpanel">
+              <div id="incident-live" class="note"></div>
+            </div>
+            <div id="incident-view-all" role="tabpanel" hidden>
+              <div id="incident-list" class="signal-list"></div>
+            </div>
+            <h4>Report one now <span class="info-tip" tabindex="0" role="button" aria-label="About raising an incident" data-tip="Raise a collision, breakdown, obstruction or roadworks on the segment selected in the Streets view. The incident occupies a real lane, slows the traffic routed through it, and is cleared by the same bounded response the simulation uses.">?</span></h4>
+            <div class="transport-controls">
+              <button id="incident-raise-collision">Report collision</button>
+              <button id="incident-raise-breakdown">Report breakdown</button>
+              <button id="incident-raise-obstruction">Report obstruction</button>
+              <button id="incident-raise-works">Report roadworks</button>
+            </div>
+            <p class="note" id="incident-message"></p>
           </div>
           <p id="transport-message" role="status"></p>
         </div>

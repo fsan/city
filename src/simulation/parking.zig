@@ -1,6 +1,7 @@
 const std = @import("std");
 const city = @import("../scene/city.zig");
 const travel = @import("travel.zig");
+const freight = @import("freight.zig");
 
 // Slice 10: bounded parking supply. Bicycle parks and car parks come from
 // seeded buildings; larger streets also offer kerbside car spaces at a price
@@ -33,6 +34,8 @@ pub var revenue_today: f64 = 0;
 pub var dues: f64 = 0;
 pub var revenue_total: f64 = 0;
 pub var kerbside_used: usize = 0;
+// Numbered item 16: the day's failed kerbside searches per segment.
+var kerbside_failed: [city.max_roads]u32 = @splat(0);
 
 pub fn init() void {
     attempts = 0;
@@ -72,7 +75,12 @@ pub fn rebuild() void {
     for (city.roads, 0..) |*r, i| {
         if (next >= max_facilities) break;
         if (r.class == 0 or !r.vehicles or !r.pedestrians or r.works) continue;
-        const slots: u16 = if (r.class >= 2) 4 else 2;
+        const base: u16 = if (r.class >= 2) 4 else 2;
+        // Numbered item 16: any bay the player designates for loading is no
+        // longer sold as a car space, so parking supply and freight access
+        // compete for the same kerbside.
+        const slots: u16 = base -| @as(u16, freight.bayCount(i));
+        if (slots == 0) continue;
         facilities[next] = .{ .kind = .car, .road = @intCast(i), .node = r.a, .slots = slots };
         if (carry(previous_count, facilities[next])) |old| {
             facilities[next].occupied = @min(slots, old.occupied);
@@ -138,6 +146,13 @@ pub fn take(index: usize) bool {
     return true;
 }
 
+// Numbered item 16: record a failed kerbside search against the segment the
+// traveller was aiming for, so the demand figure reflects real refusals.
+pub fn noteKerbsideFailure(road: i32) void {
+    if (road < 0 or @as(usize, @intCast(road)) >= city.road_count) return;
+    kerbside_failed[@intCast(road)] +|= 1;
+}
+
 pub fn release(index: usize) void {
     if (index >= count) return;
     const f = &facilities[index];
@@ -184,6 +199,60 @@ pub fn kindUsed(kind: Kind) usize {
     return total;
 }
 
+// Numbered item 16: the measured parking demand on one kerbside segment. The
+// numerator is the day's failed kerbside attempts (a search that had to fall
+// back or walk on) and the denominator is the segment's own car supply, so the
+// figure is a real pressure reading rather than a guess. A segment with no
+// spaces reports 0.
+pub fn demand(road: usize) f32 {
+    if (road >= city.road_count) return 0;
+    var spaces: usize = 0;
+    var occupied: usize = 0;
+    var failures: usize = 0;
+    for (facilities[0..count]) |f| {
+        if (f.road < 0 or @as(usize, @intCast(f.road)) != road) continue;
+        spaces += f.slots;
+        occupied += f.occupied;
+    }
+    if (spaces == 0) return 0;
+    for (kerbside_failed[0..city.road_count], 0..) |n, i| {
+        if (i == road) failures = n;
+    }
+    const use = @as(f32, @floatFromInt(occupied)) / @as(f32, @floatFromInt(spaces));
+    const pressure = @as(f32, @floatFromInt(failures)) / @as(f32, @floatFromInt(spaces));
+    return std.math.clamp(use * 0.6 + pressure * 0.4, 0, 1);
+}
+
+pub fn demandMean() f32 {
+    var total: f32 = 0;
+    var n: usize = 0;
+    for (0..city.road_count) |i| {
+        const d = demand(i);
+        if (d <= 0 and !hasKerbside(i)) continue;
+        total += d;
+        n += 1;
+    }
+    return if (n == 0) 0 else total / @as(f32, @floatFromInt(n));
+}
+
+// Numbered item 16: the car spaces a single segment currently offers, so the
+// freight panel and the probe can show what the loading bays actually cost.
+pub fn slotsOnRoad(road: usize) usize {
+    var total: usize = 0;
+    for (facilities[0..count]) |f| {
+        if (f.road >= 0 and @as(usize, @intCast(f.road)) == road) total += f.slots;
+    }
+    return total;
+}
+
+fn hasKerbside(road: usize) bool {
+    for (facilities[0..count]) |f| {
+        if (f.road >= 0 and @as(usize, @intCast(f.road)) == road) return true;
+    }
+    return false;
+}
+
 pub fn daily() void {
     revenue_today = 0;
+    kerbside_failed = @splat(0);
 }
