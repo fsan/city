@@ -25,7 +25,7 @@ Zig edits rebuild automatically; refresh the page after a successful build. HTML
 
 ## Play
 
-- The STREETS & LAND USE panel holds four tools. N: draw straight or curved roads. Z: parcel/block zoning. P: private development permits for zoned vacant sites. G: parks, playgrounds and plazas, their maintenance funding and converting a civic reserve into new public space. See `docs/city-planning.md`, `docs/development-proposals-slice.md` and `docs/parks-public-spaces-slice.md`.
+- The STREETS & LAND USE panel holds four tools. N: draw straight or curved roads in four classes — lane, street, avenue and boulevard, each wider with more painted lanes — with optional attached bus-priority and protected-cycle lanes (£8/m and £5/m respectively, painted blue and green and honoured by buses and cyclists). Z: click a parcel to select it, drag a rectangle to paint every parcel inside it, or apply a zone to a whole enclosed block. P: private development permits for zoned vacant sites. G: parks, playgrounds and plazas, their maintenance funding and converting a civic reserve into new public space. See `docs/city-planning.md`, `docs/development-proposals-slice.md` and `docs/parks-public-spaces-slice.md`.
 - Planning tools claim N (roads), Z (zoning), P (permits) and G (parks) plus Enter and Escape. Elsewhere C opens City Reports, B the Treasury, J Public Works, T the Transport Authority, I the inspector and H controls. Map overlays: O street condition, F pedestrian density, V traffic intensity, K park condition.
 - Drag or WASD / arrow keys: pan. Wheel: zoom. Q/E: rotate. R: recenter.
 - Click a building, pedestrian or car: open the inspector. Selected trips mark their origin blue and destination amber. Right-click the map: contextual tools.

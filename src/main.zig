@@ -1197,7 +1197,7 @@ export fn transport_remove(id: u32) void {
     transport.remove(id);
 }
 export fn transport_lane(road: u32, lane: u32) void {
-    if (road < city.road_count and lane <= 2) transport.lanes[road] = @intCast(lane);
+    if (road < city.road_count and lane <= 3) transport.lanes[road] = @intCast(lane);
 }
 export fn route_next(from: u32, to: u32) u32 {
     return if (from < city.node_count and to < city.node_count) city.next_node[from][to] else 0;
@@ -1236,11 +1236,15 @@ export fn road_begin(curved: u32) void {
     game.roadworks.reset();
     game.roadworks.active = true;
     game.roadworks.curved = curved == 1;
-    game.roadworks.class = @min(2, game.roadworks.class);
+    game.roadworks.class = @min(3, game.roadworks.class);
 }
 
 export fn road_class(value: u32) void {
-    if (value <= 2) game.roadworks.class = @intCast(value);
+    if (value <= 3) game.roadworks.class = @intCast(value);
+}
+// Attached priority lanes on the drafted road: bit 0 bus, bit 1 cycle.
+export fn road_lanes(value: u32) void {
+    game.roadworks.attached_lanes = @intCast(value & 3);
 }
 
 export fn parking_rebuild() void {
@@ -1273,6 +1277,29 @@ export fn zoning_pick(x: f32, y: f32) i32 {
 }
 export fn zoning_apply(id: u32, zone: u32, block: u32) bool {
     return game.parcels.paint(id, zone, block == 1);
+}
+
+// SimCity-style marquee paint: every parcel whose centre projects inside the
+// screen rectangle takes the zone. Rotation-safe, because the test is done in
+// screen space. Returns the number of parcels painted.
+export fn zoning_paint_screen(x1: f32, y1: f32, x2: f32, y2: f32, zone: u32) u32 {
+    if (zone > 5) return 0;
+    const lo_x = @min(x1, x2);
+    const hi_x = @max(x1, x2);
+    const lo_y = @min(y1, y2);
+    const hi_y = @max(y1, y2);
+    var painted: u32 = 0;
+    for (game.parcels.storage[0..game.parcels.count]) |*p| {
+        const cx = p.x + p.width / 2;
+        const cz = p.z + p.depth / 2;
+        const sx = scene.projectWorld(cx, city.elevation(cx, cz), cz, 0);
+        const sy = scene.projectWorld(cx, city.elevation(cx, cz), cz, 1);
+        if (sx >= lo_x and sx <= hi_x and sy >= lo_y and sy <= hi_y) {
+            p.zone = zone;
+            painted += 1;
+        }
+    }
+    return painted;
 }
 
 // Slice 18: grant or refuse a private development permit. Both are validated in

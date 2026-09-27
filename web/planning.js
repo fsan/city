@@ -2,12 +2,18 @@
 import {accessNames, decisionNames, kinds, parkFunding, parkKinds, phaseNames, refusalNames, streetName} from './data.js';
 export function createPlanning(game, transport) {
   const $=id=>document.getElementById(id), r=(g,id,f)=>game.read(g,id,f), money=value=>`£${Number(value).toFixed(2)}`, pounds=value=>`£${Math.round(Number(value))}`;
-  let mode=null, fixed=0, ready=false, parcel=-1;
+  let mode=null, fixed=0, ready=false, parcel=-1, marquee=null;
+  // The drag rectangle is a DOM overlay: the canvas underneath keeps painting
+  // the parcels while the marquee follows the pointer.
+  const marqueeBox=document.createElement('div');
+  marqueeBox.id='zone-marquee';
+  marqueeBox.hidden=true;
+  document.getElementById('game').appendChild(marqueeBox);
   const errors=['Ready to build.','Keep the road inside the map, between 6 and 500 metres.','Road would overlap a building or park.','Grade is too steep.','Insufficient uncommitted funds.','Network capacity reached. Try a shorter road.','A street here has a reserved work order.','Road overlaps another road or makes a very shallow junction.','Connect the road to the existing street network.','The river is in the way. Only the seeded bridges cross it.'];
   const names=['Unzoned','Residential','Commercial','Industrial','Mixed use','Civic / park reserve'];
-  const classes=['lane (£18/m, kerbside parking not allowed)','street (£25/m, kerbside parking banded by movement)','avenue (£40/m, wide and fastest, kerbside parking banded by movement)'];
-  function close(){mode=null;fixed=0;ready=false;game.road_cancel();game.zoning_show(0);$('planning-panel').hidden=true;$('road-tool').setAttribute('aria-pressed','false');$('zone-tool').setAttribute('aria-pressed','false');$('permit-tool').setAttribute('aria-pressed','false');$('park-tool').setAttribute('aria-pressed','false');}
-  function begin(next){transport.cancel();close();mode=next;$('planning-panel').hidden=false;$('road-options').hidden=next!=='road';$('zone-options').hidden=next!=='zone';$('permit-options').hidden=next!=='permit';$('park-options').hidden=next!=='park';$(next==='road'?'road-tool':next==='zone'?'zone-tool':next==='park'?'park-tool':'permit-tool').setAttribute('aria-pressed','true');if(next==='road'){game.road_class(Number($('road-class').value));game.road_begin(Number($('road-shape').value));}else if(next==='zone')game.zoning_show(1);else if(next==='park')parks();else permits();status();}
+  const classes=['lane (£18/m, single narrow lane, kerbside parking not allowed)','street (£25/m, one lane each way, kerbside parking banded by movement)','avenue (£40/m, two painted lanes each way, banded parking)','boulevard (£60/m, three lanes each way, widest and fastest)'];
+  function close(){marquee=null;marqueeBox.hidden=true;mode=null;fixed=0;ready=false;game.road_cancel();game.zoning_show(0);$('planning-panel').hidden=true;$('road-tool').setAttribute('aria-pressed','false');$('zone-tool').setAttribute('aria-pressed','false');$('permit-tool').setAttribute('aria-pressed','false');$('park-tool').setAttribute('aria-pressed','false');}
+  function begin(next){transport.cancel();close();mode=next;$('planning-panel').hidden=false;$('road-options').hidden=next!=='road';$('zone-options').hidden=next!=='zone';$('permit-options').hidden=next!=='permit';$('park-options').hidden=next!=='park';$(next==='road'?'road-tool':next==='zone'?'zone-tool':next==='park'?'park-tool':'permit-tool').setAttribute('aria-pressed','true');if(next==='road'){lanes();game.road_class(Number($('road-class').value));game.road_begin(Number($('road-shape').value));}else if(next==='zone')game.zoning_show(1);else if(next==='park')parks();else permits();status();}
   // Slice 18/19/20: the development queue, its physical construction stage and
   // the measured sunlight/valuation trade-off. Every open application is one row
   // with its own decision, an approved job reports access, crew, materials and
@@ -114,10 +120,13 @@ export function createPlanning(game, transport) {
   $('permit-tool').onclick=()=>mode==='permit'?close():begin('permit');
   $('park-tool').onclick=()=>mode==='park'?close():begin('park');
   $('planning-close').onclick=close;
+  function lanes(){game.road_lanes(($('road-lane-bus').checked?1:0)|($('road-lane-cycle').checked?2:0));}
   $('road-shape').onchange=()=>begin('road');
   $('road-class').onchange=()=>{if(mode!=='road')return;game.road_class(Number($('road-class').value));status();};
+  $('road-lane-bus').onchange=lanes;
+  $('road-lane-cycle').onchange=lanes;
   $('road-discard').onclick=()=>begin('road');
-  function build(){if(!ready)return;if(game.road_build()){transport.syncNetwork();game.parking_rebuild();fixed=0;ready=false;game.road_class(Number($('road-class').value));game.road_begin(Number($('road-shape').value));$('planning-status').textContent='Road built. New roadside parcels are unzoned. Click to start another road.';$('road-build').disabled=true;}else status();}
+  function build(){if(!ready)return;if(game.road_build()){transport.syncNetwork();game.parking_rebuild();fixed=0;ready=false;lanes();game.road_class(Number($('road-class').value));game.road_begin(Number($('road-shape').value));$('planning-status').textContent='Road built. New roadside parcels are unzoned. Click to start another road.';$('road-build').disabled=true;}else status();}
   $('road-build').onclick=build;
   $('zone-apply').onclick=()=>{if(game.zoning_apply(parcel,Number($('zone-kind').value),$('zone-scope').value==='block'?1:0))status();};
   $('park-funding').onchange=()=>{if(game.parks_set_funding(Number($('park-funding').value)))parks();}
@@ -128,15 +137,50 @@ export function createPlanning(game, transport) {
     pointerDown(event){
       if(!mode)return false;
       if(mode==='permit')return false;
-      if(mode==='zone'){parcel=game.zoning_pick(event.clientX,event.clientY);if(parcel>=0)$('zone-kind').value=r(16,parcel,2);status();return true;}
+      if(mode==='zone'){
+        parcel=game.zoning_pick(event.clientX,event.clientY);
+        if(parcel>=0)$('zone-kind').value=r(16,parcel,2);
+        marquee={x:event.clientX,y:event.clientY};
+        status();return true;
+      }
       if(mode==='park'){parcel=game.zoning_pick(event.clientX,event.clientY);parkSummary();status();return true;}
       if(ready)return true;
       game.road_screen_point(fixed,event.clientX,event.clientY);fixed++;
       ready=fixed===($('road-shape').value==='1'?3:2);status();return true;
     },
-    pointerMove(event){if(mode!=='road'||!fixed||ready)return false;game.road_screen_point(fixed,event.clientX,event.clientY);status();return true;},
+    pointerMove(event){
+      if(mode==='zone'&&marquee){
+        const moved=Math.abs(event.clientX-marquee.x)+Math.abs(event.clientY-marquee.y);
+        if(moved>8){
+          const lo={x:Math.min(event.clientX,marquee.x),y:Math.min(event.clientY,marquee.y)};
+          marqueeBox.hidden=false;
+          marqueeBox.style.left=`${lo.x}px`;marqueeBox.style.top=`${lo.y}px`;
+          marqueeBox.style.width=`${Math.abs(event.clientX-marquee.x)}px`;
+          marqueeBox.style.height=`${Math.abs(event.clientY-marquee.y)}px`;
+        }
+        return true;
+      }
+      if(mode!=='road'||!fixed||ready)return false;game.road_screen_point(fixed,event.clientX,event.clientY);status();return true;},
+    pointerUp(event){
+      if(mode!=='zone'||!marquee)return false;
+      const {x,y}=marquee;marquee=null;
+      const moved=Math.abs(event.clientX-x)+Math.abs(event.clientY-y);
+      if(moved>8){
+        marqueeBox.hidden=true;
+        const painted=game.zoning_paint_screen(x,y,event.clientX,event.clientY,Number($('zone-kind').value));
+        $('planning-status').textContent=painted?`Painted ${painted} parcel${painted===1?'':'s'} as ${names[Number($('zone-kind').value)]}. Drag again, or Escape to finish.`:'No parcels inside the rectangle. Drag over the coloured parcels.';
+        return true;
+      }
+      marqueeBox.hidden=true;
+      return true;
+    },
     key(key){if(key==='n'){begin('road');return true;}if(key==='z'){begin('zone');return true;}if(key==='p'){begin('permit');return true;}if(key==='g'){begin('park');return true;}if(key==='escape'&&mode){close();return true;}if(key==='enter'&&mode==='road'){build();return true;}return false;},
     refresh(){if(mode==='permit')permits();else if(mode==='park')parks();},
     reset:close,
+    open:(next)=>begin(next),
+    openRoad(){begin('road');},
+    openZone(){begin('zone');},
+    openPark(){begin('park');},
+    openPermits(){begin('permit');},
   };
 }

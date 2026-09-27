@@ -300,7 +300,7 @@ pub fn addRoadClass(a: usize, b: usize, street: usize, class: u8) usize {
     const planar = @sqrt(dx * dx + dz * dz);
     const district = districtAt((nodes[a].x + nodes[b].x) / 2, (nodes[a].z + nodes[b].z) / 2);
     const id = road_count;
-    road_storage[id] = .{ .a = a, .b = b, .length = @sqrt(planar * planar + dy * dy), .slope = @abs(dy) / @max(0.01, planar), .district = district, .condition = 70, .street = street, .class = @min(class, 2) };
+    road_storage[id] = .{ .a = a, .b = b, .length = @sqrt(planar * planar + dy * dy), .slope = @abs(dy) / @max(0.01, planar), .district = district, .condition = 70, .street = street, .class = @min(class, 3) };
     road_count += 1;
     roads = road_storage[0..road_count];
     return id;

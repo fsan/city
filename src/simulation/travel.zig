@@ -15,9 +15,9 @@ pub const car_limit: f32 = 7.0; // about 25 km/h on an ordinary street
 pub const bus_load_penalty: f32 = 0.92;
 pub const bus_plan_speed: f32 = car_limit * 0.92;
 // Street class speed multipliers: 0 lane, 1 street, 2 avenue.
-pub const class_car_speed = [_]f32{ 0.82, 1.0, 1.18 };
-pub const class_names = [_][]const u8{ "Lane", "Street", "Avenue" };
-pub const class_price = [_]f64{ 18, 25, 40 };
+pub const class_car_speed = [_]f32{ 0.82, 1.0, 1.18, 1.34 };
+pub const class_names = [_][]const u8{ "Lane", "Street", "Avenue", "Boulevard" };
+pub const class_price = [_]f64{ 18, 25, 40, 60 };
 
 pub fn classSpeed(class: u8, condition: f32, slope: f32, works: bool) f32 {
     const index: usize = @min(class, class_car_speed.len - 1);

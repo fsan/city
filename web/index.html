@@ -245,6 +245,7 @@
                   <th>Grade</th>
                   <th>Condition</th>
                   <th>Works</th>
+                  <th>Settings</th>
                 </tr>
               </thead>
               <tbody id="street-rows"></tbody>
@@ -1151,7 +1152,8 @@
               <select id="traffic-lane" aria-label="Street lane allocation">
                 <option value="0">Mixed traffic</option>
                 <option value="1">Dedicated bus lanes</option>
-                <option value="2">Protected cycle lanes</option></select
+                <option value="2">Protected cycle lanes</option>
+                <option value="3">Bus + cycle lanes</option></select
               ><button id="lane-apply">Apply lanes</button
               ><button id="road-locate">Locate street</button>
             </div>
@@ -1359,13 +1361,18 @@
         <header><strong>STREETS &amp; LAND USE</strong><button id="planning-close" aria-label="Close planner">×</button></header>
         <div id="road-options">
           <label>Road shape <select id="road-shape"><option value="0">Straight</option><option value="1">Curved</option></select></label>
-          <label>Street type <select id="road-class"><option value="1">Street</option><option value="0">Lane</option><option value="2">Avenue</option></select></label>
+          <label>Street type <select id="road-class"><option value="1">Street</option><option value="0">Lane</option><option value="2">Avenue</option><option value="3">Boulevard</option></select></label>
+          <fieldset id="road-lanes" class="road-lanes">
+            <legend>Attached lanes</legend>
+            <label class="check"><input type="checkbox" id="road-lane-bus"> Bus priority lane <small>(+£8/m)</small></label>
+            <label class="check"><input type="checkbox" id="road-lane-cycle"> Protected cycle lane <small>(+£5/m)</small></label>
+          </fieldset>
           <button id="road-build" disabled>Build road</button> <button id="road-discard">Discard draft</button> <span class="info-tip" tabindex="0" role="button" aria-label="How to draw roads" data-tip="Click start and end; curved roads add a bend control point. Junctions connect automatically. WASD pans, wheel zooms. Enter builds; Escape cancels.">?</span>
         </div>
         <div id="zone-options" hidden>
           <label>Zone <select id="zone-kind"><option value="0">Unzoned</option><option value="1">Residential</option><option value="2">Commercial</option><option value="3">Industrial</option><option value="4">Mixed use</option><option value="5">Civic / park reserve</option></select></label>
           <label>Apply to <select id="zone-scope"><option value="block">Whole enclosed block</option><option value="parcel">Selected parcel</option></select></label>
-          <button id="zone-apply" disabled>Apply zoning</button> <span class="info-tip" tabindex="0" role="button" aria-label="About zoning" data-tip="Green homes, blue commerce, ochre industry, violet mixed, teal civic, grey unzoned. Zoning reserves future use, and existing buildings remain. Zoned vacant land now attracts private applications: see Permits.">?</span>
+          <button id="zone-apply" disabled>Apply zoning</button> <span class="info-tip" tabindex="0" role="button" aria-label="About zoning" data-tip="Click a parcel to select it, or drag a rectangle to paint every parcel inside it with the chosen zone, SimCity style. Green homes, blue commerce, ochre industry, violet mixed, teal civic, grey unzoned. Zoning reserves future use, and existing buildings remain. Zoned vacant land now attracts private applications: see Permits.">?</span>
         </div>
         <div id="permit-options" hidden>
           <p id="permit-summary">No applications. Private developers apply only where the town is measurably crowded and the land is zoned; approved jobs show their physical construction stage here, and every application shows the sunlight its site receives and the shadow it would cast.</p>

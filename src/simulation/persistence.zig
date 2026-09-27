@@ -463,7 +463,7 @@ fn validate(s: *const State) bool {
     for (&edges) |*row| @memset(row, -1);
     for (town.nodes) |node| if (!city.insideWindow(node.x, node.z, 0) or node.street >= town.street_count or !near(node.y, city.elevation(node.x, node.z))) return false;
     for (roads, 0..) |road, i| {
-        if (road.a >= n or road.b >= n or road.a == road.b or road.district >= 12 or road.street >= town.street_count or !between(road.condition, 0, 100) or !between(road.length, 0.01, 1000) or !between(road.slope, 0, 10) or edges[road.a][road.b] >= 0 or m.lanes[i] > 2 or !between(m.congestion[i], 0, 1) or m.queues[i] > m.vehicles.len or m.occupancy[i] > m.vehicles.len) return false;
+        if (road.a >= n or road.b >= n or road.a == road.b or road.district >= 12 or road.street >= town.street_count or !between(road.condition, 0, 100) or !between(road.length, 0.01, 1000) or !between(road.slope, 0, 10) or edges[road.a][road.b] >= 0 or m.lanes[i] > 3 or !between(m.congestion[i], 0, 1) or m.queues[i] > m.vehicles.len or m.occupancy[i] > m.vehicles.len) return false;
         const a = town.nodes[road.a];
         const b = town.nodes[road.b];
         const planar = city.hypot(b.x - a.x, b.z - a.z);

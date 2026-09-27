@@ -15,8 +15,12 @@ pub var active = false;
 pub var curved = false;
 pub var knots: [3]city.Vec = @splat(.{ .x = 0, .z = 0 });
 pub var knot_count: usize = 0;
-// Slice 10: the road tool chooses a street class (0 lane, 1 street, 2 avenue).
+// The road tool chooses a street class (0 lane, 1 street, 2 avenue,
+// 3 boulevard) and can attach dedicated bus and/or cycle lanes, Cities:
+// Skylines style. The choice is priced in preview() and attached at build().
 pub var class: u8 = 1;
+// Attached lane options for the drafted road: bit 0 bus priority, bit 1 cycle.
+pub var attached_lanes: u8 = 0;
 // 0 valid, 1 bounds/length, 2 occupied parcel, 3 grade, 4 funds,
 // 5 network capacity, 6 reserved works, 7 overlap/shallow junction, 8 disconnected.
 pub fn reset() void {
@@ -178,7 +182,8 @@ pub fn preview() void {
         error_code = 5;
         return;
     }
-    const per_metre = if (class == 2) @as(f64, 40) else if (class == 0) @as(f64, 18) else @as(f64, 25);
+    const class_price = [_]f64{ 18, 25, 40, 60 };
+    const per_metre: f64 = class_price[@min(class, 3)] + (if (attached_lanes & 1 != 0) @as(f64, 8) else 0) + (if (attached_lanes & 2 != 0) @as(f64, 5) else 0);
     cost = finance.cents(@as(f64, length) * per_metre);
     if (cost > finance.available()) error_code = 4;
 }
@@ -280,7 +285,15 @@ pub fn build(time: f64) bool {
         p.next = link.b;
     }
     parcels.addFrontages(old_count);
+    // Attach any dedicated bus/cycle lanes the tool drafted onto every new
+    // segment of the street (bitmask: 1 bus, 2 cycle). transport.lanes[id]
+    // was preserved for old segments by the split/reconnect logic above.
+    if (attached_lanes != 0) for (city.roads[old_count..], 0..) |r, rid| {
+        if (r.street != street) continue;
+        transport.lanes[old_count + rid] |= attached_lanes;
+    };
     finance.record(time, -cost, 9, @intCast(street), -1);
     reset();
+    attached_lanes = 0;
     return true;
 }

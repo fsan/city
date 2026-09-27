@@ -43,11 +43,25 @@ const pavement_dash: f32 = 0.31;
 const pavement_crossing: f32 = 0.34;
 const pavement_works: f32 = 0.38;
 const pavement_ribbon: f32 = 0.40;
-// Street widths: the kerb band is the full carriageway, the surface is the dark
-// strip inside it.
-const kerb_half: f32 = 2.7;
-const surface_half: f32 = 1.75;
+// Street widths vary with the class: the kerb band is the full carriageway
+// (plus walkways), the surface is the drivable strip inside it. A lane is a
+// narrow service road, a boulevard carries three painted lanes each way.
 const kerb_color: Color = .{ 0.49, 0.49, 0.45 };
+fn kerbHalf(class: u8) f32 {
+    return switch (class) { 0 => 2.1, 2 => 3.5, 3 => 4.8, else => 2.7 };
+}
+fn surfaceHalf(class: u8) f32 {
+    return switch (class) { 0 => 1.1, 2 => 2.5, 3 => 3.8, else => 1.75 };
+}
+// Painted lane dividers a class carries: index 0 is the centre line, further
+// entries are the lateral offsets of the extra lane lines inside the surface.
+fn dashOffsets(class: u8) []const f32 {
+    return switch (class) {
+        2 => &.{ 0, -1.25, 1.25 },
+        3 => &.{ 0, -1.25, 1.25, -2.5, 2.5 },
+        else => &.{0},
+    };
+}
 pub fn reset() void {
     camera_x = city.origin_x + city.size_x / 2;
     camera_z = city.origin_z + city.size_z / 2;
@@ -441,7 +455,7 @@ pub fn ribbon(a: city.Vec, b: city.Vec, half: f32, lateral: f32, offset: f32, co
 // The incident roads come from `city.incident`, built once a frame in
 // `city.buildIncidence`: the pass used to scan every road for every node once
 // per layer, which is about 2.2 M comparisons a layer on this town.
-fn junctionFans(half: f32, uniform_offset: f32, uniform_color: Color, per_road: bool) void {
+fn junctionFans(uniform_offset: f32, uniform_color: Color, per_road: bool, kerb: bool) void {
     var away: [24]f32 = undefined;
     var normal_x: [24]f32 = undefined;
     var normal_z: [24]f32 = undefined;
@@ -488,8 +502,10 @@ fn junctionFans(half: f32, uniform_offset: f32, uniform_color: Color, per_road: 
         while (k < arms) : (k += 1) {
             const next = (k + 1) % arms;
             const centre = city.Vec{ .x = node_x, .z = node_z };
-            const corner = city.Vec{ .x = node_x + normal_x[k] * half, .z = node_z + normal_z[k] * half };
-            const opposite = city.Vec{ .x = node_x - normal_x[next] * half, .z = node_z - normal_z[next] * half };
+            const half_left = if (kerb) kerbHalf(city.roads[road_id[k]].class) else surfaceHalf(city.roads[road_id[k]].class);
+            const half_right = if (kerb) kerbHalf(city.roads[road_id[next]].class) else surfaceHalf(city.roads[road_id[next]].class);
+            const corner = city.Vec{ .x = node_x + normal_x[k] * half_left, .z = node_z + normal_z[k] * half_left };
+            const opposite = city.Vec{ .x = node_x - normal_x[next] * half_right, .z = node_z - normal_z[next] * half_right };
             if (!per_road) {
                 terrainFace(&[_]city.Vec{ centre, corner, opposite }, uniform_offset, uniform_color);
                 continue;
@@ -551,7 +567,9 @@ pub fn groundPoint(sx: f32, sy: f32) city.Vec {
 pub fn focus(x: f32, z: f32) void {
     camera_x = x;
     camera_z = z;
-    zoom = 3;
+    // Menu selections centre the target close-up: at zoom 7 a house icon
+    // fills a good slice of the screen instead of sitting in a wide town view.
+    zoom = 7;
 }
 // Slice 15: greenery. A green lot is planted from its own seed, so the same
 // park always carries the same trees and bushes and nothing has to be saved
@@ -667,29 +685,69 @@ pub fn draw(w: f32, h: f32) void {
         const colors = [_]Color{ .{ 0.54, 0.55, 0.48 }, .{ 0.3, 0.61, 0.39 }, .{ 0.3, 0.48, 0.78 }, .{ 0.76, 0.62, 0.29 }, .{ 0.61, 0.43, 0.68 }, .{ 0.31, 0.67, 0.66 } };
         groundQuad(p.x - 0.45, p.z - 0.45, p.width + 0.9, p.depth + 0.9, 0.07, if (game.parcels.selected == @as(i32, @intCast(id))) .{ 1, 0.85, 0.35 } else colors[p.zone]);
     };
-    junctionFans(kerb_half, pavement_kerb, kerb_color, false);
-    junctionFans(surface_half, pavement_surface, kerb_color, true);
     for (city.roads, 0..) |r, id| {
-        const a = city.Vec{ .x = city.nodes[r.a].x, .z = city.nodes[r.a].z };
-        const b = city.Vec{ .x = city.nodes[r.b].x, .z = city.nodes[r.b].z };
-        ribbon(a, b, kerb_half, 0, pavement_kerb, kerb_color);
-        ribbon(a, b, surface_half, 0, surfaceOffset(r), surfaceColor(r, id));
-        if (transport.lanes[id] != 0) ribbon(a, b, 0.15, 1.4, pavement_lane, if (transport.lanes[id] == 1) .{ 0.3, 0.55, 0.8 } else .{ 0.35, 0.65, 0.35 });
-        const length = city.hypot(b.x - a.x, b.z - a.z);
-        const ux = (b.x - a.x) / length;
-        const uz = (b.z - a.z) / length;
-        var d: f32 = 1;
-        while (d + 1 < length) : (d += 3.2) ribbon(.{ .x = a.x + ux * d, .z = a.z + uz * d }, .{ .x = a.x + ux * (d + 1), .z = a.z + uz * (d + 1) }, 0.05, 0, pavement_dash, .{ 0.65, 0.63, 0.51 });
-        if (r.crosswalk and length > 5) for (0..2) |end| {
+        const na = city.Vec{ .x = city.nodes[r.a].x, .z = city.nodes[r.a].z };
+        const nb = city.Vec{ .x = city.nodes[r.b].x, .z = city.nodes[r.b].z };
+        const kerb_half = kerbHalf(r.class);
+        const surface_half = surfaceHalf(r.class);
+        const length = city.hypot(nb.x - na.x, nb.z - na.z);
+        const ux = (nb.x - na.x) / length;
+        const uz = (nb.z - na.z) / length;
+        // Road bodies (kerb band + carriageway) run the full length between
+        // their nodes, so bends, splits and shallow angles stay continuous.
+        // Only the lane paint and dashes pull back from real junctions
+        // (nodes with 3+ arms), where the pad sits on top anyway.
+        ribbon(na, nb, kerb_half, 0, pavement_kerb, kerb_color);
+        ribbon(na, nb, surface_half, 0, surfaceOffset(r), surfaceColor(r, id));
+        // Attached priority lanes, both directions: a bus lane sits against
+        // the kerb painted blue, a protected cycle lane just inside it green.
+        // Paint stops at the junction pad instead of running across it.
+        const pad_a = if (city.degree(r.a) >= 3) kerb_half + 0.6 else 0;
+        const pad_b = if (city.degree(r.b) >= 3) kerb_half + 0.6 else 0;
+        const ta = @min(pad_a, length / 2 - 0.1);
+        const tb = @min(pad_b, length / 2 - 0.1);
+        const la = city.Vec{ .x = na.x + ux * @max(0, ta), .z = na.z + uz * @max(0, ta) };
+        const lb = city.Vec{ .x = nb.x - ux * @max(0, tb), .z = nb.z - uz * @max(0, tb) };
+        for ([_]f32{ -1, 1 }) |side| {
+            if (transport.lanes[id] & 1 != 0)
+                ribbon(la, lb, 0.42, side * (surface_half - 0.55), pavement_lane, .{ 0.3, 0.55, 0.8 });
+            if (transport.lanes[id] & 2 != 0)
+                ribbon(la, lb, 0.42, side * @max(0.4, surface_half - 1.6), pavement_lane, .{ 0.35, 0.65, 0.35 });
+        }
+        const dash_start = @max(1, ta);
+        const dash_end = length - tb;
+        var d: f32 = dash_start;
+        while (d < dash_end) : (d += 3.2) for (dashOffsets(r.class)) |off| {
+            const e = @min(d + 1, dash_end);
+            ribbon(.{ .x = na.x + ux * d, .z = na.z + uz * d }, .{ .x = na.x + ux * e, .z = na.z + uz * e }, 0.05, off, pavement_dash, .{ 0.65, 0.63, 0.51 });
+        };
+    }
+    // Junction pads paint over the road bodies, so a wide boulevard's kerb
+    // band cannot stick out sideways across a narrower crossing street: each
+    // pad covers everything within each arm's own width of the node, taking
+    // kerb colour around the edge and the bordering arm's surface colour.
+    junctionFans(pavement_kerb, kerb_color, false, true);
+    junctionFans(pavement_surface, kerb_color, true, false);
+    // Crosswalk stripes sit inside the pad area, so they go on last.
+    for (city.roads, 0..) |r, id| {
+        _ = id;
+        if (!r.crosswalk or r.length <= 5) continue;
+        const na = city.Vec{ .x = city.nodes[r.a].x, .z = city.nodes[r.a].z };
+        const nb = city.Vec{ .x = city.nodes[r.b].x, .z = city.nodes[r.b].z };
+        const surface_half = surfaceHalf(r.class);
+        const ux = (nb.x - na.x) / r.length;
+        const uz = (nb.z - na.z) / r.length;
+        for (0..2) |end| {
             const n = if (end == 0) r.a else r.b;
             if (city.degree(n) < 3) continue;
-            const t: f32 = if (end == 0) 3.6 else length - 3.6;
-            const c = city.Vec{ .x = a.x + ux * t, .z = a.z + uz * t };
-            for (0..7) |stripe| {
-                const off = -1.5 + @as(f32, @floatFromInt(stripe)) * 0.5;
+            const t: f32 = if (end == 0) 3.6 else r.length - 3.6;
+            const c = city.Vec{ .x = na.x + ux * t, .z = na.z + uz * t };
+            const stripes: usize = @intFromFloat(@floor(surface_half * 2 / 0.5));
+            for (0..stripes) |stripe| {
+                const off = -surface_half + 0.2 + @as(f32, @floatFromInt(stripe)) * 0.5;
                 ribbon(.{ .x = c.x - ux * 0.5, .z = c.z - uz * 0.5 }, .{ .x = c.x + ux * 0.5, .z = c.z + uz * 0.5 }, 0.14, off, pavement_crossing, .{ 0.88, 0.86, 0.74 });
             }
-        };
+        }
     }
     waterOverlay();
     serviceOverlay();
@@ -893,8 +951,9 @@ pub fn draw(w: f32, h: f32) void {
         const color: Color = if (game.roadworks.error_code == 0) .{ 0.35, 0.8, 0.65 } else .{ 0.95, 0.28, 0.24 };
         for (game.roadworks.points[0 .. game.roadworks.count - 1], 0..) |a, i| {
             const b = game.roadworks.points[i + 1];
-            if (i > 0) ribbonJoin(game.roadworks.points[i - 1], a, b, kerb_half, 0, pavement_works, color);
-            ribbon(a, b, kerb_half, 0, pavement_works, color);
+            const draft_half = kerbHalf(game.roadworks.class);
+            if (i > 0) ribbonJoin(game.roadworks.points[i - 1], a, b, draft_half, 0, pavement_works, color);
+            ribbon(a, b, draft_half, 0, pavement_works, color);
         }
         for (game.roadworks.knots[0..game.roadworks.knot_count]) |p| box(p.x - 0.4, p.z - 0.4, 0.8, 0.8, 1.3, city.elevation(p.x, p.z) + pavement_works, color);
     }
@@ -1232,7 +1291,7 @@ pub fn pick(sx: f32, sy: f32) void {
 // Preserve the ground point under the cursor while changing magnification.
 pub fn zoomAt(amount: f32, x: f32, y: f32) void {
     const old_scale = scale();
-    zoom = std.math.clamp(zoom * amount, 0.5, 12);
+    zoom = std.math.clamp(zoom * amount, 0.35, 30);
     const change = 1 / old_scale - 1 / scale();
     const across = (x - width / 2) * change;
     const back = (y - height / 2) * change / 0.5773503;

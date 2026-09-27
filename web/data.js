@@ -46,7 +46,7 @@ export const accessNames = ["No access", "Direct frontage", "Paid access"];
 // levels Zig enforces.
 export const parkFunding = ["Minimum", "Standard", "Enhanced"];
 export const parkKinds = ["Park", "Playground", "Plaza"];
-export const streetClasses = ["Lane", "Street", "Avenue"];
+export const streetClasses = ["Lane", "Street", "Avenue", "Boulevard"];
 export const parkingKinds = ["Bicycle park", "Car park", "Kerbside"];
 export const parkingBands = ["free", "band 1", "band 2", "band 3", "band 4 (cap)"];
 export const statusNames = [

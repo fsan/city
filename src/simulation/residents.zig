@@ -516,7 +516,7 @@ pub fn update(dt: f32, elapsed: f64) void {
         // the side of the street for their own direction of travel.
         const lateral: f32 = if (p.mode == 1) -1.35 else 2.3 * p.walk_side;
         const target = city.Vec{ .x = b.x - (b.z - a.z) / span * lateral, .z = b.z + (b.x - a.x) / span * lateral };
-        const speed = if (p.mode == 1) travel.bikeRide(road.condition, road.slope, road.works, transport.lanes[@intCast(road_id)] == 2) else travel.walkRide(road.condition, road.slope, road.works);
+        const speed = if (p.mode == 1) travel.bikeRide(road.condition, road.slope, road.works, transport.lanes[@intCast(road_id)] & 2 != 0) else travel.walkRide(road.condition, road.slope, road.works);
         if (moveTo(p, target.x, city.elevation(target.x, target.z) + 0.15, target.z, speed, dt)) {
             p.back = p.node;
             p.node = p.next;
@@ -797,7 +797,7 @@ fn rideSeconds(from: usize, to: usize) f32 {
         const road_id = city.road_between[node][next];
         if (road_id < 0) return unreachable_cost;
         const road = city.roads[@intCast(road_id)];
-        total += road.length / travel.bikeRide(road.condition, road.slope, road.works, transport.lanes[@intCast(road_id)] == 2);
+        total += road.length / travel.bikeRide(road.condition, road.slope, road.works, transport.lanes[@intCast(road_id)] & 2 != 0);
         node = next;
     }
     if (node != to) return unreachable_cost;

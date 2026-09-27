@@ -430,6 +430,7 @@ export function createReports(game, ui, transport) {
             `${(r(5, id, 3) * 100).toFixed(0)}%`,
             `${r(5, id, 5).toFixed(1)}%`,
             r(5, id, 6) ? "Active" : r(5, id, 9) ? "Ordered" : "—",
+            link("Configure", () => transport.inspectRoad(id)),
           ]),
       );
     }
@@ -820,7 +821,15 @@ export function createReports(game, ui, transport) {
           ui.open("reports");
           ui.showReport("mobility");
         }),
+        link("Tax policy", () => {
+          ui.open("budget");
+          showBudgetTab("policy");
+        }),
       ];
+      if ([5, 12, 13].includes(b.kind))
+        actions.push(link("Park upkeep settings", () => {
+          $("park-tool").click();
+        }));
       const resident = people.find((p) => p.home === id);
       if (resident)
         actions.push(
@@ -940,6 +949,10 @@ export function createReports(game, ui, transport) {
       actions = [
         link("Locate premises", () => game.focus(1, b)),
         link("Inspect premises", () => inspect(1, b)),
+        link("Tax policy", () => {
+          ui.open("budget");
+          showBudgetTab("policy");
+        }),
       ];
       if (order >= 0)
         actions.push(link("Inspect order", () => openOrder(order)));
@@ -971,7 +984,7 @@ export function createReports(game, ui, transport) {
         ["Queue pressure", `${(r(5, id, 12) * 100).toFixed(0)}%`],
         [
           "Lane allocation",
-          ["Mixed", "Bus lanes", "Cycle lanes"][r(5, id, 13)],
+          ["Mixed", "Bus lanes", "Cycle lanes", "Bus + cycle lanes"][r(5, id, 13)],
         ],
         [
           "Kerbside parking",

@@ -227,6 +227,10 @@ function start(renderer) {
     drag.y = event.clientY;
   });
   canvas.addEventListener("pointerup", (event) => {
+    if (planning.pointerUp(event)) {
+      drag = null;
+      return;
+    }
     if (transport.pointerUp()) {
       drag = null;
       return;
@@ -240,7 +244,8 @@ function start(renderer) {
     }
     drag = null;
   });
-  canvas.addEventListener("pointercancel", () => {
+  canvas.addEventListener("pointercancel", (event) => {
+    planning.pointerUp?.(event);
     transport.pointerUp();
     drag = null;
   });

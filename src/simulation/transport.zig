@@ -118,7 +118,8 @@ fn recordArrival(v: *const Vehicle, elapsed: f64) void {
 }
 pub var vehicles: [car_count + max_lines * buses_per_line]Vehicle = @splat(.{});
 pub var lines: [max_lines]Line = @splat(.{});
-// 0 mixed traffic, 1 dedicated bus lane, 2 protected cycle lane (both directions).
+// Lane allocation bitmask, both directions: bit 0 dedicated bus lane,
+// bit 1 protected cycle lane. 0 is ordinary mixed traffic; 3 is both.
 pub var lanes: [city.max_roads]u8 = @splat(0);
 pub var occupancy: [city.max_roads]usize = @splat(0);
 pub var queues: [city.max_roads]usize = @splat(0);
@@ -296,7 +297,7 @@ fn room(v: Vehicle, next: usize) bool {
     const road: usize = @intCast(city.road_between[v.node][next]);
     var candidate = v;
     candidate.next = next;
-    candidate.lane = if (v.line >= 0 and lanes[road] == 1) 1 else 0;
+    candidate.lane = if (v.line >= 0 and lanes[road] & 1 != 0) 1 else 0;
     const key = laneKey(candidate, road);
     if (entries[key]) return false;
     var link = heads[key];
@@ -447,7 +448,7 @@ pub fn update(dt: f32, elapsed: f64) void {
             if (next == v.node or city.road_between[v.node][next] < 0) continue;
             if (!enter(v.*, next, elapsed, -1)) continue;
             v.next = next;
-            v.lane = if (v.line >= 0 and lanes[@intCast(city.road_between[v.node][next])] == 1) 1 else 0;
+            v.lane = if (v.line >= 0 and lanes[@intCast(city.road_between[v.node][next])] & 1 != 0) 1 else 0;
             v.progress = 0;
         }
         const r: usize = @intCast(city.road_between[v.node][v.next]);
@@ -472,7 +473,7 @@ pub fn update(dt: f32, elapsed: f64) void {
         var lookahead = v.*;
         lookahead.node = v.next;
         lookahead.next = if (next_after == v.next) v.next else next_after;
-        lookahead.lane = if (bus and next_after != v.next and lanes[@intCast(city.road_between[v.next][next_after])] == 1) 1 else 0;
+        lookahead.lane = if (bus and next_after != v.next and lanes[@intCast(city.road_between[v.next][next_after])] & 1 != 0) 1 else 0;
         const approach: i32 = @intCast(city.road_between[v.node][v.next]);
         const blocked = next_after == v.next or !entryAllowed(lookahead, next_after, elapsed, approach);
         // Only segment ends that actually stop the vehicle receive braking. Ordinary
@@ -548,7 +549,7 @@ pub fn update(dt: f32, elapsed: f64) void {
                 if (next != candidate.node and enter(candidate, next, elapsed, approach)) {
                     v.node = candidate.node;
                     v.next = next;
-                    v.lane = if (bus and lanes[@intCast(city.road_between[v.node][next])] == 1) 1 else 0;
+                    v.lane = if (bus and lanes[@intCast(city.road_between[v.node][next])] & 1 != 0) 1 else 0;
                     v.progress = 0;
                     v.speed = carried;
                 } else v.speed = 0;
@@ -657,7 +658,7 @@ fn entryAllowed(v: Vehicle, next: usize, elapsed: f64, approach: i32) bool {
     }
     if (!room(v, next)) return false;
     var candidate = v;
-    candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] == 1) 1 else 0;
+    candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] & 1 != 0) 1 else 0;
     return !entries[laneKey(candidate, @intCast(road_id))];
 }
 
@@ -665,7 +666,7 @@ fn enter(v: Vehicle, next: usize, elapsed: f64, approach: i32) bool {
     if (!entryAllowed(v, next, elapsed, approach)) return false;
     const road_id = city.road_between[v.node][next];
     var candidate = v;
-    candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] == 1) 1 else 0;
+    candidate.lane = if (v.line >= 0 and lanes[@intCast(road_id)] & 1 != 0) 1 else 0;
     entries[laneKey(candidate, @intCast(road_id))] = true;
     return true;
 }

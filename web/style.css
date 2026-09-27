@@ -1202,3 +1202,10 @@ td {
 #transport-window .tabs button {
   flex: 1;
 }
+
+/* SimCity marquee for painting zones. */
+#zone-marquee {position:absolute;border:1.5px dashed #f0d898;background:#f0d89822;pointer-events:none;z-index:13}
+#planning-panel .road-lanes {border:1px solid var(--line);margin:10px 0;padding:6px 8px;border-radius:2px}
+#planning-panel .road-lanes legend {font-size:12px;color:var(--muted)}
+#planning-panel .road-lanes .check {display:flex;align-items:center;gap:6px;margin:4px 0}
+#planning-panel .road-lanes small {color:var(--muted)}
